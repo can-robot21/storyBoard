@@ -40,6 +40,7 @@ AI 기반 프로젝트 파이프라인 툴로, 텍스트 입력부터 최종 영
 - **Frontend**: React 18 + TypeScript + Tailwind CSS
 - **상태 관리**: Zustand
 - **HTTP 클라이언트**: Axios
+- **AI 서비스**: Google AI Studio (Gemini API)
 - **아이콘**: Lucide React
 - **빌드 도구**: Create React App
 
@@ -84,18 +85,24 @@ frontend/
 **목적**: 프로젝트의 기본 스토리와 캐릭터를 설정하고 AI 프롬프트를 생성
 
 **입력 필드**:
-- **스토리**: 기본 스토리 개요 입력
-- **캐릭터**: 주요 캐릭터 설명 입력
-- **스토리 텍스트**: 상세 스토리 텍스트 입력
+- **스토리 기본 설정**: 주요 스토리 라인, 영상 스타일, 시각적 요소, 감정적 요소
+- **캐릭터 설정**: 캐릭터 입력 및 목록 관리
+- **시나리오 생성**: 상세 스토리 텍스트, 주요 대사
 
 **AI 생성 기능**:
-- **스토리 프롬프트**: 입력된 스토리를 바탕으로 AI 프롬프트 생성
-- **캐릭터 프롬프트**: 캐릭터 설명을 바탕으로 캐릭터 설정 프롬프트 생성
-- **시나리오 프롬프트**: 스토리와 캐릭터를 종합한 시나리오 프롬프트 생성
+- **스토리 프롬프트 AI 생성**: 입력된 스토리를 바탕으로 AI 프롬프트 생성
+- **캐릭터 일괄 AI 생성**: 모든 캐릭터를 종합한 캐릭터 설정 프롬프트 생성
+- **시나리오용 프롬프트 AI 생성**: 스토리와 캐릭터를 종합한 시나리오 프롬프트 생성 (500자 스토리 정리 자동 포함)
+
+**항목별 카드 시스템**:
+- **스토리/캐릭터/시나리오 카드**: 각 항목별로 수정/확정-취소/저장 기능 제공
+- **500자 스토리 정리**: 시나리오 생성 시 자동으로 생성되는 간결한 스토리 요약
+- **통합 AI 검토 및 시나리오 생성**: 모든 항목이 확정된 후 최종 텍스트 시나리오 생성
 
 **결과 표시**:
-- 생성된 프롬프트들을 색상별로 구분하여 표시
-- 모든 프롬프트 생성 완료 시 저장 버튼 활성화
+- 생성된 프롬프트들을 항목별 카드로 구분하여 표시
+- 각 카드마다 수정/확정/저장 기능 제공
+- 모든 항목 확정 후 통합 AI 검토 버튼 활성화
 
 ### 2. 캐릭터 설정 (AI 이미지 생성)
 **목적**: 캐릭터, 배경, 설정컷의 AI 이미지를 생성하고 관리
@@ -174,9 +181,10 @@ frontend/
   - `duration`: 예상 영상 길이 (3분, 5분, 10분 등)
 
 - **AI 생성 기능**:
-  - 스토리 프롬프트 생성
-  - 캐릭터 프롬프트 생성
-  - 시나리오 프롬프트 생성
+  - **개별 생성**: 스토리/캐릭터/시나리오 프롬프트 개별 생성
+  - **통합 AI 생성**: 모든 프롬프트를 한 번에 생성 (권장)
+  - **구조화된 출력**: JSON 형태로 정확한 데이터 반환
+  - **다음 단계 최적화**: 이미지/영상 생성에 최적화된 프롬프트 제공
 
 #### JSON 데이터 형식
 ```json
@@ -194,6 +202,19 @@ frontend/
         "storyPrompt": "스토리 프롬프트: 주요 스토리: 주인공이 모험을 떠나는 판타지 스토리...",
         "characterPrompt": "캐릭터 설정 프롬프트: 캐릭터 설명: 용감한 소년 모험가...",
         "scenarioPrompt": "시나리오 프롬프트: 스토리: 주인공이 모험을 떠나는 판타지 스토리..."
+      },
+      "imagePrompts": {
+        "character": "A brave young adventurer, detailed character design, fantasy style, high quality, detailed facial features, adventure outfit, magical aura",
+        "background": "Fantasy landscape with magical forest, mystical atmosphere, detailed environment, high quality, cinematic lighting, adventure setting",
+        "setting": "Fantasy village entrance, magical gateway, detailed architectural design, mystical atmosphere, high quality, adventure starting point"
+      },
+      "videoPrompts": {
+        "main": "Fantasy adventure story about a brave young hero, magical world exploration, character development, cinematic quality, engaging narrative",
+        "cuts": [
+          "Opening scene: Hero leaving the village, establishing shot, magical atmosphere",
+          "Forest exploration: Character walking through enchanted woods, mysterious ambiance",
+          "Dragon encounter: Epic meeting with magical creature, dramatic tension"
+        ]
       }
     }
   }
@@ -209,14 +230,17 @@ frontend/
   - `referenceImages`: 참조 이미지 파일들
 
 - **AI 생성 기능**:
-  - 캐릭터 이미지 생성
-  - 배경 이미지 생성
-  - 설정 컷 이미지 생성
+  - **통합 프롬프트 활용**: 프로젝트 개요에서 생성된 최적화된 프롬프트 자동 사용
+  - **실제 이미지 생성**: Google Imagen 4.0 API를 통한 실제 이미지 생성
+  - **캐릭터 이미지**: Imagen 4.0 Fast (1:1 비율)
+  - **배경 이미지**: Imagen 4.0 (16:9 비율)
+  - **설정 컷 이미지**: Imagen 4.0 Ultra (16:9 비율)
 
 - **이미지 관리**:
-  - 다중 이미지 업로드
-  - 첨부된 이미지 목록 표시
-  - 개별 이미지 삭제 기능
+  - **드래그 앤 드롭**: 직관적인 이미지 업로드
+  - **다중 이미지 업로드**: 최대 5개까지 업로드 가능
+  - **실시간 미리보기**: 업로드된 이미지 즉시 표시
+  - **개별 이미지 삭제**: 각 이미지별 삭제 기능
 
 #### JSON 데이터 형식
 ```json
@@ -275,16 +299,22 @@ frontend/
   - `characterOutfit`: 캐릭터+의상
   - `additionalElements`: 추가 요소 (구도, 소품 등)
 
+- **AI 생성 기능**:
+  - **실제 비디오 생성**: Google Veo 3.0 API를 통한 실제 영상 생성
+  - **통합 프롬프트 활용**: 프로젝트 개요에서 생성된 영상 프롬프트 자동 사용
+  - **컷별 영상**: 각 컷별로 최적화된 영상 생성
+  - **비동기 처리**: 영상 생성 완료까지 자동 대기
+
 - **이미지 첨부**:
-  - 캐릭터+의상 이미지 첨부
-  - 추가 요소 이미지 첨부
-  - 다중 이미지 업로드 지원
+  - **드래그 앤 드롭**: 캐릭터+의상, 추가 요소 이미지 첨부
+  - **다중 이미지 업로드**: 최대 3개까지 업로드 지원
+  - **실시간 미리보기**: 첨부된 이미지 즉시 확인
 
 - **영상 관리**:
-  - 컷별 영상 생성
-  - 3x3 그리드 표시
-  - 페이지네이션 (9개씩)
-  - 다운로드/삭제 기능
+  - **실제 영상 표시**: 생성된 영상 URL로 실제 재생
+  - **3x3 그리드 표시**: 깔끔한 영상 레이아웃
+  - **페이지네이션**: 9개씩 페이지별 표시
+  - **다운로드/삭제**: 개별 영상 관리 기능
 
 #### JSON 데이터 형식
 ```json
@@ -367,16 +397,55 @@ frontend/
 }
 ```
 
+## 🤖 Google AI Studio 통합
+
+### AI 서비스 구성
+- **텍스트 생성**: Gemini 2.5 Flash (스토리, 캐릭터, 시나리오 프롬프트)
+- **구조화된 출력**: JSON 스키마 기반 정확한 데이터 반환
+- **이미지 생성**: Imagen 4.0 (캐릭터, 배경, 설정 컷)
+- **비디오 생성**: Veo 3.0 (컷별 영상 생성)
+- **멀티모달**: 이미지 + 텍스트 조합 처리
+- **통합 워크플로우**: 단계별 데이터 연동 및 최적화
+
+### 환경변수 설정
+```bash
+# Google AI Studio API 키
+REACT_APP_GEMINI_API_KEY=your-gemini-api-key
+```
+
+### AI 모델별 사용법
+- **gemini-2.5-flash**: 일반 텍스트 및 멀티모달 작업, 스트리밍 지원
+- **gemini-2.5-pro**: 코딩 및 복잡한 추론 작업, 구조화된 출력
+- **imagen-4.0-fast-generate-001**: 빠른 캐릭터 이미지 생성 (1:1 비율)
+- **imagen-4.0-generate-001**: 고품질 배경 이미지 생성 (16:9 비율)
+- **imagen-4.0-ultra-generate-001**: 최고품질 설정 컷 이미지 생성 (16:9 비율)
+- **veo-3.0-fast-generate-preview**: 빠른 비디오 생성 (9:16 비율)
+- **veo-3.0-generate-preview**: 고품질 비디오 생성 (16:9, 1:1 비율)
+
+### 통합 워크플로우
+1. **프로젝트 개요**: 통합 AI 생성으로 모든 프롬프트 한 번에 생성
+2. **캐릭터 설정**: 최적화된 프롬프트로 실제 이미지 생성
+3. **영상 생성**: 컷별 영상 프롬프트로 실제 비디오 생성
+4. **데이터 연동**: 각 단계별 생성된 데이터가 다음 단계에 자동 반영
+
 ## 🚀 설치 및 실행
 
 ### 필수 요구사항
 - Node.js 16.0.0 이상
+- Google AI Studio API 키
 - npm 7.0.0 이상
 
 ### 설치
 ```bash
 cd frontend
 npm install
+```
+
+### 환경변수 설정
+```bash
+# .env 파일 생성 및 API 키 설정
+cp .env.example .env
+# .env 파일에서 REACT_APP_GEMINI_API_KEY 설정
 ```
 
 ### 개발 서버 실행
@@ -412,6 +481,15 @@ const { addNotification } = useUIStore();
 - **커스텀 컴포넌트**: Button, ProgressTracker 등
 
 ## 🔄 업데이트 로그
+
+### v1.5.0 (2025-01-27)
+- ✅ 프로젝트 개요 워크플로우 완전 개선
+- ✅ 시나리오용 프롬프트 AI 생성으로 버튼명 변경
+- ✅ 500자 스토리 정리 자동 생성 (시나리오 생성 시 포함)
+- ✅ 항목별 카드 시스템 구현 (수정/확정-취소/저장)
+- ✅ 통합 AI 검토 및 시나리오 생성 조건 개선
+- ✅ 3가지 스토리/캐릭터/시나리오 항목별 카드 생성
+- ✅ 최종 텍스트 시나리오 생성 기능 추가
 
 ### v1.4.0 (2025-01-27)
 - ✅ 영상 생성 메뉴 UI 개선 (비율 선택, 페이지네이션)
@@ -466,6 +544,6 @@ MIT License
 ---
 
 **최종 업데이트**: 2025-01-27  
-**버전**: v1.4.0  
+**버전**: v1.5.0  
 **개발자**: AI Assistant  
 **라이선스**: MIT

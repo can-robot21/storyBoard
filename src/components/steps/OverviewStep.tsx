@@ -3,6 +3,7 @@ import { useProjectStore } from '../../stores/projectStore';
 import { useUIStore } from '../../stores/uiStore';
 import Button from '../common/Button';
 import Input from '../common/Input';
+import { googleAIService } from '../../services/googleAIService';
 
 const OverviewStep: React.FC = () => {
   const { currentProject, updateStep, createProject } = useProjectStore();
@@ -39,6 +40,120 @@ const OverviewStep: React.FC = () => {
       title: '저장 완료',
       message: '프로젝트 개요가 저장되었습니다.',
     });
+  };
+
+  const [generatedPrompts, setGeneratedPrompts] = useState({
+    storyPrompt: '',
+    characterPrompt: '',
+    scenarioPrompt: ''
+  });
+
+  const [isGenerating, setIsGenerating] = useState({
+    story: false,
+    character: false,
+    scenario: false
+  });
+
+  // AI 프롬프트 생성 함수들
+  const handleGenerateStoryPrompt = async () => {
+    if (!formData.story || !formData.character) {
+      addNotification({
+        type: 'error',
+        title: '입력 오류',
+        message: '스토리와 캐릭터 정보를 먼저 입력해주세요.',
+      });
+      return;
+    }
+
+    setIsGenerating(prev => ({ ...prev, story: true }));
+    try {
+      const prompt = await googleAIService.generateStoryPrompt(
+        formData.story,
+        formData.character,
+        formData.genre,
+        formData.target_audience
+      );
+      setGeneratedPrompts(prev => ({ ...prev, storyPrompt: prompt }));
+      addNotification({
+        type: 'success',
+        title: '생성 완료',
+        message: '스토리 프롬프트가 생성되었습니다.',
+      });
+    } catch (error) {
+      addNotification({
+        type: 'error',
+        title: '생성 실패',
+        message: '스토리 프롬프트 생성에 실패했습니다.',
+      });
+    } finally {
+      setIsGenerating(prev => ({ ...prev, story: false }));
+    }
+  };
+
+  const handleGenerateCharacterPrompt = async () => {
+    if (!formData.character) {
+      addNotification({
+        type: 'error',
+        title: '입력 오류',
+        message: '캐릭터 정보를 먼저 입력해주세요.',
+      });
+      return;
+    }
+
+    setIsGenerating(prev => ({ ...prev, character: true }));
+    try {
+      const prompt = await googleAIService.generateCharacterPrompt(
+        formData.character,
+        '애니메이션' // 기본 스타일
+      );
+      setGeneratedPrompts(prev => ({ ...prev, characterPrompt: prompt }));
+      addNotification({
+        type: 'success',
+        title: '생성 완료',
+        message: '캐릭터 프롬프트가 생성되었습니다.',
+      });
+    } catch (error) {
+      addNotification({
+        type: 'error',
+        title: '생성 실패',
+        message: '캐릭터 프롬프트 생성에 실패했습니다.',
+      });
+    } finally {
+      setIsGenerating(prev => ({ ...prev, character: false }));
+    }
+  };
+
+  const handleGenerateScenarioPrompt = async () => {
+    if (!formData.story) {
+      addNotification({
+        type: 'error',
+        title: '입력 오류',
+        message: '스토리 정보를 먼저 입력해주세요.',
+      });
+      return;
+    }
+
+    setIsGenerating(prev => ({ ...prev, scenario: true }));
+    try {
+      const prompt = await googleAIService.generateScenarioPrompt(
+        formData.story,
+        5 // 기본 컷 수
+      );
+      setGeneratedPrompts(prev => ({ ...prev, scenarioPrompt: prompt }));
+      addNotification({
+        type: 'success',
+        title: '생성 완료',
+        message: '시나리오 프롬프트가 생성되었습니다.',
+      });
+    } catch (error) {
+      addNotification({
+        type: 'error',
+        title: '생성 실패',
+        message: '시나리오 프롬프트 생성에 실패했습니다.',
+      });
+    } finally {
+      setIsGenerating(prev => ({ ...prev, scenario: false }));
+    }
   };
 
   const handleNext = () => {
@@ -111,6 +226,40 @@ const OverviewStep: React.FC = () => {
             />
           </div>
         </div>
+
+        {/* AI 생성 결과 표시 */}
+        {(generatedPrompts.storyPrompt || generatedPrompts.characterPrompt || generatedPrompts.scenarioPrompt) && (
+          <div className="mt-8 bg-gray-50 rounded-lg p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">AI 생성 결과</h3>
+            
+            {generatedPrompts.storyPrompt && (
+              <div className="mb-6">
+                <h4 className="text-sm font-medium text-gray-700 mb-2">스토리 프롬프트</h4>
+                <div className="bg-white p-4 rounded-lg border border-gray-200">
+                  <pre className="whitespace-pre-wrap text-sm text-gray-800">{generatedPrompts.storyPrompt}</pre>
+                </div>
+              </div>
+            )}
+
+            {generatedPrompts.characterPrompt && (
+              <div className="mb-6">
+                <h4 className="text-sm font-medium text-gray-700 mb-2">캐릭터 프롬프트</h4>
+                <div className="bg-white p-4 rounded-lg border border-gray-200">
+                  <pre className="whitespace-pre-wrap text-sm text-gray-800">{generatedPrompts.characterPrompt}</pre>
+                </div>
+              </div>
+            )}
+
+            {generatedPrompts.scenarioPrompt && (
+              <div className="mb-6">
+                <h4 className="text-sm font-medium text-gray-700 mb-2">시나리오 프롬프트</h4>
+                <div className="bg-white p-4 rounded-lg border border-gray-200">
+                  <pre className="whitespace-pre-wrap text-sm text-gray-800">{generatedPrompts.scenarioPrompt}</pre>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="mt-8 flex justify-end space-x-3">
           <Button variant="outline" onClick={() => console.log('Cancel')}>
