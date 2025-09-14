@@ -1,524 +1,603 @@
-# AI 기반 이미지→영상 생성 워크플로우 툴
+# AI 기반 스토리→이미지→영상 제작 워크플로우 툴 v2.1
 
-## 📋 프로젝트 개요
+## 📋 프로젝트 개요 (2025-09-14 기준)
 
-AI 기반 프로젝트 파이프라인 툴로, 텍스트 입력부터 최종 영상 생성까지의 전체 워크플로우를 관리하는 웹 애플리케이션입니다.
+AI 기반 프로젝트 파이프라인 툴로, **스토리 입력 → 캐릭터/배경 이미지 생성 → 컷별 영상 생성**까지의 전체 워크플로우를 관리하는 웹 애플리케이션입니다.
 
-### 🎯 주요 기능
-- **프로젝트 개요**: AI 텍스트 생성 (스토리, 캐릭터, 시나리오 프롬프트)
-- **캐릭터 설정**: AI 이미지 생성 (캐릭터, 배경, 설정컷)
-- **영상 생성**: 컷별 영상 생성 (최대 10컷, 페이지네이션 지원)
-
-## 🏗️ 아키텍처 설계
-
-### 레이아웃 구조 (3단계 워크플로우)
+### 🎯 핵심 워크플로우
 ```
-┌─────────────────────────────────────────────────────────────┐
-│ [로고]   프로젝트개요|캐릭터설정|영상생성  [로그인/설정/저장/내보내기] │
-├─────────────────────────────────────────────────────────────┤
-│ (입력창)                    │            (결과창)                │
-│ ─────────────────────────── │ ─────────────────────────────── │
-│ 1. 스토리 기본 설정         │  [생성된 프롬프트 표시]            │
-│ 2. 캐릭터 설정              │  [스토리/캐릭터/시나리오 프롬프트]  │
-│ 3. 시나리오 생성            │  [저장 버튼]                     │
-│ ─────────────────────────── │ ─────────────────────────────── │
-│ 1. 캐릭터 생성              │  [생성된 이미지들]                │
-│ 2. 배경 설정                │  [캐릭터/배경/설정컷 카드]        │
-│ 3. 설정 컷                  │  [다운로드/삭제 버튼]             │
-│ ─────────────────────────── │ ─────────────────────────────── │
-│ 1. 컷 수 설정 (1-10)        │  [컷별 영상 (3x3 그리드)]         │
-│ 2. 비율 선택 (16:9/1:1/9:16)│  [페이지네이션]                  │
-│ 3. 텍스트+시나리오          │  [프로젝트 영상 저장]             │
-│ 4. 캐릭터+의상              │                                │
-│ 5. 추가 요소                │                                │
-├─────────────────────────────────────────────────────────────┤
-│              (진행률 추적기)                                    │
-└─────────────────────────────────────────────────────────────┘
+스토리 입력 → AI 텍스트 생성 → 이미지 생성 → 영상 생성
+     ↓              ↓              ↓           ↓
+  기본 설정    →  프롬프트 생성  →  AI 이미지  →  컷별 영상
+  캐릭터 설정     시나리오 생성     배경/설정컷    최종 영상
 ```
 
-### 기술 스택
-- **Frontend**: React 18 + TypeScript + Tailwind CSS
-- **상태 관리**: Zustand
-- **HTTP 클라이언트**: Axios
-- **AI 서비스**: Google AI Studio (Gemini API)
-- **아이콘**: Lucide React
-- **빌드 도구**: Create React App
+## 🏗️ 현재 아키텍처 분석
 
-## 📁 프로젝트 구조
-
+### 1. 파일 구조 현황
 ```
 frontend/
-├── public/
 ├── src/
-│   ├── components/          # 재사용 가능한 컴포넌트
-│   │   ├── common/         # 공통 컴포넌트
-│   │   │   ├── Button.tsx
-│   │   │   └── ProgressTracker.tsx
-│   │   └── steps/          # 워크플로우 단계별 컴포넌트
-│   │       ├── ProjectOverview.tsx
-│   │       ├── CharacterStep.tsx
-│   │       └── VideoStep.tsx
-│   ├── stores/             # 상태 관리
-│   │   ├── projectStore.ts
-│   │   └── uiStore.ts
-│   ├── types/              # TypeScript 타입 정의
-│   │   ├── project.ts
-│   │   └── common.ts
-│   ├── services/           # API 서비스
-│   │   └── apiService.ts
-│   ├── utils/              # 유틸리티 함수
-│   │   ├── constants.ts
-│   │   └── helpers.ts
-│   ├── data/               # JSON 데이터
-│   │   └── projectData.json
-│   ├── App.tsx             # 메인 애플리케이션
-│   └── index.tsx           # 진입점
-├── package.json
-├── tailwind.config.js
-├── tsconfig.json
-└── README.md
+│   ├── App.tsx                 # 메인 컴포넌트 (상태 관리 및 라우팅)
+│   ├── components/
+│   │   ├── common/             # 재사용 가능한 공통 컴포넌트
+│   │   │   ├── Button.tsx      # 버튼 컴포넌트
+│   │   │   ├── Modal.tsx       # 모달 컴포넌트
+│   │   │   ├── ImageUpload.tsx # 이미지 업로드 컴포넌트
+│   │   │   ├── ProgressTracker.tsx # 진행률 추적기
+│   │   │   ├── StreamingText.tsx # 스트리밍 텍스트 컴포넌트
+│   │   │   ├── FormattedText.tsx # 포맷된 텍스트 표시
+│   │   │   └── AISettingsModal.tsx # AI 설정 모달
+│   │   ├── layout/             # 레이아웃 컴포넌트
+│   │   │   ├── Header.tsx      # 헤더 컴포넌트
+│   │   │   └── MainLayout.tsx  # 메인 레이아웃 컴포넌트
+│   │   └── steps/              # 단계별 컴포넌트
+│   │       ├── ProjectOverviewStep.tsx # 프로젝트 개요 단계
+│   │       ├── ImageGenerationStep.tsx # 이미지 생성 단계
+│   │       └── VideoGenerationStep.tsx # 영상 생성 단계
+│   ├── hooks/                  # 커스텀 훅
+│   │   ├── useProject.ts       # 프로젝트 관련 훅
+│   │   ├── useAIService.ts     # AI 서비스 훅
+│   │   ├── useProjectHandlers.ts # 프로젝트 핸들러 훅
+│   │   ├── useImageHandlers.ts # 이미지 핸들러 훅
+│   │   └── useVideoHandlers.ts # 영상 핸들러 훅
+│   ├── services/               # 비즈니스 로직 서비스
+│   │   ├── ai/                 # AI 서비스
+│   │   │   ├── BaseAIService.ts # AI 서비스 기본 클래스
+│   │   │   ├── GoogleAIService.ts # Google AI 서비스
+│   │   │   ├── OpenAIService.ts # OpenAI 서비스
+│   │   │   ├── AIServiceFactory.ts # AI 서비스 팩토리
+│   │   │   └── PromptValidationService.ts # 프롬프트 검증 서비스
+│   │   ├── database/           # 데이터베이스 서비스
+│   │   │   └── DatabaseService.ts # 데이터베이스 서비스
+│   │   ├── googleAIService.ts  # Google AI 통합 서비스
+│   │   ├── api.ts             # API 서비스
+│   │   ├── characterService.ts # 캐릭터 관련 서비스
+│   │   ├── videoService.ts    # 영상 관련 서비스
+│   │   └── mockApi.ts         # 목업 API
+│   ├── stores/                # 상태 관리 (Zustand)
+│   │   ├── projectStore.ts    # 프로젝트 상태 관리
+│   │   └── uiStore.ts         # UI 상태 관리
+│   ├── types/                 # TypeScript 타입 정의
+│   │   ├── project.ts         # 프로젝트 타입 정의
+│   │   ├── common.ts          # 공통 타입 정의
+│   │   ├── api.ts             # API 타입 정의
+│   │   └── ai.ts              # AI 관련 타입 정의
+│   └── utils/                 # 유틸리티 함수
+│       ├── constants.ts       # 상수 정의
+│       ├── helpers.ts         # 유틸리티 함수
+│       └── downloadUtils.ts   # 다운로드 유틸리티
 ```
 
-## 🚀 주요 기능 상세
+### 2. 현재 기능 구현 상태
 
-### 1. 프로젝트 개요 (AI 텍스트 생성)
-**목적**: 프로젝트의 기본 스토리와 캐릭터를 설정하고 AI 프롬프트를 생성
+#### ✅ 완료된 기능
+- **프로젝트 개요**: AI 텍스트 생성 (스토리, 캐릭터, 시나리오)
+- **이미지 생성**: Google AI Studio를 통한 이미지 생성 (캐릭터, 배경, 설정컷)
+- **영상 생성**: 컷별 영상 생성 및 관리 (선택 기능, 영상 옵션)
+- **상태 관리**: Zustand를 통한 전역 상태 관리
+- **UI/UX**: 반응형 디자인 및 진행률 추적
+- **파일 다운로드**: 텍스트, 이미지, 영상 파일 다운로드 기능
+- **선택 기능**: 영상 생성 시 항목별 선택 기능
 
-**입력 필드**:
-- **스토리 기본 설정**: 주요 스토리 라인, 영상 스타일, 시각적 요소, 감정적 요소
-- **캐릭터 설정**: 캐릭터 입력 및 목록 관리
-- **시나리오 생성**: 상세 스토리 텍스트, 주요 대사
+#### ⚠️ 개선이 필요한 부분
+- **App.tsx 거대화**: 3908줄의 단일 파일로 인한 유지보수 어려움
+- **컴포넌트 분리 부족**: 일부 컴포넌트에서 UI 로직과 비즈니스 로직 혼재
+- **AI 서비스 단일화**: Google AI만 지원, 확장성 부족
+- **데이터 저장**: 로컬 상태만 사용, 영구 저장 불가
 
-**AI 생성 기능**:
-- **스토리 프롬프트 AI 생성**: 입력된 스토리를 바탕으로 AI 프롬프트 생성
-- **캐릭터 일괄 AI 생성**: 모든 캐릭터를 종합한 캐릭터 설정 프롬프트 생성
-- **시나리오용 프롬프트 AI 생성**: 스토리와 캐릭터를 종합한 시나리오 프롬프트 생성 (500자 스토리 정리 자동 포함)
+## 🔧 기능별 상세 분석
 
-**항목별 카드 시스템**:
-- **스토리/캐릭터/시나리오 카드**: 각 항목별로 수정/확정-취소/저장 기능 제공
-- **500자 스토리 정리**: 시나리오 생성 시 자동으로 생성되는 간결한 스토리 요약
-- **통합 AI 검토 및 시나리오 생성**: 모든 항목이 확정된 후 최종 텍스트 시나리오 생성
-
-**결과 표시**:
-- 생성된 프롬프트들을 항목별 카드로 구분하여 표시
-- 각 카드마다 수정/확정/저장 기능 제공
-- 모든 항목 확정 후 통합 AI 검토 버튼 활성화
-
-### 2. 캐릭터 설정 (AI 이미지 생성)
-**목적**: 캐릭터, 배경, 설정컷의 AI 이미지를 생성하고 관리
-
-**생성 항목**:
-- **캐릭터**: 텍스트 설명 또는 이미지 업로드로 캐릭터 생성
-- **배경**: 텍스트 설명 또는 이미지 업로드로 배경 생성
-- **설정 컷**: 텍스트 설명 또는 이미지 업로드로 설정 컷 생성
-
-**이미지 첨부 기능**:
-- 각 항목별로 다중 이미지 업로드 가능
-- 첨부된 이미지 목록 표시 및 개별 삭제 가능
-- 텍스트와 이미지를 모두 활용한 AI 생성
-
-**결과 관리**:
-- 생성된 이미지들을 카드 형태로 표시
-- 각 카드마다 다운로드/삭제 버튼 제공
-- 생성된 항목 수에 따른 다음 버튼 표시
-
-### 3. 영상 생성 (컷별 영상 생성)
-**목적**: 설정된 컷 수만큼 영상을 생성하고 페이지네이션으로 관리
-
-**설정 옵션**:
-- **컷 수**: 1-10컷까지 선택 가능
-- **영상 비율**: 16:9 (가로), 1:1 (정사각형), 9:16 (세로) 선택
-
-**입력 필드**:
-- **텍스트+시나리오**: 현재 컷의 텍스트와 시나리오 입력
-- **캐릭터+의상**: 캐릭터와 의상 설명 입력 (이미지 첨부 가능)
-- **추가 요소**: 구도, 소품 등 추가 요소 입력 (이미지 첨부 가능)
-
-**생성 및 관리**:
-- 컷별로 영상 생성 (최대 설정된 컷 수만큼)
-- 생성된 컷들은 번호순으로 자동 정렬
-- 삭제 시 남은 컷들의 번호 자동 재정렬
-
-**페이지네이션**:
-- 9개씩 페이지로 나누어 표시 (3x3 그리드)
-- 이전/다음 버튼과 페이지 번호 버튼 제공
-- 현재 페이지 정보 표시
-
-**프로젝트 저장**:
-- 모든 컷 생성 완료 후 프로젝트 영상 저장 가능
-- 저장 완료 시 시각적 피드백 제공
-
-## 🔧 기술적 특징
-
-### 상태 관리
-- **Zustand**: 가벼운 상태 관리 라이브러리 사용
-- **로컬 상태**: 각 단계별 독립적인 상태 관리
-- **전역 상태**: UI 상태와 알림 관리
-
-### 반응형 디자인
-- **모바일**: 1열 레이아웃
-- **태블릿**: 2열 레이아웃
-- **데스크톱**: 3열 레이아웃
-
-### 사용자 경험
-- **진행률 추적**: 하단에 단계별 진행 상황 표시
-- **알림 시스템**: 성공/오류/정보 알림 제공
-- **직관적 네비게이션**: 명확한 버튼과 단계 구분
-
-## 📊 메뉴별 구조 및 JSON 데이터 형식
-
-### 1. 프로젝트 개요 (OverviewStep)
+### 1. 프로젝트 개요 단계 (ProjectOverviewStep)
 
 #### 메뉴 구조
 - **입력 필드**:
-  - `title`: 프로젝트 제목
-  - `description`: 프로젝트 설명
-  - `story`: 기본 스토리
-  - `character`: 캐릭터 설명
-  - `storyText`: 상세 스토리 텍스트
-  - `genre`: 장르 (애니메이션, 교육용, 광고 등)
-  - `target_audience`: 타겟 오디언스 (유아, 청소년, 성인 등)
-  - `duration`: 예상 영상 길이 (3분, 5분, 10분 등)
+  - `story`: 기본 스토리 입력
+  - `characterList`: 캐릭터 목록 관리
+  - `scenarioPrompt`: 시나리오 프롬프트 입력
+  - `storySummary`: 500자 스토리 정리 (자동 생성)
+  - `finalScenario`: 최종 시나리오 (AI 검토 후 생성)
 
-- **AI 생성 기능**:
-  - **개별 생성**: 스토리/캐릭터/시나리오 프롬프트 개별 생성
-  - **통합 AI 생성**: 모든 프롬프트를 한 번에 생성 (권장)
-  - **구조화된 출력**: JSON 형태로 정확한 데이터 반환
-  - **다음 단계 최적화**: 이미지/영상 생성에 최적화된 프롬프트 제공
+#### AI 생성 기능
+- **개별 생성**: 스토리/캐릭터/시나리오 프롬프트 개별 생성
+- **통합 AI 생성**: 모든 프롬프트를 한 번에 생성
+- **최종 시나리오 생성**: AI 검토 및 최종 시나리오 생성
+- **프로젝트 개요 저장**: 국문/영문 카드 생성
 
-#### JSON 데이터 형식
-```json
-{
-  "overview": {
-    "id": "overview",
-    "title": "프로젝트 개요",
-    "description": "AI 텍스트 생성",
-    "status": "completed",
-    "data": {
-      "story": "주인공이 모험을 떠나는 판타지 스토리",
-      "character": "용감한 소년 모험가",
-      "storyText": "한 소년이 마법의 세계로 떠나 용을 만나고 우정을 쌓는 이야기",
-      "prompts": {
-        "storyPrompt": "스토리 프롬프트: 주요 스토리: 주인공이 모험을 떠나는 판타지 스토리...",
-        "characterPrompt": "캐릭터 설정 프롬프트: 캐릭터 설명: 용감한 소년 모험가...",
-        "scenarioPrompt": "시나리오 프롬프트: 스토리: 주인공이 모험을 떠나는 판타지 스토리..."
-      },
-      "imagePrompts": {
-        "character": "A brave young adventurer, detailed character design, fantasy style, high quality, detailed facial features, adventure outfit, magical aura",
-        "background": "Fantasy landscape with magical forest, mystical atmosphere, detailed environment, high quality, cinematic lighting, adventure setting",
-        "setting": "Fantasy village entrance, magical gateway, detailed architectural design, mystical atmosphere, high quality, adventure starting point"
-      },
-      "videoPrompts": {
-        "main": "Fantasy adventure story about a brave young hero, magical world exploration, character development, cinematic quality, engaging narrative",
-        "cuts": [
-          "Opening scene: Hero leaving the village, establishing shot, magical atmosphere",
-          "Forest exploration: Character walking through enchanted woods, mysterious ambiance",
-          "Dragon encounter: Epic meeting with magical creature, dramatic tension"
-        ]
-      }
-    }
-  }
-}
+#### 프롬프트 양식
+```typescript
+// 스토리 프롬프트 생성
+const storyPrompt = `다음 스토리를 바탕으로 영상 제작용 스토리 프롬프트를 생성해주세요:
+${story}
+
+주요 요소:
+- 스토리 라인
+- 영상 스타일
+- 시각적 요소
+- 감정적 요소`;
+
+// 캐릭터 프롬프트 생성
+const characterPrompt = `다음 캐릭터 정보를 바탕으로 영상 제작용 캐릭터 설정 프롬프트를 생성해주세요:
+${characterList.join(', ')}
+
+캐릭터 설정:
+- 외모 특징
+- 성격 특성
+- 의상 스타일
+- 행동 패턴`;
+
+// 시나리오 프롬프트 생성
+const scenarioPrompt = `다음 정보를 바탕으로 영상 제작용 시나리오 프롬프트를 생성해주세요:
+스토리: ${story}
+캐릭터: ${characterList.join(', ')}
+
+시나리오 구성:
+- 장면별 구성
+- 대사 및 내레이션
+- 시각적 연출
+- 감정적 흐름`;
 ```
 
-### 2. 캐릭터 설정 (CharacterStep)
+### 2. 이미지 생성 단계 (ImageGenerationStep)
+
+#### 메뉴 구조
+- **생성 항목**:
+  - **캐릭터 이미지**: 텍스트 설명 또는 이미지 업로드로 생성
+  - **배경 이미지**: 텍스트 설명 또는 이미지 업로드로 생성
+  - **설정 컷 이미지**: 텍스트 설명 또는 이미지 업로드로 생성
+
+#### AI 생성 기능
+- **Google Imagen 4.0 API**: 실제 이미지 생성
+- **멀티모달 생성**: 텍스트 + 이미지 조합 생성
+- **비율 최적화**: 캐릭터(1:1), 배경/설정컷(16:9)
+- **에러 처리**: API 응답 구조 다양성 대응
+
+#### 프롬프트 양식
+```typescript
+// 캐릭터 이미지 생성
+const characterPrompt = `Create a detailed character image: ${description}
+Style: Animation, high quality, detailed facial features
+Aspect ratio: 1:1
+Additional requirements: ${attachedImages.length > 0 ? 'Reference the attached images' : ''}`;
+
+// 배경 이미지 생성
+const backgroundPrompt = `Create a detailed background image: ${description}
+Style: High quality, cinematic lighting, detailed environment
+Aspect ratio: 16:9
+Additional requirements: ${attachedImages.length > 0 ? 'Reference the attached images' : ''}`;
+
+// 설정 컷 이미지 생성
+const settingPrompt = `Create a detailed setting cut image: ${description}
+Style: High quality, cinematic composition, detailed architectural design
+Aspect ratio: 16:9
+Additional requirements: ${attachedImages.length > 0 ? 'Reference the attached images' : ''}`;
+```
+
+### 3. 영상 생성 단계 (VideoGenerationStep)
 
 #### 메뉴 구조
 - **입력 필드**:
-  - `description`: 캐릭터 설명
-  - `style`: 스타일 (애니메이션, 사실적, 만화, 픽사)
-  - `referenceImages`: 참조 이미지 파일들
+  - `storySceneInput`: 스토리/장면 입력
+  - `characterOutfitInput`: 캐릭터/의상 입력
+  - `videoBackgroundInput`: 영상 배경 입력
 
-- **AI 생성 기능**:
-  - **통합 프롬프트 활용**: 프로젝트 개요에서 생성된 최적화된 프롬프트 자동 사용
-  - **실제 이미지 생성**: Google Imagen 4.0 API를 통한 실제 이미지 생성
-  - **캐릭터 이미지**: Imagen 4.0 Fast (1:1 비율)
-  - **배경 이미지**: Imagen 4.0 (16:9 비율)
-  - **설정 컷 이미지**: Imagen 4.0 Ultra (16:9 비율)
+#### AI 생성 기능
+- **텍스트 카드 생성**: 스토리/장면 기반 텍스트 카드 생성
+- **캐릭터 이미지 생성**: 캐릭터/의상 기반 이미지 생성
+- **영상 배경 생성**: 영상 배경 이미지 생성
+- **AI 영상 생성**: 선택된 항목들로 최종 영상 생성
 
-- **이미지 관리**:
-  - **드래그 앤 드롭**: 직관적인 이미지 업로드
-  - **다중 이미지 업로드**: 최대 5개까지 업로드 가능
-  - **실시간 미리보기**: 업로드된 이미지 즉시 표시
-  - **개별 이미지 삭제**: 각 이미지별 삭제 기능
+#### 영상 옵션 설정
+- **스타일**: 애니메이션, 실사, 만화, 픽사
+- **무드**: 밝은, 어두운, 신비로운, 드라마틱
+- **카메라 워크**: 정적, 팬, 줌, 트래킹
+- **음악**: 액션, 드라마, 코미디, 모험
+- **커스텀 프롬프트**: 사용자 정의 추가 프롬프트
 
-#### JSON 데이터 형식
-```json
-{
-  "character": {
-    "id": "character",
-    "title": "캐릭터 설정",
-    "description": "AI 이미지 생성",
-    "status": "current",
-    "data": {
-      "characters": [
-        {
-          "id": "char_001",
-          "name": "주인공",
-          "description": "용감한 소년 모험가",
-          "style": "애니메이션",
-          "imageUrl": "/images/characters/char_001.jpg",
-          "attachedImages": [],
-          "createdAt": "2025-01-27T00:00:00Z"
-        }
-      ],
-      "backgrounds": [
-        {
-          "id": "bg_001",
-          "name": "마법의 숲",
-          "description": "신비로운 마법의 숲 배경",
-          "imageUrl": "/images/backgrounds/bg_001.jpg",
-          "attachedImages": [],
-          "createdAt": "2025-01-27T00:00:00Z"
-        }
-      ],
-      "settingCuts": [
-        {
-          "id": "setting_001",
-          "name": "마을 입구",
-          "description": "모험의 시작점인 마을 입구",
-          "imageUrl": "/images/settings/setting_001.jpg",
-          "attachedImages": [],
-          "createdAt": "2025-01-27T00:00:00Z"
-        }
-      ]
-    }
-  }
-}
+#### 프롬프트 양식
+```typescript
+// 텍스트 카드 생성
+const textCardPrompt = `다음 스토리/장면을 바탕으로 영상 제작용 텍스트 카드를 생성해주세요:
+${storySceneInput}
+
+컷별로 나누어 상세한 텍스트 카드를 만들어주세요.`;
+
+// AI 영상 생성
+const videoPrompt = `Create a video based on the following elements:
+Text Cards: ${selectedTextCards.map(id => textCards.find(c => c.id === id)?.generatedText).join(' ')}
+Character Images: ${selectedCharacterImages.map(id => characters.find(c => c.id === id)?.description).join(' ')}
+Background Images: ${selectedVideoBackgrounds.map(id => backgrounds.find(b => b.id === id)?.description).join(' ')}
+
+Video Options:
+- Style: ${videoOptions.style}
+- Mood: ${videoOptions.mood}
+- Camera Work: ${videoOptions.cameraWork}
+- Music: ${videoOptions.music}
+- Custom Prompt: ${videoOptions.customPrompt}
+
+Aspect Ratio: ${videoRatio}`;
 ```
 
-### 3. 영상 생성 (VideoStep)
+## 🚀 주요 개선사항 (v2.1)
 
-#### 메뉴 구조
-- **설정 옵션**:
-  - `cutCount`: 컷 수 (1-10컷)
-  - `videoRatio`: 영상 비율 (16:9, 1:1, 9:16)
+### 1. 영상 생성 메뉴 개선
+- **선택 기능**: 텍스트 카드, 캐릭터 이미지, 영상 배경 선택 기능 추가
+- **영상 옵션**: 스타일, 무드, 카메라 워크, 음악, 커스텀 프롬프트 설정
+- **비율 제한**: 1:1 비율 제거 (API 지원 불가)
+- **중복 제거**: 왼쪽 하단 중복 출력 제거
 
-- **입력 필드**:
-  - `textScenario`: 텍스트+시나리오
-  - `characterOutfit`: 캐릭터+의상
-  - `additionalElements`: 추가 요소 (구도, 소품 등)
+### 2. 파일 다운로드 기능
+- **개별 다운로드**: 각 항목별 개별 다운로드 기능
+- **전체 다운로드**: 모든 항목 일괄 다운로드 기능
+- **파일 형식**: 텍스트(.txt), 이미지(.jpg), 영상(.mp4)
+- **에러 처리**: 다운로드 실패 시 상세한 에러 메시지
 
-- **AI 생성 기능**:
-  - **실제 비디오 생성**: Google Veo 3.0 API를 통한 실제 영상 생성
-  - **통합 프롬프트 활용**: 프로젝트 개요에서 생성된 영상 프롬프트 자동 사용
-  - **컷별 영상**: 각 컷별로 최적화된 영상 생성
-  - **비동기 처리**: 영상 생성 완료까지 자동 대기
+### 3. AI 서비스 개선
+- **API 응답 처리**: 다양한 API 응답 구조 대응
+- **에러 처리**: 상세한 에러 메시지 및 복구 로직
+- **타입 안정성**: TypeScript 타입 안정성 향상
 
-- **이미지 첨부**:
-  - **드래그 앤 드롭**: 캐릭터+의상, 추가 요소 이미지 첨부
-  - **다중 이미지 업로드**: 최대 3개까지 업로드 지원
-  - **실시간 미리보기**: 첨부된 이미지 즉시 확인
+### 4. UI/UX 개선
+- **프로젝트 개요 참고**: 오른쪽 하단으로 이동, 토글 버튼 추가
+- **선택 인터페이스**: 체크박스 기반 선택 시스템
+- **진행률 표시**: 실시간 생성 진행률 표시
+- **알림 시스템**: 성공/실패/경고 알림 구분
 
-- **영상 관리**:
-  - **실제 영상 표시**: 생성된 영상 URL로 실제 재생
-  - **3x3 그리드 표시**: 깔끔한 영상 레이아웃
-  - **페이지네이션**: 9개씩 페이지별 표시
-  - **다운로드/삭제**: 개별 영상 관리 기능
+## 📊 메뉴별 단계별 프롬프트 양식
 
-#### JSON 데이터 형식
-```json
-{
-  "video": {
-    "id": "video",
-    "title": "영상 생성",
-    "description": "컷별 이미지 생성",
-    "status": "pending",
-    "data": {
-      "settings": {
-        "cutCount": 5,
-        "videoRatio": "16:9",
-        "currentCutIndex": 0
-      },
-      "cuts": [
-        {
-          "id": "cut_001",
-          "cutNumber": 1,
-          "textScenario": "주인공이 마을을 떠나는 장면",
-          "characterOutfit": "여행자 복장을 입은 주인공",
-          "additionalElements": "가방과 지도를 들고 있음",
-          "videoUrl": "/videos/cuts/cut_001.mp4",
-          "videoRatio": "16:9",
-          "attachedImages": {
-            "characterOutfit": [],
-            "additional": []
-          },
-          "createdAt": "2025-01-27T00:00:00Z"
-        }
-      ],
-      "pagination": {
-        "currentPage": 1,
-        "itemsPerPage": 9,
-        "totalPages": 1
-      }
-    }
-  }
-}
+### 1. 프로젝트 개요 단계
+
+#### 입력 프롬프트
+```typescript
+// 1. 스토리 기본 설정
+const storyInput = `스토리 기본 설정을 입력해주세요:
+- 주요 스토리 라인
+- 영상 스타일 (애니메이션, 실사, 만화 등)
+- 시각적 요소 (색감, 분위기 등)
+- 감정적 요소 (기쁨, 슬픔, 긴장감 등)`;
+
+// 2. 캐릭터 설정
+const characterInput = `캐릭터 설정을 입력해주세요:
+- 캐릭터 이름
+- 외모 특징
+- 성격 특성
+- 의상 스타일`;
+
+// 3. 시나리오 생성
+const scenarioInput = `시나리오 생성을 위한 정보를 입력해주세요:
+- 상세 스토리 텍스트
+- 주요 대사
+- 장면별 구성`;
+
+// 4. 장소와 에피소드 핵심 상황
+const locationInput = `장소와 에피소드 핵심 상황을 입력해주세요:
+- 주요 장소
+- 핵심 에피소드
+- 상황 설정`;
+
+// 5. 시나리오 추가 설정
+const additionalScenarioInput = `시나리오 추가 설정을 입력해주세요:
+- 추가적인 스토리 요소
+- 특별한 설정
+- 보완할 내용`;
 ```
 
-### 4. 전체 프로젝트 데이터 구조
+#### AI 생성 프롬프트
+```typescript
+// 스토리 프롬프트 생성
+const generateStoryPrompt = async (story: string) => {
+  const prompt = `다음 스토리를 바탕으로 영상 제작용 스토리 프롬프트를 생성해주세요:
 
-#### 완전한 JSON 데이터 형식
-```json
-{
-  "projectOverview": {
-    "id": "proj_001",
-    "name": "AI 영상 프로젝트",
-    "description": "AI 기반 이미지→영상 생성 워크플로우 툴",
-    "createdAt": "2025-01-27T00:00:00Z",
-    "updatedAt": "2025-01-27T00:00:00Z",
-    "status": "active",
-    "steps": {
-      "overview": { /* 위의 overview 데이터 */ },
-      "character": { /* 위의 character 데이터 */ },
-      "video": { /* 위의 video 데이터 */ }
-    }
-  },
-  "ui": {
-    "currentStep": "프로젝트 개요",
-    "isLoggedIn": false,
-    "notifications": [],
-    "theme": "light"
-  },
-  "api": {
-    "baseUrl": "http://localhost:3001/api",
-    "endpoints": {
-      "projects": "/projects",
-      "characters": "/characters",
-      "backgrounds": "/backgrounds",
-      "videos": "/videos",
-      "ai": {
-        "textGeneration": "/ai/text",
-        "imageGeneration": "/ai/image",
-        "videoGeneration": "/ai/video"
-      }
-    }
-  }
-}
+${story}
+
+다음 형식으로 생성해주세요:
+- 스토리 라인: [주요 스토리 흐름]
+- 영상 스타일: [시각적 스타일]
+- 시각적 요소: [색감, 분위기, 조명]
+- 감정적 요소: [감정적 흐름, 분위기]
+- 타겟 오디언스: [대상 연령층]`;
+};
+
+// 캐릭터 프롬프트 생성
+const generateCharacterPrompt = async (characterList: string[]) => {
+  const prompt = `다음 캐릭터 정보를 바탕으로 영상 제작용 캐릭터 설정 프롬프트를 생성해주세요:
+
+${characterList.join('\n')}
+
+다음 형식으로 생성해주세요:
+- 캐릭터별 외모 특징
+- 성격 특성 및 행동 패턴
+- 의상 스타일 및 색상
+- 시각적 특징 및 아이덴티티`;
+};
+
+// 시나리오 프롬프트 생성
+const generateScenarioPrompt = async (story: string, characterList: string[], scenarioPrompt: string) => {
+  const prompt = `다음 정보를 바탕으로 영상 제작용 시나리오 프롬프트를 생성해주세요:
+
+스토리: ${story}
+캐릭터: ${characterList.join(', ')}
+시나리오: ${scenarioPrompt}
+
+다음 형식으로 생성해주세요:
+- 장면별 구성 (시작, 중간, 끝)
+- 주요 대사 및 내레이션
+- 시각적 연출 방향
+- 감정적 흐름 및 분위기`;
+};
+
+// 최종 시나리오 생성
+const generateFinalScenario = async (aiScenario: string, additionalScenario: string) => {
+  const prompt = `다음 AI 생성 시나리오와 추가 설정을 종합하여 최종 시나리오를 생성해주세요:
+
+AI 생성 시나리오:
+${aiScenario}
+
+추가 설정:
+${additionalScenario}
+
+다음 형식으로 생성해주세요:
+- 최종 스토리 라인
+- 장면별 상세 구성
+- 캐릭터별 역할 및 대사
+- 시각적 연출 가이드
+- 감정적 흐름`;
+};
 ```
 
-## 🤖 Google AI Studio 통합
+### 2. 이미지 생성 단계
 
-### AI 서비스 구성
-- **텍스트 생성**: Gemini 2.5 Flash (스토리, 캐릭터, 시나리오 프롬프트)
-- **구조화된 출력**: JSON 스키마 기반 정확한 데이터 반환
-- **이미지 생성**: Imagen 4.0 (캐릭터, 배경, 설정 컷)
-- **비디오 생성**: Veo 3.0 (컷별 영상 생성)
-- **멀티모달**: 이미지 + 텍스트 조합 처리
-- **통합 워크플로우**: 단계별 데이터 연동 및 최적화
+#### 입력 프롬프트
+```typescript
+// 캐릭터 이미지 생성
+const characterImagePrompt = `캐릭터 이미지를 생성하기 위한 설명을 입력해주세요:
+- 캐릭터 외모 특징
+- 의상 및 스타일
+- 포즈 및 표정
+- 배경 (선택사항)`;
 
-### 환경변수 설정
-```bash
-# Google AI Studio API 키
-REACT_APP_GEMINI_API_KEY=your-gemini-api-key
+// 배경 이미지 생성
+const backgroundImagePrompt = `배경 이미지를 생성하기 위한 설명을 입력해주세요:
+- 장소 및 환경
+- 분위기 및 조명
+- 색감 및 스타일
+- 구도 및 시점`;
+
+// 설정 컷 이미지 생성
+const settingCutPrompt = `설정 컷 이미지를 생성하기 위한 설명을 입력해주세요:
+- 장소 및 환경
+- 구체적인 설정
+- 분위기 및 조명
+- 시각적 연출`;
 ```
 
-### AI 모델별 사용법
-- **gemini-2.5-flash**: 일반 텍스트 및 멀티모달 작업, 스트리밍 지원
-- **gemini-2.5-pro**: 코딩 및 복잡한 추론 작업, 구조화된 출력
-- **imagen-4.0-fast-generate-001**: 빠른 캐릭터 이미지 생성 (1:1 비율)
-- **imagen-4.0-generate-001**: 고품질 배경 이미지 생성 (16:9 비율)
-- **imagen-4.0-ultra-generate-001**: 최고품질 설정 컷 이미지 생성 (16:9 비율)
-- **veo-3.0-fast-generate-preview**: 빠른 비디오 생성 (9:16 비율)
-- **veo-3.0-generate-preview**: 고품질 비디오 생성 (16:9, 1:1 비율)
+#### AI 생성 프롬프트
+```typescript
+// 캐릭터 이미지 생성
+const generateCharacterImage = async (description: string, attachedImages: File[]) => {
+  const prompt = `Create a detailed character image based on the following description:
 
-### 통합 워크플로우
-1. **프로젝트 개요**: 통합 AI 생성으로 모든 프롬프트 한 번에 생성
-2. **캐릭터 설정**: 최적화된 프롬프트로 실제 이미지 생성
-3. **영상 생성**: 컷별 영상 프롬프트로 실제 비디오 생성
-4. **데이터 연동**: 각 단계별 생성된 데이터가 다음 단계에 자동 반영
+${description}
 
-## 🚀 설치 및 실행
+Requirements:
+- Style: Animation, high quality, detailed facial features
+- Aspect ratio: 1:1
+- Character design: Detailed and expressive
+- Additional references: ${attachedImages.length > 0 ? 'Use the attached images as reference' : 'No additional references'}`;
+};
+
+// 배경 이미지 생성
+const generateBackgroundImage = async (description: string, attachedImages: File[]) => {
+  const prompt = `Create a detailed background image based on the following description:
+
+${description}
+
+Requirements:
+- Style: High quality, cinematic lighting, detailed environment
+- Aspect ratio: 16:9
+- Composition: Cinematic and visually appealing
+- Additional references: ${attachedImages.length > 0 ? 'Use the attached images as reference' : 'No additional references'}`;
+};
+
+// 설정 컷 이미지 생성
+const generateSettingCutImage = async (description: string, attachedImages: File[]) => {
+  const prompt = `Create a detailed setting cut image based on the following description:
+
+${description}
+
+Requirements:
+- Style: High quality, cinematic composition, detailed architectural design
+- Aspect ratio: 16:9
+- Setting: Detailed and immersive
+- Additional references: ${attachedImages.length > 0 ? 'Use the attached images as reference' : 'No additional references'}`;
+};
+```
+
+### 3. 영상 생성 단계
+
+#### 입력 프롬프트
+```typescript
+// 텍스트 카드 생성
+const textCardPrompt = `스토리/장면을 입력해주세요:
+- 컷별 스토리 내용
+- 장면 설명
+- 대사 및 내레이션
+- 시각적 연출 방향`;
+
+// 캐릭터 이미지 생성
+const characterImagePrompt = `캐릭터/의상을 입력해주세요:
+- 캐릭터 설명
+- 의상 및 스타일
+- 포즈 및 표정
+- 추가 특징`;
+
+// 영상 배경 생성
+const videoBackgroundPrompt = `영상 배경을 입력해주세요:
+- 배경 장소
+- 분위기 및 조명
+- 색감 및 스타일
+- 구도 및 시점`;
+```
+
+#### AI 생성 프롬프트
+```typescript
+// 텍스트 카드 생성
+const generateTextCard = async (storySceneInput: string) => {
+  const prompt = `다음 스토리/장면을 바탕으로 영상 제작용 텍스트 카드를 생성해주세요:
+
+${storySceneInput}
+
+요구사항:
+- 컷별로 나누어 상세한 텍스트 카드 생성
+- 각 카드는 명확한 장면 설명 포함
+- 대사 및 내레이션 포함
+- 시각적 연출 방향 제시`;
+};
+
+// AI 영상 생성
+const generateAIVideo = async (selectedItems: any[], videoOptions: any, videoRatio: string) => {
+  const prompt = `Create a video based on the following selected elements:
+
+Selected Text Cards: ${selectedItems.textCards.map(card => card.generatedText).join(' ')}
+Selected Character Images: ${selectedItems.characterImages.map(img => img.description).join(' ')}
+Selected Background Images: ${selectedItems.backgrounds.map(bg => bg.description).join(' ')}
+
+Video Options:
+- Style: ${videoOptions.style}
+- Mood: ${videoOptions.mood}
+- Camera Work: ${videoOptions.cameraWork}
+- Music: ${videoOptions.music}
+- Custom Prompt: ${videoOptions.customPrompt}
+
+Technical Requirements:
+- Aspect Ratio: ${videoRatio}
+- Duration: 5-10 seconds
+- Quality: High definition
+- Format: MP4`;
+};
+```
+
+## 🛠️ 개발 환경 설정
 
 ### 필수 요구사항
-- Node.js 16.0.0 이상
-- Google AI Studio API 키
-- npm 7.0.0 이상
+- Node.js 18.0.0 이상
+- TypeScript 4.9.5
+- React 19.1.1
+- npm 8.0.0 이상
 
-### 설치
+### 설치 및 실행
 ```bash
-cd frontend
+# 의존성 설치
 npm install
-```
 
-### 환경변수 설정
-```bash
-# .env 파일 생성 및 API 키 설정
-cp .env.example .env
-# .env 파일에서 REACT_APP_GEMINI_API_KEY 설정
-```
-
-### 개발 서버 실행
-```bash
+# 개발 서버 실행
 npm start
-```
-브라우저에서 `http://localhost:3000`으로 접속
 
-### 빌드
-```bash
+# 빌드
 npm run build
 ```
 
-## 📝 개발 가이드
+### 환경변수 설정
+```bash
+# .env 파일 생성
+cp .env.example .env
 
-### 컴포넌트 구조
-- **App.tsx**: 메인 애플리케이션 컴포넌트 (모든 UI 로직 포함)
-- **Button.tsx**: 재사용 가능한 버튼 컴포넌트
-- **ProgressTracker.tsx**: 진행률 추적 컴포넌트
-
-### 상태 관리 패턴
-```typescript
-// 로컬 상태 (컴포넌트 내부)
-const [currentStep, setCurrentStep] = useState("프로젝트 개요");
-
-// 전역 상태 (Zustand)
-const { addNotification } = useUIStore();
+# API 키 설정
+REACT_APP_GEMINI_API_KEY=your-gemini-api-key
 ```
 
-### 스타일링
-- **Tailwind CSS**: 유틸리티 퍼스트 CSS 프레임워크
-- **반응형 클래스**: `md:grid-cols-2 lg:grid-cols-3`
-- **커스텀 컴포넌트**: Button, ProgressTracker 등
+## 📈 성능 최적화
+
+### 1. 코드 분할
+- 컴포넌트별 lazy loading
+- 동적 import 사용
+- 번들 크기 최적화
+
+### 2. 메모이제이션
+- React.memo 사용
+- useMemo, useCallback 활용
+- 불필요한 리렌더링 방지
+
+### 3. 상태 관리
+- Zustand를 통한 효율적인 상태 관리
+- 로컬 상태와 전역 상태 분리
+- 상태 업데이트 최적화
+
+## 🔒 보안 고려사항
+
+### 1. API 키 보안
+- 환경변수 사용
+- 클라이언트 사이드 노출 방지
+- API 키 로테이션 정책
+
+### 2. 데이터 보안
+- 사용자 입력 검증
+- XSS 공격 방지
+- 파일 업로드 검증
+
+### 3. 에러 처리
+- 상세한 에러 메시지
+- 사용자 친화적 에러 표시
+- 로깅 및 모니터링
+
+## 📝 테스트 전략
+
+### 1. 단위 테스트
+- 컴포넌트별 테스트
+- 훅별 테스트
+- 유틸리티 함수 테스트
+
+### 2. 통합 테스트
+- API 서비스 테스트
+- 상태 관리 테스트
+- 컴포넌트 간 상호작용 테스트
+
+### 3. E2E 테스트
+- 전체 워크플로우 테스트
+- 사용자 시나리오 테스트
+- 크로스 브라우저 테스트
+
+## 🚀 배포 전략
+
+### 1. 개발 환경
+- 로컬 개발 서버
+- Hot reloading
+- 개발자 도구
+
+### 2. 스테이징 환경
+- Docker 컨테이너
+- 실제 API 연동
+- 성능 테스트
+
+### 3. 프로덕션 환경
+- 클라우드 배포
+- CDN 사용
+- 모니터링 및 로깅
 
 ## 🔄 업데이트 로그
+
+### v2.1.0 (2025-09-14)
+- ✅ 영상 생성 메뉴 선택 기능 추가
+- ✅ 영상 옵션 설정 (스타일, 무드, 카메라 워크, 음악)
+- ✅ 파일 다운로드 기능 완전 구현
+- ✅ 1:1 비율 제거 (API 지원 불가)
+- ✅ 중복 UI 제거 및 정리
+- ✅ 에러 처리 개선
+- ✅ TypeScript 타입 안정성 향상
+
+### v2.0.0 (2025-09-12)
+- ✅ 프로젝트 개요 메뉴 완전 개선
+- ✅ 이미지 생성 API 오류 수정
+- ✅ 영상 생성 메뉴 UI 개선
+- ✅ 프로젝트 개요 참고 기능 개선
+- ✅ 파일 구조 정리 및 최적화
 
 ### v1.5.0 (2025-01-27)
 - ✅ 프로젝트 개요 워크플로우 완전 개선
 - ✅ 시나리오용 프롬프트 AI 생성으로 버튼명 변경
-- ✅ 500자 스토리 정리 자동 생성 (시나리오 생성 시 포함)
-- ✅ 항목별 카드 시스템 구현 (수정/확정-취소/저장)
+- ✅ 500자 스토리 정리 자동 생성
+- ✅ 항목별 카드 시스템 구현
 - ✅ 통합 AI 검토 및 시나리오 생성 조건 개선
-- ✅ 3가지 스토리/캐릭터/시나리오 항목별 카드 생성
-- ✅ 최종 텍스트 시나리오 생성 기능 추가
-
-### v1.4.0 (2025-01-27)
-- ✅ 영상 생성 메뉴 UI 개선 (비율 선택, 페이지네이션)
-- ✅ 컷별 영상 관리 시스템 (최대 10컷, 3x3 그리드)
-- ✅ 영상 썸네일 하단 정보 제거로 깔끔한 디자인
-- ✅ JSON 데이터 구조 업데이트
-- ✅ README.md 전면 개편 (주니어 개발자 친화적)
-
-### v1.3.0 (2025-01-27)
-- ✅ 프로젝트 개요: AI 텍스트 생성 기능 (스토리, 캐릭터, 스토리 텍스트 입력 → AI 정리)
-- ✅ 캐릭터 설정: 캐릭터/배경/설정컷 AI 이미지 생성 기능
-- ✅ 영상 생성: 컷별 이미지 생성 시스템 (컷 수 설정, 텍스트+시나리오, 캐릭터+의상, 추가 요소)
-- ✅ 컷별 생성/재생성/다음 버튼으로 워크플로우 관리
-- ✅ 생성된 항목들의 시각적 표시 및 삭제 기능
-- ✅ TypeScript 에러 완전 해결 및 코드 최적화
-
-### v1.2.0 (2025-01-27)
-- ✅ 왼쪽 입력/제어, 오른쪽 결과 표시 레이아웃 구현
-- ✅ 단계별 입력 폼 및 제어 버튼 구성 (실행/재실행/완료/추가)
-- ✅ 캐릭터 1,2,3 추가 항목 관리 기능
-- ✅ 스토리보드 컷 1,2,3 표시 기능
-- ✅ 배경 이미지 1,2,3 관리 기능
-- ✅ 최종 영상 미리보기 및 다운로드 기능
-- ✅ 사용하지 않는 코드 정리 및 ESLint 경고 해결
-
-### v1.1.0 (2025-01-27)
-- ✅ 심플한 3단계 메뉴 구성으로 리팩토링
-- ✅ 단계별 체크리스트 및 진행률 추적기 추가
-- ✅ 불필요한 컴포넌트 및 서비스 정리
 
 ## 🤝 기여 가이드
 
@@ -543,7 +622,7 @@ MIT License
 
 ---
 
-**최종 업데이트**: 2025-01-27  
-**버전**: v1.5.0  
+**최종 업데이트**: 2025-09-14  
+**버전**: v2.1.0  
 **개발자**: AI Assistant  
 **라이선스**: MIT
