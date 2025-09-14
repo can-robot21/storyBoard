@@ -105,13 +105,43 @@ export class GoogleAIService {
         }
       });
 
+      console.log('Imagen API 응답:', response); // 디버깅용
+
+      // 다양한 응답 구조 확인
       if (response.generatedImages && response.generatedImages.length > 0) {
-        const firstImage = response.generatedImages[0];
+        const firstImage = response.generatedImages[0] as any;
+        
+        // 응답 구조 1: image.imageBytes
         if (firstImage?.image?.imageBytes) {
           const base64ImageBytes = firstImage.image.imageBytes;
           return `data:image/jpeg;base64,${base64ImageBytes}`;
         }
+        
+        // 응답 구조 2: imageBytes 직접
+        if (firstImage?.imageBytes) {
+          const base64ImageBytes = firstImage.imageBytes;
+          return `data:image/jpeg;base64,${base64ImageBytes}`;
+        }
+        
+        // 응답 구조 3: base64Data
+        if (firstImage?.base64Data) {
+          return `data:image/jpeg;base64,${firstImage.base64Data}`;
+        }
+        
+        // 응답 구조 4: data 직접
+        if (firstImage?.data) {
+          return `data:image/jpeg;base64,${firstImage.data}`;
+        }
       }
+      
+      // 응답 구조 5: response.data
+      if ((response as any).data && (response as any).data.generatedImages) {
+        const firstImage = (response as any).data.generatedImages[0];
+        if (firstImage?.image?.imageBytes) {
+          return `data:image/jpeg;base64,${firstImage.image.imageBytes}`;
+        }
+      }
+      
       throw new Error('이미지 생성 결과가 없습니다.');
     } catch (error) {
       console.error('Google AI 이미지 생성 오류:', error);
@@ -132,13 +162,31 @@ export class GoogleAIService {
         }
       });
 
+      // 다양한 응답 구조 확인
       if (response.generatedImages && response.generatedImages.length > 0) {
-        const firstImage = response.generatedImages[0];
+        const firstImage = response.generatedImages[0] as any;
+        
         if (firstImage?.image?.imageBytes) {
-          const base64ImageBytes = firstImage.image.imageBytes;
-          return `data:image/jpeg;base64,${base64ImageBytes}`;
+          return `data:image/jpeg;base64,${firstImage.image.imageBytes}`;
+        }
+        if (firstImage?.imageBytes) {
+          return `data:image/jpeg;base64,${firstImage.imageBytes}`;
+        }
+        if (firstImage?.base64Data) {
+          return `data:image/jpeg;base64,${firstImage.base64Data}`;
+        }
+        if (firstImage?.data) {
+          return `data:image/jpeg;base64,${firstImage.data}`;
         }
       }
+      
+      if ((response as any).data && (response as any).data.generatedImages) {
+        const firstImage = (response as any).data.generatedImages[0];
+        if (firstImage?.image?.imageBytes) {
+          return `data:image/jpeg;base64,${firstImage.image.imageBytes}`;
+        }
+      }
+      
       throw new Error('배경 이미지 생성 결과가 없습니다.');
     } catch (error) {
       console.error('Google AI 배경 이미지 생성 오류:', error);
@@ -159,13 +207,31 @@ export class GoogleAIService {
         }
       });
 
+      // 다양한 응답 구조 확인
       if (response.generatedImages && response.generatedImages.length > 0) {
-        const firstImage = response.generatedImages[0];
+        const firstImage = response.generatedImages[0] as any;
+        
         if (firstImage?.image?.imageBytes) {
-          const base64ImageBytes = firstImage.image.imageBytes;
-          return `data:image/jpeg;base64,${base64ImageBytes}`;
+          return `data:image/jpeg;base64,${firstImage.image.imageBytes}`;
+        }
+        if (firstImage?.imageBytes) {
+          return `data:image/jpeg;base64,${firstImage.imageBytes}`;
+        }
+        if (firstImage?.base64Data) {
+          return `data:image/jpeg;base64,${firstImage.base64Data}`;
+        }
+        if (firstImage?.data) {
+          return `data:image/jpeg;base64,${firstImage.data}`;
         }
       }
+      
+      if ((response as any).data && (response as any).data.generatedImages) {
+        const firstImage = (response as any).data.generatedImages[0];
+        if (firstImage?.image?.imageBytes) {
+          return `data:image/jpeg;base64,${firstImage.image.imageBytes}`;
+        }
+      }
+      
       throw new Error('설정 컷 이미지 생성 결과가 없습니다.');
     } catch (error) {
       console.error('Google AI 설정 컷 이미지 생성 오류:', error);
@@ -176,7 +242,9 @@ export class GoogleAIService {
   // 비디오 생성 - 실제 Veo API 사용
   async generateVideo(prompt: string, videoRatio: string = '16:9'): Promise<string> {
     try {
-      const model = videoRatio === '9:16' ? 'veo-3.0-fast-generate-preview' : 'veo-3.0-generate-preview';
+      // 지원되는 비율로 제한 (1:1은 지원되지 않음)
+      const supportedRatio = videoRatio === '1:1' ? '16:9' : videoRatio;
+      const model = supportedRatio === '9:16' ? 'veo-3.0-fast-generate-preview' : 'veo-3.0-generate-preview';
       
       // 안전한 프롬프트로 변환 (사람이 포함되지 않은 콘텐츠로 제한)
       const safePrompt = this.createSafeVideoPrompt(prompt);
@@ -186,7 +254,7 @@ export class GoogleAIService {
         model: model,
         prompt: safePrompt,
         config: {
-          aspectRatio: videoRatio,
+          aspectRatio: supportedRatio,
           // personGeneration 설정 제거 (현재 지원되지 않음)
           // 추가적인 안전 설정은 프롬프트에서 제어
         },
@@ -229,10 +297,24 @@ export class GoogleAIService {
     return safePrompt;
   }
 
-  // 멀티모달 입력 처리 (이미지 + 텍스트)
+  // 멀티모달 입력 처리 (이미지 + 텍스트) - 캐릭터 이미지 생성용
   async generateWithImage(imageFile: File, textPrompt: string): Promise<string> {
     try {
       const imageData = await this.fileToBase64(imageFile);
+      
+      // 이미지 기반 프롬프트 생성 - 영문, 적절한 길이로 제한
+      const imagePrompt = `Analyze this image and create a detailed English prompt for character image generation.
+
+User request: ${textPrompt}
+
+Requirements:
+- Generate a concise English prompt (50-100 words max)
+- Focus on visual elements: appearance, clothing, pose, expression, style
+- Include technical details: lighting, composition, quality
+- Avoid overly complex descriptions
+- Make it suitable for AI image generation
+
+Generate only the English prompt, no explanations.`;
       
       const response = await this.ai.models.generateContent({
         model: 'gemini-2.5-flash',
@@ -243,13 +325,128 @@ export class GoogleAIService {
               mimeType: imageFile.type
             }
           },
-          textPrompt
+          imagePrompt
         ]
       });
-      return response.text || '';
+      
+      // 생성된 프롬프트 검증 및 최적화
+      let generatedPrompt = response.text?.trim() || textPrompt;
+      
+      // 프롬프트 길이 확인 및 조정
+      if (generatedPrompt.length > 200) {
+        generatedPrompt = generatedPrompt.substring(0, 200) + '...';
+      }
+      
+      // 사용자 프롬프트와 결합
+      const finalPrompt = `${generatedPrompt}, ${textPrompt}`;
+      
+      return await this.generateCharacterImage(finalPrompt);
     } catch (error) {
       console.error('Google AI 멀티모달 생성 오류:', error);
-      throw new Error('이미지 기반 생성에 실패했습니다.');
+      // 실패 시 텍스트만으로 이미지 생성
+      return await this.generateCharacterImage(textPrompt);
+    }
+  }
+
+  // 멀티모달 입력 처리 (이미지 + 텍스트) - 배경 이미지 생성용
+  async generateBackgroundWithImage(imageFile: File, textPrompt: string): Promise<string> {
+    try {
+      const imageData = await this.fileToBase64(imageFile);
+      
+      // 이미지 기반 프롬프트 생성 - 영문, 적절한 길이로 제한
+      const imagePrompt = `Analyze this image and create a detailed English prompt for background image generation.
+
+User request: ${textPrompt}
+
+Requirements:
+- Generate a concise English prompt (50-100 words max)
+- Focus on environmental elements: setting, atmosphere, lighting, composition
+- Include technical details: perspective, depth, mood, style
+- Avoid overly complex descriptions
+- Make it suitable for AI image generation
+
+Generate only the English prompt, no explanations.`;
+      
+      const response = await this.ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: [
+          {
+            inlineData: {
+              data: imageData,
+              mimeType: imageFile.type
+            }
+          },
+          imagePrompt
+        ]
+      });
+      
+      // 생성된 프롬프트 검증 및 최적화
+      let generatedPrompt = response.text?.trim() || textPrompt;
+      
+      // 프롬프트 길이 확인 및 조정
+      if (generatedPrompt.length > 200) {
+        generatedPrompt = generatedPrompt.substring(0, 200) + '...';
+      }
+      
+      // 사용자 프롬프트와 결합
+      const finalPrompt = `${generatedPrompt}, ${textPrompt}`;
+      
+      return await this.generateBackgroundImage(finalPrompt);
+    } catch (error) {
+      console.error('Google AI 멀티모달 배경 생성 오류:', error);
+      // 실패 시 텍스트만으로 이미지 생성
+      return await this.generateBackgroundImage(textPrompt);
+    }
+  }
+
+  // 멀티모달 입력 처리 (이미지 + 텍스트) - 설정 컷 이미지 생성용
+  async generateSettingCutWithImage(imageFile: File, textPrompt: string): Promise<string> {
+    try {
+      const imageData = await this.fileToBase64(imageFile);
+      
+      // 이미지 기반 프롬프트 생성 - 영문, 적절한 길이로 제한
+      const imagePrompt = `Analyze this image and create a detailed English prompt for setting cut image generation.
+
+User request: ${textPrompt}
+
+Requirements:
+- Generate a concise English prompt (50-100 words max)
+- Focus on scene elements: location, atmosphere, composition, mood
+- Include technical details: lighting, perspective, style, quality
+- Avoid overly complex descriptions
+- Make it suitable for AI image generation
+
+Generate only the English prompt, no explanations.`;
+      
+      const response = await this.ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: [
+          {
+            inlineData: {
+              data: imageData,
+              mimeType: imageFile.type
+            }
+          },
+          imagePrompt
+        ]
+      });
+      
+      // 생성된 프롬프트 검증 및 최적화
+      let generatedPrompt = response.text?.trim() || textPrompt;
+      
+      // 프롬프트 길이 확인 및 조정
+      if (generatedPrompt.length > 200) {
+        generatedPrompt = generatedPrompt.substring(0, 200) + '...';
+      }
+      
+      // 사용자 프롬프트와 결합
+      const finalPrompt = `${generatedPrompt}, ${textPrompt}`;
+      
+      return await this.generateSettingCutImage(finalPrompt);
+    } catch (error) {
+      console.error('Google AI 멀티모달 설정 컷 생성 오류:', error);
+      // 실패 시 텍스트만으로 이미지 생성
+      return await this.generateSettingCutImage(textPrompt);
     }
   }
 

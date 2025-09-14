@@ -22,58 +22,25 @@ interface ProjectState {
   clearError: () => void;
 }
 
-const initialProject: Omit<Project, 'id' | 'createdAt' | 'updatedAt'> = {
-  name: '',
-  description: '',
-  status: 'active',
-  steps: {
-    overview: {
-      id: 'overview',
-      title: '프로젝트 개요',
-      description: 'AI 텍스트 생성',
-      status: 'pending',
-      data: {
-        story: '',
-        character: '',
-        storyText: '',
-        prompts: {
-          storyPrompt: '',
-          characterPrompt: '',
-          scenarioPrompt: '',
-        },
-      },
-    },
-    character: {
-      id: 'character',
-      title: '캐릭터 설정',
-      description: 'AI 이미지 생성',
-      status: 'pending',
-      data: {
-        characters: [],
-        backgrounds: [],
-        settingCuts: [],
-      },
-    },
-    video: {
-      id: 'video',
-      title: '영상 생성',
-      description: '컷별 이미지 생성',
-      status: 'pending',
-      data: {
-        settings: {
-          cutCount: 3,
-          videoRatio: '16:9',
-          currentCutIndex: 0,
-        },
-        cuts: [],
-        pagination: {
-          currentPage: 1,
-          itemsPerPage: 9,
-          totalPages: 1,
-        },
-      },
-    },
-  },
+const initialProjectData = {
+  story: '',
+  characterList: [],
+  scenarioPrompt: '',
+  storySummary: '',
+  finalScenario: '',
+  generatedProjectData: null,
+  generatedCharacters: [],
+  generatedBackgrounds: [],
+  generatedSettingCuts: [],
+  generatedTextCards: [],
+  generatedCharacterImages: [],
+  generatedVideoBackgrounds: [],
+  generatedVideos: [],
+  settings: {
+    videoRatio: '16:9' as const,
+    cutCount: 3,
+    currentCutIndex: 0
+  }
 };
 
 export const useProjectStore = create<ProjectState>()(
@@ -87,11 +54,18 @@ export const useProjectStore = create<ProjectState>()(
       createProject: (name: string) => {
         const now = new Date().toISOString();
         const newProject: Project = {
-          ...initialProject,
           id: generateId(),
           name: name,
+          description: '',
+          currentStep: '프로젝트 개요',
+          stepStatus: {
+            '프로젝트 개요': 'pending',
+            '이미지 생성': 'pending',
+            '영상 생성': 'pending'
+          },
           createdAt: now,
           updatedAt: now,
+          data: initialProjectData
         };
 
         set((state) => ({
@@ -157,12 +131,9 @@ export const useProjectStore = create<ProjectState>()(
 
         const updatedProject = {
           ...currentProject,
-          steps: {
-            ...currentProject.steps,
-            [stepType]: {
-              ...(currentProject.steps[stepType] as any),
-              ...data,
-            },
+          data: {
+            ...currentProject.data,
+            ...data,
           },
           updatedAt: new Date().toISOString(),
         };
@@ -181,12 +152,9 @@ export const useProjectStore = create<ProjectState>()(
 
         const updatedProject = {
           ...currentProject,
-          steps: {
-            ...currentProject.steps,
-            [stepType]: {
-              ...(currentProject.steps[stepType] as any),
-              status,
-            },
+          stepStatus: {
+            ...currentProject.stepStatus,
+            [stepType]: status,
           },
           updatedAt: new Date().toISOString(),
         };

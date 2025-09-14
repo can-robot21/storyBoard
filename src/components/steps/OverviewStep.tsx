@@ -10,11 +10,11 @@ const OverviewStep: React.FC = () => {
   const { addNotification } = useUIStore();
   
   const [formData, setFormData] = useState({
-    title: currentProject?.steps.overview.title || '',
-    description: currentProject?.steps.overview.description || '',
-    story: currentProject?.steps.overview.data.story || '',
-    character: currentProject?.steps.overview.data.character || '',
-    storyText: currentProject?.steps.overview.data.storyText || '',
+    title: currentProject?.name || '',
+    description: currentProject?.description || '',
+    story: currentProject?.data.story || '',
+    character: '',
+    storyText: '',
     genre: '',
     target_audience: '',
     duration: '',
@@ -34,7 +34,7 @@ const OverviewStep: React.FC = () => {
       createProject(formData.title || '새 프로젝트');
     }
     
-    updateStep('overview', formData);
+    updateStep('프로젝트 개요', formData);
     addNotification({
       type: 'success',
       title: '저장 완료',

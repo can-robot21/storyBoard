@@ -78,12 +78,9 @@ const CharacterStep: React.FC = () => {
         createdAt: new Date().toISOString(),
       };
 
-      const currentCharacters = currentProject.steps.character.data.characters || [];
-      updateStep('character', {
-        data: {
-          ...currentProject.steps.character.data,
-          characters: [...currentCharacters, newCharacter]
-        }
+      const currentCharacters = currentProject.data.generatedCharacters || [];
+      updateStep('이미지 생성', {
+        generatedCharacters: [...currentCharacters, newCharacter]
       });
 
       addNotification({
@@ -109,7 +106,7 @@ const CharacterStep: React.FC = () => {
     }
   };
 
-  const characters = currentProject?.steps.character.data.characters || [];
+  const characters = currentProject?.data.generatedCharacters || [];
 
   return (
     <div className="p-6 max-w-6xl mx-auto">

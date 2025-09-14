@@ -40,7 +40,7 @@ const VideoStep: React.FC = () => {
   };
 
   const handleGenerateVideo = async () => {
-    if (!currentProject?.steps.video.data.cuts.length) {
+    if (!currentProject?.data.generatedVideos.length) {
       addNotification({
         type: 'error',
         title: '컷 필요',
@@ -58,24 +58,19 @@ const VideoStep: React.FC = () => {
       const mockVideoUrl = 'https://sample-videos.com/zip/10/mp4/SampleVideo_1280x720_1mb.mp4';
       setGeneratedVideo(mockVideoUrl);
       
-      updateStep('video', {
-        data: {
-          ...currentProject.steps.video.data,
-          cuts: [...currentProject.steps.video.data.cuts, {
-            id: `video_${Date.now()}`,
-            cutNumber: currentProject.steps.video.data.cuts.length + 1,
-            textScenario: '',
-            characterOutfit: '',
-            additionalElements: '',
-            videoUrl: mockVideoUrl,
-            videoRatio: '16:9' as const,
-            attachedImages: {
-              characterOutfit: [],
-              additional: []
-            },
-            createdAt: new Date().toISOString(),
-          }]
-        }
+      const currentCuts = currentProject.data.generatedVideos || [];
+      updateStep('영상 생성', {
+        generatedVideos: [...currentCuts, {
+          id: Date.now(),
+          textCards: [],
+          characterImages: [],
+          backgrounds: [],
+          projectTexts: [],
+          aiReviewTexts: [],
+          video: mockVideoUrl,
+          videoRatio: '16:9',
+          timestamp: new Date().toISOString()
+        }]
       });
 
       addNotification({
