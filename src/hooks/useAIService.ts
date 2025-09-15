@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { googleAIService } from '../services/googleAIService';
+import { useAIServiceManager } from './useAIServiceManager';
 import { useUIStore } from '../stores/uiStore';
 
 export interface AIGenerationOptions {
@@ -22,63 +22,86 @@ export interface VideoGenerationOptions extends AIGenerationOptions {
 export const useAIService = () => {
   const [isGenerating, setIsGenerating] = useState(false);
   const { addNotification } = useUIStore();
+  const { getCurrentAIService, selectedProvider } = useAIServiceManager();
 
   // 텍스트 생성
   const generateText = useCallback(async (options: AIGenerationOptions): Promise<string> => {
     setIsGenerating(true);
     try {
-      const result = await googleAIService.generateText(options.prompt);
-      return result;
+      const aiService = getCurrentAIService();
+      if (!aiService) {
+        throw new Error(`${selectedProvider} AI 서비스를 사용할 수 없습니다.`);
+      }
+      
+      const result = await aiService.generateText({
+        prompt: options.prompt,
+        provider: selectedProvider,
+        model: (options.model as any) || 'gpt-4',
+        maxTokens: options.maxTokens,
+        temperature: options.temperature
+      });
+      
+      return result.text;
     } catch (error) {
       console.error('텍스트 생성 오류:', error);
       throw error;
     } finally {
       setIsGenerating(false);
     }
-  }, []);
+  }, [getCurrentAIService, selectedProvider]);
 
   // 이미지 생성
   const generateImage = useCallback(async (options: ImageGenerationOptions): Promise<string> => {
     setIsGenerating(true);
     try {
-      let result: string;
-      
-      switch (options.aspectRatio) {
-        case '1:1':
-          result = await googleAIService.generateCharacterImage(options.prompt);
-          break;
-        case '16:9':
-          result = await googleAIService.generateBackgroundImage(options.prompt);
-          break;
-        case '9:16':
-          result = await googleAIService.generateSettingCutImage(options.prompt);
-          break;
-        default:
-          result = await googleAIService.generateCharacterImage(options.prompt);
+      const aiService = getCurrentAIService();
+      if (!aiService) {
+        throw new Error(`${selectedProvider} AI 서비스를 사용할 수 없습니다.`);
       }
       
-      return result;
+      const result = await aiService.generateImage({
+        prompt: options.prompt,
+        provider: selectedProvider,
+        model: (options.model as any) || 'dall-e-3',
+        aspectRatio: options.aspectRatio || '1:1',
+        quality: options.quality || 'standard'
+      });
+      
+      return result.images[0] || '';
     } catch (error) {
       console.error('이미지 생성 오류:', error);
       throw error;
     } finally {
       setIsGenerating(false);
     }
-  }, []);
+  }, [getCurrentAIService, selectedProvider]);
 
   // 영상 생성
   const generateVideo = useCallback(async (options: VideoGenerationOptions): Promise<string> => {
     setIsGenerating(true);
     try {
-      const result = await googleAIService.generateVideo(options.prompt, options.videoRatio || '16:9');
-      return result;
+      const aiService = getCurrentAIService();
+      if (!aiService) {
+        throw new Error(`${selectedProvider} AI 서비스를 사용할 수 없습니다.`);
+      }
+      
+      const result = await aiService.generateVideo({
+        prompt: options.prompt,
+        provider: selectedProvider,
+        model: (options.model as any) || 'veo-3.0-generate-preview',
+        videoRatio: options.videoRatio || '16:9',
+        duration: options.duration || 10,
+        quality: 'standard'
+      });
+      
+      return result.videos[0] || '';
     } catch (error) {
       console.error('영상 생성 오류:', error);
       throw error;
     } finally {
       setIsGenerating(false);
     }
-  }, []);
+  }, [getCurrentAIService, selectedProvider]);
 
   // 통합 프롬프트 생성
   const generateIntegratedPrompts = useCallback(async (projectData: {
@@ -129,17 +152,30 @@ export const useAIService = () => {
   }
 }`;
 
-      const result = await googleAIService.generateText(prompt);
+      const aiService = getCurrentAIService();
+      if (!aiService) {
+        throw new Error(`${selectedProvider} AI 서비스를 사용할 수 없습니다.`);
+      }
+      
+      const result = await aiService.generateText({
+        prompt,
+        provider: selectedProvider,
+        model: 'gpt-4',
+        maxTokens: 2000,
+        temperature: 0.7
+      });
+      
+      const text = result.text;
       
       // JSON 파싱 시도
       let parsedResult;
       try {
-        parsedResult = JSON.parse(result);
+        parsedResult = JSON.parse(text);
       } catch (e) {
         // JSON 파싱 실패 시 기본 구조로 설정
         parsedResult = {
-          characterPrompt: result,
-          scenarioPrompt: result,
+          characterPrompt: text,
+          scenarioPrompt: text,
           imagePrompts: {
             character: "Character image generation prompt",
             background: "Background image generation prompt",
@@ -179,15 +215,27 @@ export const useAIService = () => {
 
 시나리오 생성에 필요한 프롬프트를 작성해주세요.`;
 
-      const result = await googleAIService.generateText(prompt);
-      return result;
+      const aiService = getCurrentAIService();
+      if (!aiService) {
+        throw new Error(`${selectedProvider} AI 서비스를 사용할 수 없습니다.`);
+      }
+      
+      const result = await aiService.generateText({
+        prompt,
+        provider: selectedProvider,
+        model: 'gpt-4',
+        maxTokens: 1000,
+        temperature: 0.7
+      });
+      
+      return result.text;
     } catch (error) {
       console.error('시나리오 프롬프트 생성 오류:', error);
       throw error;
     } finally {
       setIsGenerating(false);
     }
-  }, []);
+  }, [getCurrentAIService, selectedProvider]);
 
   // 500자 스토리 정리 생성
   const generateStorySummary = useCallback(async (story: string): Promise<string> => {
@@ -199,15 +247,27 @@ ${story}
 
 핵심 내용만 간결하게 요약해주세요.`;
 
-      const result = await googleAIService.generateText(prompt);
-      return result;
+      const aiService = getCurrentAIService();
+      if (!aiService) {
+        throw new Error(`${selectedProvider} AI 서비스를 사용할 수 없습니다.`);
+      }
+      
+      const result = await aiService.generateText({
+        prompt,
+        provider: selectedProvider,
+        model: 'gpt-4',
+        maxTokens: 500,
+        temperature: 0.7
+      });
+      
+      return result.text;
     } catch (error) {
       console.error('스토리 정리 생성 오류:', error);
       throw error;
     } finally {
       setIsGenerating(false);
     }
-  }, []);
+  }, [getCurrentAIService, selectedProvider]);
 
   // 최종 시나리오 생성
   const generateFinalScenario = useCallback(async (data: {
@@ -225,15 +285,27 @@ ${story}
 
 위의 모든 정보를 통합하여 완성된 텍스트 시나리오를 생성해주세요.`;
 
-      const result = await googleAIService.generateText(prompt);
-      return result;
+      const aiService = getCurrentAIService();
+      if (!aiService) {
+        throw new Error(`${selectedProvider} AI 서비스를 사용할 수 없습니다.`);
+      }
+      
+      const result = await aiService.generateText({
+        prompt,
+        provider: selectedProvider,
+        model: 'gpt-4',
+        maxTokens: 2000,
+        temperature: 0.7
+      });
+      
+      return result.text;
     } catch (error) {
       console.error('최종 시나리오 생성 오류:', error);
       throw error;
     } finally {
       setIsGenerating(false);
     }
-  }, []);
+  }, [getCurrentAIService, selectedProvider]);
 
   return {
     isGenerating,

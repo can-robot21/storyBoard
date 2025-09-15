@@ -1,6 +1,9 @@
+import React from 'react';
 import { useUIStore } from '../stores/uiStore';
 import { downloadBase64Image } from '../utils/downloadUtils';
 import { googleAIService } from '../services/googleAIService';
+import { AIProvider } from '../types/ai';
+import { NanoBananaService } from '../services/ai/NanoBananaService';
 
 export const useImageHandlers = (
   generatedCharacters: any[],
@@ -9,11 +12,107 @@ export const useImageHandlers = (
   setGeneratedBackgrounds: React.Dispatch<React.SetStateAction<any[]>>,
   generatedSettingCuts: any[],
   setGeneratedSettingCuts: React.Dispatch<React.SetStateAction<any[]>>,
-  generatedProjectData: any
+  generatedProjectData: any,
+  imageGenerationAPI: AIProvider = 'google',
+  customSize: string = '',
+  additionalPrompt: string = ''
 ) => {
   const { addNotification } = useUIStore();
+  
+  // 나노 바나나 서비스 직접 인스턴스화
+  const nanoBananaService = React.useMemo(() => {
+    try {
+      const apiKey = process.env.REACT_APP_GEMINI_API_KEY;
+      if (!apiKey) {
+        console.error('❌ REACT_APP_GEMINI_API_KEY가 설정되지 않았습니다.');
+        return null;
+      }
+      return new NanoBananaService({ apiKey });
+    } catch (error) {
+      console.error('❌ 나노 바나나 서비스 초기화 실패:', error);
+      return null;
+    }
+  }, []);
+
+  // 통합 이미지 생성 함수 (API 선택에 따라)
+  const generateImageWithAPI = async (prompt: string, attachedImages: File[], type: 'character' | 'background' | 'setting' | 'settingCut') => {
+    console.log('🚀 generateImageWithAPI 호출:', { prompt, attachedImages: attachedImages.length, type, imageGenerationAPI });
+    
+    // 나노 바나나 API인 경우 특별 처리
+    if (imageGenerationAPI === 'nano-banana') {
+      console.log('🍌 나노 바나나 API 사용');
+      
+      if (!nanoBananaService) {
+        throw new Error('나노 바나나 AI 서비스를 초기화할 수 없습니다. API 키를 확인해주세요.');
+      }
+      
+      if (attachedImages.length > 0) {
+        // 멀티모달 이미지 생성
+        console.log('📷 멀티모달 이미지 생성');
+        let finalPrompt = prompt;
+        if (additionalPrompt.trim()) {
+          finalPrompt = `${prompt}\n\n추가 요청사항: ${additionalPrompt}`;
+        }
+        if (customSize.trim()) {
+          finalPrompt = `${finalPrompt}\n\n사이즈 요청사항: ${customSize}`;
+        }
+        console.log('🔄 멀티모달 API 호출:', finalPrompt);
+        return await nanoBananaService.generateImageWithReference(finalPrompt, attachedImages[0], customSize);
+      } else {
+        // 텍스트만으로 이미지 생성
+        console.log('📝 텍스트만으로 이미지 생성');
+        let finalPrompt = prompt;
+        if (additionalPrompt.trim()) {
+          finalPrompt = `${prompt}\n\n추가 요청사항: ${additionalPrompt}`;
+        }
+        if (customSize.trim()) {
+          finalPrompt = `${finalPrompt}\n\n사이즈 요청사항: ${customSize}`;
+        }
+        
+        console.log('🔄 텍스트 이미지 생성 API 호출:', finalPrompt);
+        const result = await nanoBananaService.generateImage({
+          prompt: finalPrompt,
+          provider: 'nano-banana',
+          model: 'gemini-2.5-flash-image-preview',
+          aspectRatio: '1:1',
+          quality: 'standard'
+        });
+        
+        console.log('📊 이미지 생성 결과:', result);
+        return result.images[0] || '';
+      }
+    } else {
+      // Google AI 서비스 사용
+      console.log('🔍 Google AI 서비스 사용');
+      if (attachedImages.length > 0) {
+        console.log('📷 첨부 이미지와 함께 생성');
+        switch (type) {
+          case 'character':
+            return await googleAIService.generateWithImage(attachedImages[0], prompt);
+          case 'background':
+            return await googleAIService.generateBackgroundWithImage(attachedImages[0], prompt);
+          case 'setting':
+          case 'settingCut':
+            return await googleAIService.generateSettingCutWithImage(attachedImages[0], prompt);
+        }
+      } else {
+        console.log('📝 텍스트만으로 생성');
+        switch (type) {
+          case 'character':
+            return await googleAIService.generateCharacterImage(prompt);
+          case 'background':
+            return await googleAIService.generateBackgroundImage(prompt);
+          case 'setting':
+          case 'settingCut':
+            return await googleAIService.generateSettingCutImage(prompt);
+        }
+      }
+    }
+  };
 
   const handleGenerateCharacter = async (characterInput: string, attachedImages: File[]) => {
+    console.log('🎭 캐릭터 생성 시작:', { characterInput, attachedImages: attachedImages.length, imageGenerationAPI });
+    
     if (!characterInput.trim() && attachedImages.length === 0) {
       addNotification({
         type: 'error',
@@ -27,9 +126,17 @@ export const useImageHandlers = (
       let imagePrompt = characterInput;
       if (generatedProjectData?.imagePrompts?.character) {
         imagePrompt = generatedProjectData.imagePrompts.character;
+        console.log('📝 프로젝트 데이터에서 캐릭터 프롬프트 사용:', imagePrompt);
+      } else if (generatedProjectData?.characterPrompt) {
+        imagePrompt = generatedProjectData.characterPrompt;
+        console.log('📝 프로젝트 데이터에서 캐릭터 프롬프트 사용:', imagePrompt);
+      } else {
+        console.log('📝 사용자 입력 사용:', imagePrompt);
       }
       
-      const imageResult = await googleAIService.generateCharacterImage(imagePrompt);
+      console.log('🔄 이미지 생성 API 호출 시작...');
+      const imageResult = await generateImageWithAPI(imagePrompt, attachedImages, 'character');
+      console.log('✅ 이미지 생성 완료:', imageResult ? '성공' : '실패');
       
       const newCharacter = {
         id: Date.now(),
@@ -39,6 +146,7 @@ export const useImageHandlers = (
         timestamp: new Date().toISOString(),
       };
       
+      console.log('💾 캐릭터 상태 업데이트:', newCharacter);
       setGeneratedCharacters([...generatedCharacters, newCharacter]);
       
       addNotification({
@@ -47,11 +155,11 @@ export const useImageHandlers = (
         message: '캐릭터가 생성되었습니다.',
       });
     } catch (error) {
-      console.error('캐릭터 생성 오류:', error);
+      console.error('❌ 캐릭터 생성 오류:', error);
       addNotification({
         type: 'error',
         title: '생성 실패',
-        message: '캐릭터 생성 중 오류가 발생했습니다.',
+        message: `캐릭터 생성 중 오류가 발생했습니다: ${error instanceof Error ? error.message : 'Unknown error'}`,
       });
     }
   };
@@ -114,9 +222,11 @@ export const useImageHandlers = (
       let imagePrompt = backgroundInput;
       if (generatedProjectData?.imagePrompts?.background) {
         imagePrompt = generatedProjectData.imagePrompts.background;
+      } else if (generatedProjectData?.scenarioPrompt) {
+        imagePrompt = generatedProjectData.scenarioPrompt;
       }
       
-      const imageResult = await googleAIService.generateBackgroundImage(imagePrompt);
+      const imageResult = await generateImageWithAPI(imagePrompt, attachedImages, 'background');
       
       const newBackground = {
         id: Date.now(),
@@ -138,7 +248,7 @@ export const useImageHandlers = (
       addNotification({
         type: 'error',
         title: '생성 실패',
-        message: '배경 생성 중 오류가 발생했습니다.',
+        message: `배경 생성 중 오류가 발생했습니다: ${error instanceof Error ? error.message : 'Unknown error'}`,
       });
     }
   };
@@ -201,9 +311,11 @@ export const useImageHandlers = (
       let imagePrompt = settingCut;
       if (generatedProjectData?.imagePrompts?.setting) {
         imagePrompt = generatedProjectData.imagePrompts.setting;
+      } else if (generatedProjectData?.scenarioPrompt) {
+        imagePrompt = generatedProjectData.scenarioPrompt;
       }
       
-      const imageResult = await googleAIService.generateSettingCutImage(imagePrompt);
+      const imageResult = await generateImageWithAPI(imagePrompt, attachedImages, 'setting');
       
       const newSettingCut = {
         id: Date.now(),
@@ -225,7 +337,7 @@ export const useImageHandlers = (
       addNotification({
         type: 'error',
         title: '생성 실패',
-        message: '설정 컷 생성 중 오류가 발생했습니다.',
+        message: `설정 컷 생성 중 오류가 발생했습니다: ${error instanceof Error ? error.message : 'Unknown error'}`,
       });
     }
   };
@@ -583,6 +695,8 @@ export const useImageHandlers = (
   };
 
   return {
+    // 핵심 생성 함수들
+    generateImageWithAPI,
     handleGenerateCharacter,
     handleRegenerateCharacter,
     handleDeleteCharacter,

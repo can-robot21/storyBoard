@@ -14,6 +14,7 @@ interface HeaderProps {
 const mainSteps = [
   "프로젝트 개요",
   "이미지 생성", 
+  "이미지 생성/나노 바나나",
   "영상 생성",
 ];
 

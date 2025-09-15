@@ -95,13 +95,32 @@ export class GoogleAIService {
   // 이미지 생성 (캐릭터용) - 실제 Imagen API 사용
   async generateCharacterImage(prompt: string): Promise<string> {
     try {
+      // 스토리보드 연계를 위한 상세한 프롬프트 생성
+      const detailedPrompt = `Create a detailed character image for video production:
+
+${prompt}
+
+Technical specifications:
+- High quality, professional character design
+- Suitable for video production and storyboarding
+- Clear character features and expressions
+- Appropriate lighting and composition
+- Character should be visually distinct and memorable
+- Consider camera angles and framing for video use
+
+Style requirements:
+- Realistic or stylized as appropriate for the character
+- Consistent with video production standards
+- Clear visual hierarchy and focal points
+- Appropriate color palette for video integration`;
+
       const response = await this.ai.models.generateImages({
         model: 'imagen-4.0-fast-generate-001',
-        prompt: prompt,
+        prompt: detailedPrompt,
         config: {
           numberOfImages: 1,
           outputMimeType: 'image/jpeg',
-          aspectRatio: '1:1'
+          aspectRatio: '16:9' // 비디오 비율에 맞춤
         }
       });
 
@@ -242,45 +261,146 @@ export class GoogleAIService {
   // 비디오 생성 - 실제 Veo API 사용
   async generateVideo(prompt: string, videoRatio: string = '16:9'): Promise<string> {
     try {
-      // 지원되는 비율로 제한 (1:1은 지원되지 않음)
-      const supportedRatio = videoRatio === '1:1' ? '16:9' : videoRatio;
-      const model = supportedRatio === '9:16' ? 'veo-3.0-fast-generate-preview' : 'veo-3.0-generate-preview';
+      console.log('Veo API를 사용하여 실제 영상을 생성합니다.');
       
-      // 안전한 프롬프트로 변환 (사람이 포함되지 않은 콘텐츠로 제한)
-      const safePrompt = this.createSafeVideoPrompt(prompt);
+      // Veo API에 최적화된 프롬프트 생성
+      const veoOptimizedPrompt = await this.createVeoOptimizedPrompt(prompt, videoRatio);
       
-      // Veo 3.0 API의 최신 설정 사용
+      // Veo API 호출 (오디오 생성 포함)
       let operation = await this.ai.models.generateVideos({
-        model: model,
-        prompt: safePrompt,
+        model: 'veo-3.0-fast-generate-001', // Veo 3.0 사용
+        prompt: veoOptimizedPrompt,
         config: {
-          aspectRatio: supportedRatio,
-          // personGeneration 설정 제거 (현재 지원되지 않음)
-          // 추가적인 안전 설정은 프롬프트에서 제어
+          numberOfVideos: 1,
+          aspectRatio: videoRatio,
+          durationSeconds: 8,
+          personGeneration: 'ALLOW_ALL',
+          generateAudio: true, // 오디오 생성 활성화
+          resolution: '720p', // 해상도 설정
+          fps: 24, // 프레임 레이트 설정
         },
       });
 
+      console.log(`Video generation started: ${operation.name}`);
+
       // 비디오 생성 완료까지 대기
       while (!operation.done) {
+        console.log(`Video ${operation.name} is still generating. Checking again in 10 seconds...`);
         await new Promise((resolve) => setTimeout(resolve, 10000)); // 10초마다 체크
         operation = await this.ai.operations.getVideosOperation({
           operation: operation,
         });
       }
 
+      console.log(`Generated ${operation.response?.generatedVideos?.length ?? 0} video(s).`);
+
       if (operation.response?.generatedVideos && operation.response.generatedVideos.length > 0) {
-        const videoUri = operation.response.generatedVideos[0].video?.uri;
+        const generatedVideo = operation.response.generatedVideos[0];
+        const videoUri = generatedVideo?.video?.uri;
+        
         if (videoUri) {
-          // API 키를 URI에 추가
+          // API 키를 URI에 추가하여 반환
           const apiKey = process.env.REACT_APP_GEMINI_API_KEY;
           return `${videoUri}&key=${apiKey}`;
         }
       }
+      
       throw new Error('비디오 생성 결과가 없습니다.');
+      
     } catch (error) {
       console.error('Google AI 비디오 생성 오류:', error);
-      throw new Error('비디오 생성에 실패했습니다.');
+      
+      // Veo API 실패 시 스토리보드로 폴백
+      console.log('Veo API 실패. 스토리보드를 생성합니다.');
+      return await this.generateStoryboardFallback(prompt, videoRatio);
     }
+  }
+
+  // Veo API 최적화 프롬프트 생성 (오디오 포함)
+  private async createVeoOptimizedPrompt(originalPrompt: string, videoRatio: string): Promise<string> {
+    const optimizationPrompt = `다음 프롬프트를 Veo API에 최적화된 영상 생성 프롬프트로 변환해주세요:
+
+원본 프롬프트: ${originalPrompt}
+영상 비율: ${videoRatio}
+
+요구사항:
+1. 8초 길이의 영상에 적합한 내용으로 조정
+2. 카메라 워크와 액션을 구체적으로 설명
+3. 조명과 색감을 명확히 지정
+4. 영상의 흐름과 전환이 자연스럽도록 구성
+5. 오디오와 사운드 효과를 포함하여 설명
+6. 대사가 있다면 자연스러운 음성으로 표현
+7. 배경음악과 효과음을 적절히 배치
+8. Veo API가 이해하기 쉬운 명확한 영어로 작성
+
+오디오 지시사항:
+- 자연스러운 대사와 내레이션
+- 적절한 배경음악
+- 상황에 맞는 효과음
+- 음성의 톤과 감정 표현
+
+최적화된 프롬프트만 반환해주세요 (추가 설명 없이):`;
+
+    return await this.generateText(optimizationPrompt);
+  }
+
+  // Veo API 실패 시 스토리보드 폴백
+  private async generateStoryboardFallback(prompt: string, videoRatio: string): Promise<string> {
+    const storyboardPrompt = `다음 프롬프트를 바탕으로 상세한 영상 스토리보드를 생성해주세요:
+
+프롬프트: ${prompt}
+영상 비율: ${videoRatio}
+
+🎬 영상 스토리보드
+
+📝 장면 1: [장면 제목]
+- 시간: 0-3초
+- 카메라: [카메라 앵글 및 워크]
+- 조명: [조명 설정]
+- 색감: [색상 팔레트]
+- 액션: [주요 액션 및 움직임]
+- 음향: [배경음악 및 효과음]
+
+📝 장면 2: [장면 제목]
+- 시간: 3-6초
+- 카메라: [카메라 앵글 및 워크]
+- 조명: [조명 설정]
+- 색감: [색상 팔레트]
+- 액션: [주요 액션 및 움직임]
+- 음향: [배경음악 및 효과음]
+
+📝 장면 3: [장면 제목]
+- 시간: 6-8초
+- 카메라: [카메라 앵글 및 워크]
+- 조명: [조명 설정]
+- 색감: [색상 팔레트]
+- 액션: [주요 액션 및 움직임]
+- 음향: [배경음악 및 효과음]
+
+🎨 전체 영상 스타일:
+- 톤앤매너: [드라마틱/코미디/로맨틱 등]
+- 편집 스타일: [빠른 컷/긴 숏 등]
+- 색상 그레이딩: [따뜻한/차가운/모노톤 등]
+
+💡 제작 노트:
+- [특별한 주의사항이나 제작 팁]
+- [필요한 소품이나 세트]
+- [특수 효과 요구사항]`;
+
+    const storyboard = await this.generateText(storyboardPrompt);
+    
+    // 스토리보드 데이터를 JSON으로 구성
+    const storyboardData = {
+      type: 'storyboard',
+      prompt: prompt,
+      videoRatio: videoRatio,
+      storyboard: storyboard,
+      timestamp: new Date().toISOString(),
+      note: 'Veo API 실패로 인해 스토리보드를 생성했습니다.'
+    };
+    
+    // Base64로 인코딩하여 반환
+    return `data:application/json;base64,${btoa(JSON.stringify(storyboardData))}`;
   }
 
   // 안전한 비디오 프롬프트 생성 (사람이 포함되지 않은 콘텐츠로 제한)

@@ -23,7 +23,8 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({
   const [apiKeys, setApiKeys] = useState({
     google: process.env.REACT_APP_GEMINI_API_KEY || '',
     openai: process.env.REACT_APP_OPENAI_API_KEY || '',
-    anthropic: process.env.REACT_APP_ANTHROPIC_API_KEY || ''
+    anthropic: process.env.REACT_APP_ANTHROPIC_API_KEY || '',
+    'nano-banana': process.env.REACT_APP_GEMINI_API_KEY || '' // 나노 바나나는 Google AI 키 사용
   });
 
   const [showApiKeys, setShowApiKeys] = useState(false);
@@ -87,7 +88,7 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({
 
           {showApiKeys && (
             <div className="space-y-4">
-              {(['google', 'openai', 'anthropic'] as AIProvider[]).map((provider) => {
+              {(['google', 'openai', 'anthropic', 'nano-banana'] as AIProvider[]).map((provider) => {
                 const keyStatus = getApiKeyStatus(provider);
                 const isSelected = selectedProvider === provider;
                 
@@ -102,7 +103,8 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({
                       <div className="flex items-center gap-2">
                         <h4 className="font-medium text-gray-900 capitalize">
                           {provider === 'google' ? 'Google AI' : 
-                           provider === 'openai' ? 'OpenAI' : 'Anthropic'}
+                           provider === 'openai' ? 'OpenAI' : 
+                           provider === 'anthropic' ? 'Anthropic' : '나노 바나나'}
                         </h4>
                         <div className={`flex items-center gap-1 ${keyStatus.color}`}>
                           {keyStatus.status === 'valid' ? (

@@ -1,6 +1,7 @@
 import { IAIService, AIServiceFactory, AIProvider, AIServiceConfig } from '../../types/ai';
 import { GoogleAIService } from './GoogleAIService';
 import { OpenAIService } from './OpenAIService';
+import { NanoBananaService } from './NanoBananaService';
 
 /**
  * AI 서비스 팩토리
@@ -43,6 +44,12 @@ export class AIServiceFactoryImpl implements AIServiceFactory {
           baseUrl: config.baseUrl
         });
         break;
+      case 'nano-banana':
+        service = new NanoBananaService({
+          apiKey: config.apiKey,
+          baseUrl: config.baseUrl
+        });
+        break;
       case 'anthropic':
         // TODO: Anthropic 서비스 구현
         throw new Error('Anthropic 서비스는 아직 구현되지 않았습니다.');
@@ -73,6 +80,8 @@ export class AIServiceFactoryImpl implements AIServiceFactory {
           return !!(config.apiKey && config.apiKey.startsWith('AI'));
         case 'openai':
           return !!(config.apiKey && config.apiKey.startsWith('sk-'));
+        case 'nano-banana':
+          return !!(config.apiKey && config.apiKey.startsWith('AI'));
         case 'anthropic':
           return !!(config.apiKey && config.apiKey.startsWith('sk-ant-'));
         default:

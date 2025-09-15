@@ -105,8 +105,12 @@ export const VideoGenerationStep: React.FC<VideoGenerationStepProps> = ({
     music: 'epic',
     customPrompt: ''
   });
+
+  // 영상 모델 버전 설정
+  const [selectedVideoModel, setSelectedVideoModel] = useState<'veo-2.0' | 'veo-3.0-fast' | 'veo-3.0-standard'>('veo-3.0-fast');
   const [applyOptions, setApplyOptions] = useState(false);
-  
+  const [isGeneratingVideo, setIsGeneratingVideo] = useState(false);
+
   
   // 텍스트 참조 표시는 props로 받음
 
@@ -204,6 +208,43 @@ ${storySceneInput}
     }
   };
 
+  // 첨부된 이미지로 캐릭터 카드 추가
+  const handleAddCharacterImageFromFile = () => {
+    if (characterOutfitImages.length === 0) {
+      addNotification({
+        type: 'error',
+        title: '입력 오류',
+        message: '이미지를 첨부해주세요.',
+      });
+      return;
+    }
+
+    characterOutfitImages.forEach((file) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const imageData = e.target?.result as string;
+        const newCharacterImage = {
+          id: Date.now() + Math.random(),
+          input: characterOutfitInput || `첨부된 이미지: ${file.name}`,
+          image: imageData,
+          timestamp: new Date().toISOString(),
+        };
+        
+        setGeneratedCharacterImages(prev => [...prev, newCharacterImage]);
+      };
+      reader.readAsDataURL(file);
+    });
+
+    setCharacterOutfitImages([]);
+    setCharacterOutfitInput('');
+    
+    addNotification({
+      type: 'success',
+      title: '캐릭터 이미지 추가 완료',
+      message: '첨부된 이미지가 캐릭터 카드로 추가되었습니다.',
+    });
+  };
+
   // 배경 생성 (구조화된 AI 프롬프트 사용)
   const handleGenerateVideoBackground = async () => {
     if (!videoBackgroundInput.trim()) {
@@ -248,6 +289,59 @@ ${storySceneInput}
     }
   };
 
+  // 첨부된 이미지로 배경 카드 추가
+  const handleAddBackgroundImageFromFile = () => {
+    if (videoBackgroundImages.length === 0) {
+      addNotification({
+        type: 'error',
+        title: '입력 오류',
+        message: '이미지를 첨부해주세요.',
+      });
+      return;
+    }
+
+    videoBackgroundImages.forEach((file) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const imageData = e.target?.result as string;
+        const newBackground = {
+          id: Date.now() + Math.random(),
+          input: videoBackgroundInput || `첨부된 이미지: ${file.name}`,
+          image: imageData,
+          timestamp: new Date().toISOString(),
+        };
+        
+        setGeneratedVideoBackgrounds(prev => [...prev, newBackground]);
+      };
+      reader.readAsDataURL(file);
+    });
+
+    setVideoBackgroundImages([]);
+    setVideoBackgroundInput('');
+    
+    addNotification({
+      type: 'success',
+      title: '배경 이미지 추가 완료',
+      message: '첨부된 이미지가 배경 카드로 추가되었습니다.',
+    });
+  };
+
+  // 모델별 영상 생성 함수
+  const generateVideoWithModel = async (prompt: string, videoRatio: string, modelVersion: string) => {
+    // VideoGenerationService 임포트 및 사용
+    const { VideoGenerationService } = await import('../../services/ai/VideoGenerationService');
+    const videoService = new VideoGenerationService(
+      process.env.REACT_APP_GEMINI_API_KEY || '',
+      modelVersion as any
+    );
+    
+    return await videoService.generateVideo(prompt, videoRatio, {
+      duration: 8,
+      resolution: modelVersion === 'veo-3.0-standard' ? '1080p' : '720p'
+      // audioEnabled와 fps는 Gemini API에서 지원되지 않으므로 제거
+    });
+  };
+
   // AI 영상 생성
   const handleGenerateAIVideo = async () => {
     // 선택된 항목들만 사용
@@ -269,6 +363,13 @@ ${storySceneInput}
       });
       return;
     }
+    
+    setIsGeneratingVideo(true);
+    addNotification({
+      type: 'info',
+      title: '영상 생성 시작',
+      message: 'AI가 실제 영상과 오디오를 생성하고 있습니다. 최대 6분까지 소요될 수 있습니다...',
+    });
     
     try {
       // 프로젝트 개요에서 생성된 텍스트 참조
@@ -332,7 +433,8 @@ ${videoOptions.customPrompt}`;
 
 위의 모든 정보를 통합하여 각 컷별로 완성된 영상을 생성해주세요.`;
 
-      const videoResult = await googleAIService.generateVideo(prompt, videoRatio);
+      // 선택된 모델에 따라 영상 생성
+      const videoResult = await generateVideoWithModel(prompt, videoRatio, selectedVideoModel);
       
       const newVideo = {
         id: Date.now(),
@@ -351,14 +453,17 @@ ${videoOptions.customPrompt}`;
       addNotification({
         type: 'success',
         title: '영상 생성 완료',
-        message: '선택된 요소들을 바탕으로 AI 영상이 성공적으로 생성되었습니다.',
+        message: '선택된 요소들을 바탕으로 실제 영상이 성공적으로 생성되었습니다.',
       });
     } catch (error) {
+      console.error('Google AI 비디오 생성 오류:', error);
       addNotification({
         type: 'error',
         title: '영상 생성 실패',
-        message: '영상 생성 중 오류가 발생했습니다.',
+        message: `영상 생성 중 오류가 발생했습니다: ${error instanceof Error ? error.message : '알 수 없는 오류'}`,
       });
+    } finally {
+      setIsGeneratingVideo(false);
     }
   };
 
@@ -524,6 +629,7 @@ ${videoOptions.customPrompt}`;
         </Button>
       </div>
 
+
       {/* 2. 캐릭터 + 의상 + 이미지 */}
       <div className="space-y-3">
         <h3 className="font-medium text-gray-800">2. 캐릭터 + 의상 + 이미지</h3>
@@ -544,10 +650,15 @@ ${videoOptions.customPrompt}`;
         
         <div className="flex space-x-2">
           <Button className="flex-1" onClick={handleGenerateCharacterImage}>
-            이미지 생성
+            AI 생성
           </Button>
-          <Button variant="outline" className="flex-1">
-            입력
+          <Button 
+            variant="outline" 
+            className="flex-1"
+            onClick={handleAddCharacterImageFromFile}
+            disabled={characterOutfitImages.length === 0}
+          >
+            첨부 이미지 추가
           </Button>
         </div>
       </div>
@@ -574,8 +685,13 @@ ${videoOptions.customPrompt}`;
           <Button className="flex-1" onClick={handleGenerateVideoBackground}>
             AI 생성
           </Button>
-          <Button variant="outline" className="flex-1">
-            입력
+          <Button 
+            variant="outline" 
+            className="flex-1"
+            onClick={handleAddBackgroundImageFromFile}
+            disabled={videoBackgroundImages.length === 0}
+          >
+            첨부 이미지 추가
           </Button>
         </div>
       </div>
@@ -589,19 +705,105 @@ ${videoOptions.customPrompt}`;
           AI 영상 생성
         </h3>
         <p className="text-sm text-gray-600">
-          모든 요소를 통합하여 최종 영상을 생성합니다.
+          선택된 요소들을 통합하여 실제 영상을 생성합니다.
         </p>
+
+        {/* 영상 모델 선택 */}
+        <div className="space-y-3">
+          <label className="block text-sm font-medium text-gray-700">영상 생성 모델</label>
+          <div className="grid grid-cols-1 gap-3">
+            {[
+              {
+                value: 'veo-2.0',
+                name: 'Veo 2.0 (기본)',
+                description: '안정적이고 빠른 영상 생성',
+                features: ['무료', '빠른 생성', '시각적 전용'],
+                color: 'blue'
+              },
+              {
+                value: 'veo-3.0-fast',
+                name: 'Veo 3.0 Fast (빠른 생성)',
+                description: '고품질 영상을 빠르게 생성',
+                features: ['고품질', '빠른 생성'],
+                color: 'green'
+              },
+              {
+                value: 'veo-3.0-standard',
+                name: 'Veo 3.0 Standard (고품질)',
+                description: '최고 품질의 영상 생성',
+                features: ['최고 품질', '1080p'],
+                color: 'purple'
+              }
+            ].map((model) => (
+              <label
+                key={model.value}
+                className={`relative flex items-start p-3 border rounded-lg cursor-pointer transition-all ${
+                  selectedVideoModel === model.value
+                    ? `border-${model.color}-500 bg-${model.color}-50`
+                    : 'border-gray-200 hover:border-gray-300'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="videoModel"
+                  value={model.value}
+                  checked={selectedVideoModel === model.value}
+                  onChange={(e) => setSelectedVideoModel(e.target.value as any)}
+                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 mt-0.5"
+                />
+                <div className="ml-3 flex-1">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-medium text-gray-900">{model.name}</h4>
+                    <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                      model.color === 'blue' ? 'bg-blue-100 text-blue-800' :
+                      model.color === 'green' ? 'bg-green-100 text-green-800' :
+                      'bg-purple-100 text-purple-800'
+                    }`}>
+                      {model.features[0]}
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-600 mt-1">{model.description}</p>
+                  <div className="flex flex-wrap gap-1 mt-2">
+                    {model.features.map((feature, index) => (
+                      <span
+                        key={index}
+                        className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-700"
+                      >
+                        {feature}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </label>
+            ))}
+          </div>
+        </div>
+        <div className="text-xs text-gray-500 space-y-1">
+          <div>선택된 스토리: {selectedTextCards.size}개</div>
+          <div>선택된 캐릭터: {selectedCharacterImages.size}개</div>
+          <div>선택된 배경: {selectedVideoBackgrounds.size}개</div>
+        </div>
         <Button 
-          className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-medium"
+          className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed"
           onClick={handleGenerateAIVideo}
-          disabled={generatedTextCards.length === 0 || generatedCharacterImages.length === 0 || generatedVideoBackgrounds.length === 0}
+          disabled={selectedTextCards.size === 0 || selectedCharacterImages.size === 0 || selectedVideoBackgrounds.size === 0 || isGeneratingVideo}
         >
-          🎬 AI 영상 생성
+          {isGeneratingVideo ? '🎬 영상 생성 중...' : `🎬 AI 영상 생성 (${selectedVideoModel})`}
         </Button>
         
-        {(generatedTextCards.length === 0 || generatedCharacterImages.length === 0 || generatedVideoBackgrounds.length === 0) && (
+        {/* 선택된 모델 정보 표시 */}
+        <div className="text-xs text-gray-500 bg-gray-50 p-2 rounded">
+          <div className="font-medium">선택된 모델: {selectedVideoModel}</div>
+          <div>
+            {selectedVideoModel === 'veo-2.0' && '시각적 전용, 무료, 빠른 생성, 720p'}
+            {selectedVideoModel === 'veo-3.0-fast' && '고품질, 빠른 생성, 720p'}
+            {selectedVideoModel === 'veo-3.0-standard' && '최고 품질, 1080p'}
+          </div>
+        </div>
+        
+        {(selectedTextCards.size === 0 || selectedCharacterImages.size === 0 || selectedVideoBackgrounds.size === 0) && (
           <div className="text-xs text-gray-500 mt-2 text-center">
-            텍스트 카드, 캐릭터 이미지, 배경 이미지를 먼저 생성해주세요.
+            스토리, 캐릭터, 배경을 선택해주세요.
           </div>
         )}
       </div>
@@ -674,6 +876,7 @@ ${videoOptions.customPrompt}`;
               <option value="none">없음</option>
             </select>
           </div>
+
         </div>
 
         {/* 커스텀 프롬프트 */}

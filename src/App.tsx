@@ -49,6 +49,9 @@ export default function App() {
   const [generatedBackgrounds, setGeneratedBackgrounds] = useState<GeneratedBackground[]>([]);
   const [generatedSettingCuts, setGeneratedSettingCuts] = useState<GeneratedSettingCut[]>([]);
   
+  // 고급 이미지 생성 상태
+  const [generatedAdvancedImages, setGeneratedAdvancedImages] = useState<GeneratedCharacter[]>([]);
+  
   // 영상 생성 상태
   const [generatedTextCards, setGeneratedTextCards] = useState<GeneratedTextCard[]>([]);
   const [generatedCharacterImages, setGeneratedCharacterImages] = useState<GeneratedImage[]>([]);
@@ -78,7 +81,10 @@ export default function App() {
     generatedCharacters, setGeneratedCharacters,
     generatedBackgrounds, setGeneratedBackgrounds,
     generatedSettingCuts, setGeneratedSettingCuts,
-    generatedProjectData
+    generatedProjectData,
+    'google', // 기본값
+    '', // customSize 기본값
+    '' // additionalPrompt 기본값
   );
 
   const videoHandlers = useVideoHandlers(
@@ -161,6 +167,9 @@ export default function App() {
         setGeneratedBackgrounds={setGeneratedBackgrounds}
         generatedSettingCuts={generatedSettingCuts}
         setGeneratedSettingCuts={setGeneratedSettingCuts}
+        // 고급 이미지 생성 props
+        generatedAdvancedImages={generatedAdvancedImages}
+        setGeneratedAdvancedImages={setGeneratedAdvancedImages}
         // 영상 생성 props
         generatedTextCards={generatedTextCards}
         setGeneratedTextCards={setGeneratedTextCards}

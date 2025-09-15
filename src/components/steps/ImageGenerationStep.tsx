@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import Button from '../common/Button';
 import ImageUpload from '../common/ImageUpload';
-import { useUIStore } from '../../stores/uiStore';
-import { googleAIService } from '../../services/googleAIService';
+import { useImageHandlers } from '../../hooks/useImageHandlers';
+import { AIProvider } from '../../types/ai';
 
 interface GeneratedItem {
   id: number;
@@ -48,7 +48,6 @@ export const ImageGenerationStep: React.FC<ImageGenerationStepProps> = ({
   finalScenario,
   onNext
 }) => {
-  const { addNotification } = useUIStore();
   
   // 캐릭터 관련 상태
   const [characterInput, setCharacterInput] = useState('');
@@ -62,181 +61,112 @@ export const ImageGenerationStep: React.FC<ImageGenerationStepProps> = ({
   const [settingCut, setSettingCut] = useState('');
   const [attachedSettingImages, setAttachedSettingImages] = useState<File[]>([]);
 
-  // 캐릭터 생성 (직접적인 이미지 생성)
+  // 이미지 생성 API 선택 상태
+  const [imageGenerationAPI, setImageGenerationAPI] = useState<AIProvider>('google');
+  
+  // 나노 바나나 전용 옵션
+  const [customSize, setCustomSize] = useState('');
+  const [additionalPrompt, setAdditionalPrompt] = useState('');
+
+  // useImageHandlers 훅 사용
+  const imageHandlers = useImageHandlers(
+    generatedCharacters,
+    setGeneratedCharacters,
+    generatedBackgrounds,
+    setGeneratedBackgrounds,
+    generatedSettingCuts,
+    setGeneratedSettingCuts,
+    generatedProjectData,
+    imageGenerationAPI,
+    customSize,
+    additionalPrompt
+  );
+
+  // 캐릭터 생성
   const handleGenerateCharacter = async () => {
-    if (!characterInput.trim() && attachedCharacterImages.length === 0) {
-      addNotification({
-        type: 'error',
-        title: '입력 오류',
-        message: '캐릭터 설명을 입력하거나 이미지를 첨부해주세요.',
-      });
-      return;
-    }
-    
-    try {
-      // 프로젝트 데이터에서 캐릭터 프롬프트가 있으면 사용, 없으면 사용자 입력 사용
-      let imagePrompt = characterInput;
-      if (generatedProjectData?.imagePrompts?.character) {
-        imagePrompt = generatedProjectData.imagePrompts.character;
-      } else if (generatedProjectData?.characterPrompt) {
-        imagePrompt = generatedProjectData.characterPrompt;
-      }
-      
-      // 첨부된 이미지가 있으면 멀티모달 처리
-      let imageResult;
-      if (attachedCharacterImages.length > 0) {
-        // 첫 번째 첨부 이미지와 텍스트를 함께 사용
-        imageResult = await googleAIService.generateWithImage(attachedCharacterImages[0], imagePrompt);
-      } else {
-        // 텍스트만으로 이미지 생성
-        imageResult = await googleAIService.generateCharacterImage(imagePrompt);
-      }
-      
-      const newCharacter = {
-        id: Date.now(),
-        description: characterInput,
-        image: imageResult,
-        attachedImages: attachedCharacterImages,
-        timestamp: new Date().toISOString(),
-      };
-      
-      setGeneratedCharacters([...generatedCharacters, newCharacter]);
-      setCharacterInput("");
-      setAttachedCharacterImages([]);
-      
-      addNotification({
-        type: 'success',
-        title: '생성 완료',
-        message: '캐릭터 이미지가 생성되었습니다.',
-      });
-    } catch (error) {
-      console.error('캐릭터 생성 오류:', error);
-      addNotification({
-        type: 'error',
-        title: '생성 실패',
-        message: `캐릭터 이미지 생성에 실패했습니다: ${error instanceof Error ? error.message : 'Unknown error'}`,
-      });
-    }
+    await imageHandlers.handleGenerateCharacter(characterInput, attachedCharacterImages);
+    setCharacterInput("");
+    setAttachedCharacterImages([]);
   };
 
-  // 배경 생성 (직접적인 이미지 생성)
+  // 배경 생성
   const handleGenerateBackground = async () => {
-    if (!backgroundInput.trim() && attachedBackgroundImages.length === 0) {
-      addNotification({
-        type: 'error',
-        title: '입력 오류',
-        message: '배경 설명을 입력하거나 이미지를 첨부해주세요.',
-      });
-      return;
-    }
-    
-    try {
-      // 프로젝트 데이터에서 배경 프롬프트가 있으면 사용, 없으면 사용자 입력 사용
-      let imagePrompt = backgroundInput;
-      if (generatedProjectData?.imagePrompts?.background) {
-        imagePrompt = generatedProjectData.imagePrompts.background;
-      } else if (generatedProjectData?.scenarioPrompt) {
-        imagePrompt = generatedProjectData.scenarioPrompt;
-      }
-      
-      // 첨부된 이미지가 있으면 멀티모달 처리
-      let imageResult;
-      if (attachedBackgroundImages.length > 0) {
-        // 첫 번째 첨부 이미지와 텍스트를 함께 사용
-        imageResult = await googleAIService.generateBackgroundWithImage(attachedBackgroundImages[0], imagePrompt);
-      } else {
-        // 텍스트만으로 이미지 생성
-        imageResult = await googleAIService.generateBackgroundImage(imagePrompt);
-      }
-      
-      const newBackground = {
-        id: Date.now(),
-        description: backgroundInput,
-        image: imageResult,
-        attachedImages: attachedBackgroundImages,
-        timestamp: new Date().toISOString(),
-      };
-      
-      setGeneratedBackgrounds([...generatedBackgrounds, newBackground]);
-      setBackgroundInput("");
-      setAttachedBackgroundImages([]);
-      
-      addNotification({
-        type: 'success',
-        title: '생성 완료',
-        message: '배경 이미지가 생성되었습니다.',
-      });
-    } catch (error) {
-      console.error('배경 생성 오류:', error);
-      addNotification({
-        type: 'error',
-        title: '생성 실패',
-        message: `배경 이미지 생성에 실패했습니다: ${error instanceof Error ? error.message : 'Unknown error'}`,
-      });
-    }
+    await imageHandlers.handleGenerateBackground(backgroundInput, attachedBackgroundImages);
+    setBackgroundInput("");
+    setAttachedBackgroundImages([]);
   };
 
-  // 설정 컷 생성 (직접적인 이미지 생성)
+  // 설정 컷 생성
   const handleGenerateSettingCut = async () => {
-    if (!settingCut.trim() && attachedSettingImages.length === 0) {
-      addNotification({
-        type: 'error',
-        title: '입력 오류',
-        message: '설정 컷 설명을 입력하거나 이미지를 첨부해주세요.',
-      });
-      return;
-    }
-    
-    try {
-      // 프로젝트 데이터에서 설정 컷 프롬프트가 있으면 사용, 없으면 사용자 입력 사용
-      let imagePrompt = settingCut;
-      if (generatedProjectData?.imagePrompts?.setting) {
-        imagePrompt = generatedProjectData.imagePrompts.setting;
-      } else if (generatedProjectData?.scenarioPrompt) {
-        imagePrompt = generatedProjectData.scenarioPrompt;
-      }
-      
-      // 첨부된 이미지가 있으면 멀티모달 처리
-      let imageResult;
-      if (attachedSettingImages.length > 0) {
-        // 첫 번째 첨부 이미지와 텍스트를 함께 사용
-        imageResult = await googleAIService.generateSettingCutWithImage(attachedSettingImages[0], imagePrompt);
-      } else {
-        // 텍스트만으로 이미지 생성
-        imageResult = await googleAIService.generateSettingCutImage(imagePrompt);
-      }
-      
-      const newSettingCut = {
-        id: Date.now(),
-        description: settingCut,
-        image: imageResult,
-        attachedImages: attachedSettingImages,
-        timestamp: new Date().toISOString(),
-      };
-      
-      setGeneratedSettingCuts([...generatedSettingCuts, newSettingCut]);
-      setSettingCut("");
-      setAttachedSettingImages([]);
-      
-      addNotification({
-        type: 'success',
-        title: '생성 완료',
-        message: '설정 컷 이미지가 생성되었습니다.',
-      });
-    } catch (error) {
-      console.error('설정 컷 생성 오류:', error);
-      addNotification({
-        type: 'error',
-        title: '생성 실패',
-        message: `설정 컷 이미지 생성에 실패했습니다: ${error instanceof Error ? error.message : 'Unknown error'}`,
-      });
-    }
+    await imageHandlers.handleGenerateSettingCut(settingCut, attachedSettingImages);
+    setSettingCut("");
+    setAttachedSettingImages([]);
   };
 
   // 재생성 및 삭제 함수들은 오른쪽 본문의 카드에서 처리됨
 
   return (
     <div className="space-y-6">
+      {/* 이미지 생성 API 선택 */}
+      <div className="bg-white rounded-lg border p-4">
+        <h3 className="font-medium text-gray-800 mb-3">이미지 생성 API</h3>
+        <div className="space-y-3">
+          <div className="flex space-x-4">
+            <label className="flex items-center">
+              <input
+                type="radio"
+                name="imageAPI"
+                value="google"
+                checked={imageGenerationAPI === 'google'}
+                onChange={(e) => setImageGenerationAPI(e.target.value as AIProvider)}
+                className="mr-2"
+              />
+              <span className="text-sm">Google AI (Imagen)</span>
+            </label>
+            <label className="flex items-center">
+              <input
+                type="radio"
+                name="imageAPI"
+                value="nano-banana"
+                checked={imageGenerationAPI === 'nano-banana'}
+                onChange={(e) => setImageGenerationAPI(e.target.value as AIProvider)}
+                className="mr-2"
+              />
+              <span className="text-sm">나노 바나나 (Gemini 2.5 Flash Image)</span>
+            </label>
+          </div>
+          
+          {/* 나노 바나나 전용 옵션 */}
+          {imageGenerationAPI === 'nano-banana' && (
+            <div className="space-y-3 p-3 bg-yellow-50 rounded-md border border-yellow-200">
+              <h4 className="font-medium text-yellow-800 text-sm">나노 바나나 전용 옵션</h4>
+              <div className="space-y-2">
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">기타 사이즈 요청사항</label>
+                  <input
+                    type="text"
+                    value={customSize}
+                    onChange={(e) => setCustomSize(e.target.value)}
+                    placeholder="예: 1920x1080, 4K, 세로형 등"
+                    className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">추가 프롬프트</label>
+                  <textarea
+                    value={additionalPrompt}
+                    onChange={(e) => setAdditionalPrompt(e.target.value)}
+                    placeholder="추가로 원하는 스타일이나 요구사항을 입력하세요"
+                    rows={2}
+                    className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* 캐릭터 생성 */}
       <div className="space-y-3">
         <h3 className="font-medium text-gray-800">캐릭터 생성</h3>

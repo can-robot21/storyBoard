@@ -25,11 +25,13 @@ export const useAIServiceManager = () => {
     const googleApiKey = process.env.REACT_APP_GEMINI_API_KEY;
     const openaiApiKey = process.env.REACT_APP_OPENAI_API_KEY;
     const anthropicApiKey = process.env.REACT_APP_ANTHROPIC_API_KEY;
+    const nanoBananaApiKey = process.env.REACT_APP_GEMINI_API_KEY; // 나노 바나나는 Google AI 키 사용
     
     return {
       google: googleApiKey,
       openai: openaiApiKey,
-      anthropic: anthropicApiKey
+      anthropic: anthropicApiKey,
+      'nano-banana': nanoBananaApiKey
     };
   }, []);
 

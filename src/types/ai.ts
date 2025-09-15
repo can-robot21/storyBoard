@@ -1,7 +1,7 @@
 // AI 서비스 관련 타입들
 
 // AI 제공자 타입
-export type AIProvider = 'google' | 'openai' | 'anthropic';
+export type AIProvider = 'google' | 'openai' | 'anthropic' | 'nano-banana';
 
 // AI 모델 타입
 export type AIModel = 
@@ -10,7 +10,8 @@ export type AIModel =
   | 'gpt-4'
   | 'gpt-4-turbo'
   | 'claude-3-sonnet'
-  | 'claude-3-opus';
+  | 'claude-3-opus'
+  | 'gemini-2.5-flash-image-preview';
 
 // 이미지 생성 모델 타입
 export type ImageModel = 
@@ -18,13 +19,41 @@ export type ImageModel =
   | 'imagen-4.0-generate-001'
   | 'imagen-4.0-ultra-generate-001'
   | 'dall-e-3'
-  | 'dall-e-2';
+  | 'dall-e-2'
+  | 'gemini-2.5-flash-image-preview';
 
 // 영상 생성 모델 타입
 export type VideoModel = 
-  | 'veo-3.0-fast-generate-preview'
-  | 'veo-3.0-generate-preview'
+  | 'veo-2.0-generate-001'
+  | 'veo-3.0-fast-generate-001'
+  | 'veo-3.0-generate-001'
   | 'sora';
+
+// 영상 생성 모델 버전 타입
+export type VideoModelVersion = 'veo-2.0' | 'veo-3.0-fast' | 'veo-3.0-standard';
+
+// 영상 모델 설정 타입
+export interface VideoModelConfig {
+  version: VideoModelVersion;
+  model: VideoModel;
+  displayName: string;
+  description: string;
+  features: {
+    maxDuration: number;
+    maxResolution: string;
+    aspectRatios: string[];
+  };
+  pricing: {
+    tier: 'free' | 'paid';
+    costPerSecond?: number;
+    freeQuota?: number;
+  };
+  performance: {
+    generationSpeed: 'fast' | 'medium' | 'slow';
+    quality: 'standard' | 'high' | 'ultra';
+    reliability: number; // 0-100
+  };
+}
 
 // 기본 AI 생성 옵션
 export interface BaseAIOptions {
