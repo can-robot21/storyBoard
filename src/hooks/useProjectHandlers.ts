@@ -16,7 +16,9 @@ export const useProjectHandlers = (
   generatedProjectData: any,
   setGeneratedProjectData: (data: any) => void,
   currentStep: string,
-  setCurrentStep: (step: string) => void
+  setCurrentStep: (step: string) => void,
+  generatedCharacters?: any[],
+  setStepStatus?: (status: any) => void
 ) => {
   const { addNotification } = useUIStore();
   const [isGeneratingAll, setIsGeneratingAll] = useState(false);
@@ -159,6 +161,16 @@ ${story}
     } else if (currentStep === "이미지 생성") {
       setCurrentStep("영상 생성");
     }
+  };
+
+  // 다음 단계로 진행 가능한지 확인
+  const canProceedToNext = () => {
+    if (currentStep === "프로젝트 개요") {
+      return generatedProjectData && generatedProjectData.koreanCards && generatedProjectData.englishCards;
+    } else if (currentStep === "이미지 생성") {
+      return generatedCharacters && generatedCharacters.length > 0;
+    }
+    return false;
   };
 
   // 재생성 기능들
@@ -455,6 +467,7 @@ ${story}
     handleGenerateStorySummary,
     handleSaveScenario,
     handleNextStep,
+    canProceedToNext,
     isGeneratingAll,
     // 재생성 기능들
     handleRegenerateStory,
@@ -476,6 +489,8 @@ ${story}
     handleSaveScenarioPrompt,
     handleSaveStorySummary,
     handleSaveFinalScenario,
-    handleSaveReview
+    handleSaveReview,
+    // 단계 상태 관리
+    setStepStatus
   };
 };

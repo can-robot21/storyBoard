@@ -1,12 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useUIStore } from './stores/uiStore';
 import { Header } from './components/layout/Header';
 import { MainLayout } from './components/layout/MainLayout';
 import { AISettingsModal } from './components/common/AISettingsModal';
+import { AuthModal } from './components/common/AuthModal';
 import { useProjectHandlers } from './hooks/useProjectHandlers';
 import { useImageHandlers } from './hooks/useImageHandlers';
 import { useVideoHandlers } from './hooks/useVideoHandlers';
 import { useAIServiceManager } from './hooks/useAIServiceManager';
+import { AuthService } from './services/authService';
 import { 
   GeneratedCharacter, 
   GeneratedBackground, 
@@ -17,6 +19,7 @@ import {
   GeneratedProjectData
 } from './types/project';
 import { AIProvider } from './types/ai';
+import { User } from './types/auth';
 
 // const mainSteps = [
 //   "프로젝트 개요",
@@ -28,7 +31,28 @@ export default function App() {
   const { addNotification } = useUIStore();
   const [currentStep, setCurrentStep] = useState("프로젝트 개요");
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [showAISettings, setShowAISettings] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [authModalMode, setAuthModalMode] = useState<'login' | 'register' | 'profile'>('login');
+
+  // 인증 서비스 초기화
+  useEffect(() => {
+    const initializeAuth = async () => {
+      try {
+        await AuthService.initializeUsers();
+        const user = AuthService.getCurrentUser();
+        if (user) {
+          setCurrentUser(user);
+          setIsLoggedIn(true);
+        }
+      } catch (error) {
+        console.error('Auth initialization error:', error);
+      }
+    };
+    
+    initializeAuth();
+  }, []);
   
   // AI 서비스 관리
   const {
@@ -65,6 +89,28 @@ export default function App() {
   
   // UI 상태
   const [showTextResults, setShowTextResults] = useState(false);
+  const [showCutTextCards, setShowCutTextCards] = useState(false);
+  const [cutVisibility, setCutVisibility] = useState<{ [key: string]: boolean }>({});
+  
+  // 토큰 사용량 상태
+  const [tokenUsage, setTokenUsage] = useState({
+    imageGeneration: {
+      current: 0,
+      total: 0
+    },
+    videoGeneration: {
+      current: 0,
+      total: 0
+    }
+  });
+  
+  // 단계 상태 관리
+  const [stepStatus, setStepStatus] = useState({
+    scenarioGenerated: false,
+    aiReviewCompleted: false,
+    jsonCardsGenerated: false,
+    projectOverviewSaved: false
+  });
 
   // 핸들러 훅들
   const projectHandlers = useProjectHandlers(
@@ -74,7 +120,9 @@ export default function App() {
     storySummary, setStorySummary,
     finalScenario, setFinalScenario,
     generatedProjectData, setGeneratedProjectData,
-    currentStep, setCurrentStep
+    currentStep, setCurrentStep,
+    generatedCharacters,
+    setStepStatus
   );
 
   const imageHandlers = useImageHandlers(
@@ -83,8 +131,7 @@ export default function App() {
     generatedSettingCuts, setGeneratedSettingCuts,
     generatedProjectData,
     'google', // 기본값
-    '', // customSize 기본값
-    '' // additionalPrompt 기본값
+    '16:9' // aspectRatio 기본값
   );
 
   const videoHandlers = useVideoHandlers(
@@ -96,21 +143,46 @@ export default function App() {
   );
 
   const handleLogin = () => {
+    setAuthModalMode('login');
+    setShowAuthModal(true);
+  };
+
+  const handleRegister = () => {
+    setAuthModalMode('register');
+    setShowAuthModal(true);
+  };
+
+  const handleProfile = () => {
+    setAuthModalMode('profile');
+    setShowAuthModal(true);
+  };
+
+  const handleAuthSuccess = (user: User) => {
+    setCurrentUser(user);
     setIsLoggedIn(true);
+    setShowAuthModal(false);
     addNotification({
       type: 'success',
-      title: '로그인 성공',
-      message: '성공적으로 로그인했습니다.',
+      title: '인증 성공',
+      message: authModalMode === 'login' ? '로그인되었습니다.' : 
+               authModalMode === 'register' ? '회원가입이 완료되었습니다.' :
+               '회원정보가 수정되었습니다.'
     });
   };
 
   const handleLogout = () => {
+    AuthService.logout();
+    setCurrentUser(null);
     setIsLoggedIn(false);
     addNotification({
       type: 'info',
       title: '로그아웃',
-      message: '로그아웃되었습니다.',
+      message: '로그아웃되었습니다.'
     });
+  };
+
+  const handleAuthModalClose = () => {
+    setShowAuthModal(false);
   };
 
   const handleAISettingsClick = () => {
@@ -142,7 +214,10 @@ export default function App() {
         onLogin={handleLogin}
         onLogout={handleLogout}
         onAISettingsClick={handleAISettingsClick}
+        onProfileClick={handleProfile}
+        onRegister={handleRegister}
         selectedAIProvider={selectedProvider}
+        currentUser={currentUser}
       />
       
       <MainLayout 
@@ -193,6 +268,16 @@ export default function App() {
         // UI 상태
         showTextResults={showTextResults}
         setShowTextResults={setShowTextResults}
+        showCutTextCards={showCutTextCards}
+        setShowCutTextCards={setShowCutTextCards}
+        cutVisibility={cutVisibility}
+        setCutVisibility={setCutVisibility}
+        // 단계 상태
+        stepStatus={stepStatus}
+        setStepStatus={setStepStatus}
+        // 토큰 사용량
+        tokenUsage={tokenUsage}
+        setTokenUsage={setTokenUsage}
       />
       
       {/* AI 설정 모달 */}
@@ -202,6 +287,15 @@ export default function App() {
         selectedProvider={selectedProvider}
         onProviderChange={handleAIProviderChange}
         onSave={handleAISettingsSave}
+      />
+      
+      {/* 인증 모달 */}
+      <AuthModal
+        isOpen={showAuthModal}
+        onClose={handleAuthModalClose}
+        mode={authModalMode}
+        onSuccess={handleAuthSuccess}
+        currentUser={currentUser}
       />
     </div>
   );

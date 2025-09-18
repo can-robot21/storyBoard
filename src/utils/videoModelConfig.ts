@@ -68,7 +68,7 @@ export const VIDEO_MODEL_CONFIGS: Record<VideoModelVersion, VideoModelConfig> = 
 };
 
 // 기본 모델 버전
-export const DEFAULT_VIDEO_MODEL_VERSION: VideoModelVersion = 'veo-3.0-fast';
+export const DEFAULT_VIDEO_MODEL_VERSION: VideoModelVersion = 'veo-2.0';
 
 // 모델 버전별 설정 가져오기
 export const getVideoModelConfig = (version: VideoModelVersion): VideoModelConfig => {
@@ -107,8 +107,6 @@ export const compareVideoModels = (version1: VideoModelVersion, version2: VideoM
 
 // 모델 버전별 추천 사용 사례
 export const getRecommendedUseCase = (version: VideoModelVersion): string[] => {
-  const config = getVideoModelConfig(version);
-  
   switch (version) {
     case 'veo-2.0':
       return [

@@ -29,6 +29,7 @@ interface ImageGenerationStepProps {
   storySummary: string;
   finalScenario: string;
   onNext: () => void;
+  canProceedToNext?: () => boolean;
 }
 
 export const ImageGenerationStep: React.FC<ImageGenerationStepProps> = ({
@@ -46,7 +47,8 @@ export const ImageGenerationStep: React.FC<ImageGenerationStepProps> = ({
   scenarioPrompt,
   storySummary,
   finalScenario,
-  onNext
+  onNext,
+  canProceedToNext
 }) => {
   
   // 캐릭터 관련 상태
@@ -61,12 +63,11 @@ export const ImageGenerationStep: React.FC<ImageGenerationStepProps> = ({
   const [settingCut, setSettingCut] = useState('');
   const [attachedSettingImages, setAttachedSettingImages] = useState<File[]>([]);
 
-  // 이미지 생성 API 선택 상태
-  const [imageGenerationAPI, setImageGenerationAPI] = useState<AIProvider>('google');
+  // 이미지 생성 API 선택 상태 (Google AI만 사용)
+  const [imageGenerationAPI] = useState<AIProvider>('google');
   
-  // 나노 바나나 전용 옵션
-  const [customSize, setCustomSize] = useState('');
-  const [additionalPrompt, setAdditionalPrompt] = useState('');
+  // 이미지 비율 선택 상태
+  const [aspectRatio, setAspectRatio] = useState<string>('16:9');
 
   // useImageHandlers 훅 사용
   const imageHandlers = useImageHandlers(
@@ -78,8 +79,7 @@ export const ImageGenerationStep: React.FC<ImageGenerationStepProps> = ({
     setGeneratedSettingCuts,
     generatedProjectData,
     imageGenerationAPI,
-    customSize,
-    additionalPrompt
+    aspectRatio
   );
 
   // 캐릭터 생성
@@ -107,63 +107,66 @@ export const ImageGenerationStep: React.FC<ImageGenerationStepProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* 이미지 생성 API 선택 */}
+      {/* 이미지 생성 설정 */}
       <div className="bg-white rounded-lg border p-4">
-        <h3 className="font-medium text-gray-800 mb-3">이미지 생성 API</h3>
-        <div className="space-y-3">
-          <div className="flex space-x-4">
-            <label className="flex items-center">
-              <input
-                type="radio"
-                name="imageAPI"
-                value="google"
-                checked={imageGenerationAPI === 'google'}
-                onChange={(e) => setImageGenerationAPI(e.target.value as AIProvider)}
-                className="mr-2"
-              />
-              <span className="text-sm">Google AI (Imagen)</span>
-            </label>
-            <label className="flex items-center">
-              <input
-                type="radio"
-                name="imageAPI"
-                value="nano-banana"
-                checked={imageGenerationAPI === 'nano-banana'}
-                onChange={(e) => setImageGenerationAPI(e.target.value as AIProvider)}
-                className="mr-2"
-              />
-              <span className="text-sm">나노 바나나 (Gemini 2.5 Flash Image)</span>
-            </label>
+        <h3 className="font-medium text-gray-800 mb-3">이미지 생성 설정</h3>
+        <div className="space-y-4">
+          {/* API 선택 */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">생성 API</label>
+            <div className="flex items-center p-3 bg-blue-50 rounded-md border border-blue-200">
+              <span className="text-sm font-medium text-blue-800">Google AI (Imagen)</span>
+            </div>
           </div>
           
-          {/* 나노 바나나 전용 옵션 */}
-          {imageGenerationAPI === 'nano-banana' && (
-            <div className="space-y-3 p-3 bg-yellow-50 rounded-md border border-yellow-200">
-              <h4 className="font-medium text-yellow-800 text-sm">나노 바나나 전용 옵션</h4>
-              <div className="space-y-2">
-                <div>
-                  <label className="block text-xs text-gray-600 mb-1">기타 사이즈 요청사항</label>
-                  <input
-                    type="text"
-                    value={customSize}
-                    onChange={(e) => setCustomSize(e.target.value)}
-                    placeholder="예: 1920x1080, 4K, 세로형 등"
-                    className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  />
+          {/* 비율 선택 */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">이미지 비율</label>
+            <div className="space-y-2">
+              <label className="flex items-center p-3 border rounded-md cursor-pointer hover:bg-gray-50 transition-colors">
+                <input
+                  type="radio"
+                  name="aspectRatio"
+                  value="16:9"
+                  checked={aspectRatio === '16:9'}
+                  onChange={(e) => setAspectRatio(e.target.value)}
+                  className="mr-3"
+                />
+                <div className="flex-1">
+                  <div className="text-sm font-medium text-gray-800">16:9 (가로)</div>
+                  <div className="text-xs text-gray-500">일반적인 영상 비율</div>
                 </div>
-                <div>
-                  <label className="block text-xs text-gray-600 mb-1">추가 프롬프트</label>
-                  <textarea
-                    value={additionalPrompt}
-                    onChange={(e) => setAdditionalPrompt(e.target.value)}
-                    placeholder="추가로 원하는 스타일이나 요구사항을 입력하세요"
-                    rows={2}
-                    className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  />
+              </label>
+              <label className="flex items-center p-3 border rounded-md cursor-pointer hover:bg-gray-50 transition-colors">
+                <input
+                  type="radio"
+                  name="aspectRatio"
+                  value="9:16"
+                  checked={aspectRatio === '9:16'}
+                  onChange={(e) => setAspectRatio(e.target.value)}
+                  className="mr-3"
+                />
+                <div className="flex-1">
+                  <div className="text-sm font-medium text-gray-800">9:16 (세로)</div>
+                  <div className="text-xs text-gray-500">모바일/소셜미디어용</div>
                 </div>
-              </div>
+              </label>
+              <label className="flex items-center p-3 border rounded-md cursor-pointer hover:bg-gray-50 transition-colors">
+                <input
+                  type="radio"
+                  name="aspectRatio"
+                  value="1:1"
+                  checked={aspectRatio === '1:1'}
+                  onChange={(e) => setAspectRatio(e.target.value)}
+                  className="mr-3"
+                />
+                <div className="flex-1">
+                  <div className="text-sm font-medium text-gray-800">1:1 (정사각형)</div>
+                  <div className="text-xs text-gray-500">SNS용 정사각형</div>
+                </div>
+              </label>
             </div>
-          )}
+          </div>
         </div>
       </div>
 

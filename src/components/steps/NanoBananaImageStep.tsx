@@ -31,6 +31,7 @@ interface NanoBananaImageStepProps {
   storySummary: string;
   finalScenario: string;
   onNext: () => void;
+  canProceedToNext?: () => boolean;
 }
 
 export const NanoBananaImageStep: React.FC<NanoBananaImageStepProps> = ({
@@ -51,7 +52,8 @@ export const NanoBananaImageStep: React.FC<NanoBananaImageStepProps> = ({
   scenarioPrompt,
   storySummary,
   finalScenario,
-  onNext
+  onNext,
+  canProceedToNext
 }) => {
   
   // 캐릭터 관련 상태

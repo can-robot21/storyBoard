@@ -93,7 +93,7 @@ export class GoogleAIService {
   }
 
   // 이미지 생성 (캐릭터용) - 실제 Imagen API 사용
-  async generateCharacterImage(prompt: string): Promise<string> {
+  async generateCharacterImage(prompt: string, aspectRatio: string = '1:1'): Promise<string> {
     try {
       // 스토리보드 연계를 위한 상세한 프롬프트 생성
       const detailedPrompt = `Create a detailed character image for video production:
@@ -169,7 +169,7 @@ Style requirements:
   }
 
   // 배경 이미지 생성 - 실제 Imagen API 사용
-  async generateBackgroundImage(prompt: string): Promise<string> {
+  async generateBackgroundImage(prompt: string, aspectRatio: string = '16:9'): Promise<string> {
     try {
       const response = await this.ai.models.generateImages({
         model: 'imagen-4.0-generate-001',
@@ -214,7 +214,7 @@ Style requirements:
   }
 
   // 설정 컷 이미지 생성 - 실제 Imagen API 사용
-  async generateSettingCutImage(prompt: string): Promise<string> {
+  async generateSettingCutImage(prompt: string, aspectRatio: string = '16:9'): Promise<string> {
     try {
       const response = await this.ai.models.generateImages({
         model: 'imagen-4.0-ultra-generate-001',
@@ -418,7 +418,7 @@ Style requirements:
   }
 
   // 멀티모달 입력 처리 (이미지 + 텍스트) - 캐릭터 이미지 생성용
-  async generateWithImage(imageFile: File, textPrompt: string): Promise<string> {
+  async generateWithImage(imageFile: File, textPrompt: string, aspectRatio: string = '1:1'): Promise<string> {
     try {
       const imageData = await this.fileToBase64(imageFile);
       
@@ -469,7 +469,7 @@ Generate only the English prompt, no explanations.`;
   }
 
   // 멀티모달 입력 처리 (이미지 + 텍스트) - 배경 이미지 생성용
-  async generateBackgroundWithImage(imageFile: File, textPrompt: string): Promise<string> {
+  async generateBackgroundWithImage(imageFile: File, textPrompt: string, aspectRatio: string = '16:9'): Promise<string> {
     try {
       const imageData = await this.fileToBase64(imageFile);
       
@@ -520,7 +520,7 @@ Generate only the English prompt, no explanations.`;
   }
 
   // 멀티모달 입력 처리 (이미지 + 텍스트) - 설정 컷 이미지 생성용
-  async generateSettingCutWithImage(imageFile: File, textPrompt: string): Promise<string> {
+  async generateSettingCutWithImage(imageFile: File, textPrompt: string, aspectRatio: string = '16:9'): Promise<string> {
     try {
       const imageData = await this.fileToBase64(imageFile);
       

@@ -8,6 +8,10 @@ interface GeneratedTextCard {
   id: number;
   generatedText: string;
   timestamp: string;
+  sceneCommon?: string;
+  originalSceneCommon?: string;
+  story?: string;
+  cutCount?: number;
 }
 
 interface GeneratedImage {
@@ -24,6 +28,7 @@ interface GeneratedVideo {
   backgrounds: GeneratedImage[];
   projectTexts: string[];
   aiReviewTexts: string[];
+  sceneCommonSettings: string[];
   video: string;
   videoRatio: string;
   timestamp: string;
@@ -45,6 +50,10 @@ interface VideoGenerationStepProps {
   setSelectedCharacterImages: React.Dispatch<React.SetStateAction<Set<number>>>;
   selectedVideoBackgrounds: Set<number>;
   setSelectedVideoBackgrounds: React.Dispatch<React.SetStateAction<Set<number>>>;
+  // 컷별 텍스트카드 선택 상태
+  cutTextCardSelections: {[key: string]: Set<number>};
+  // 선택된 컷들 (영상 생성용)
+  selectedCuts: Set<string>;
   characterPrompt: string;
   scenarioPrompt: string;
   storySummary: string;
@@ -56,6 +65,7 @@ interface VideoGenerationStepProps {
   story: string;
   characterList: any[];
   onNext: () => void;
+  canProceedToNext?: () => boolean;
 }
 
 export const VideoGenerationStep: React.FC<VideoGenerationStepProps> = ({
@@ -73,6 +83,8 @@ export const VideoGenerationStep: React.FC<VideoGenerationStepProps> = ({
   setSelectedCharacterImages,
   selectedVideoBackgrounds,
   setSelectedVideoBackgrounds,
+  cutTextCardSelections,
+  selectedCuts,
   characterPrompt,
   scenarioPrompt,
   storySummary,
@@ -82,15 +94,27 @@ export const VideoGenerationStep: React.FC<VideoGenerationStepProps> = ({
   setShowTextResults,
   story,
   characterList,
-  onNext
+  onNext,
+  canProceedToNext
 }) => {
   const { addNotification } = useUIStore();
   
   // 영상 비율 설정 (1:1은 Veo API에서 지원되지 않음)
   const [videoRatio, setVideoRatio] = useState<'16:9' | '9:16'>('16:9');
   
-  // 입력 필드들
-  const [storySceneInput, setStorySceneInput] = useState('');
+  // 씬 공통설정 (단순화)
+  const [sceneCommonInput, setSceneCommonInput] = useState('');
+
+  // 컷 숫자 설정
+  const [cutCount, setCutCount] = useState(1);
+
+  // 스토리 입력 (컷별 이미지 생성 프롬프트)
+  const [storyInput, setStoryInput] = useState('');
+
+  // 텍스트 출력 제한
+  const [textLimit, setTextLimit] = useState(2000);
+
+  // 기존 입력 필드들 (호환성을 위해 유지)
   const [characterOutfitInput, setCharacterOutfitInput] = useState('');
   const [characterOutfitImages, setCharacterOutfitImages] = useState<File[]>([]);
   const [videoBackgroundInput, setVideoBackgroundInput] = useState('');
@@ -107,53 +131,202 @@ export const VideoGenerationStep: React.FC<VideoGenerationStepProps> = ({
   });
 
   // 영상 모델 버전 설정
-  const [selectedVideoModel, setSelectedVideoModel] = useState<'veo-2.0' | 'veo-3.0-fast' | 'veo-3.0-standard'>('veo-3.0-fast');
+  const [selectedVideoModel, setSelectedVideoModel] = useState<'veo-2.0' | 'veo-3.0-fast' | 'veo-3.0-standard'>('veo-2.0');
   const [applyOptions, setApplyOptions] = useState(false);
+  
+  // 텍스트 카드 편집 상태
+  const [editingCardId, setEditingCardId] = useState<number | null>(null);
+  const [editingCardText, setEditingCardText] = useState('');
   const [isGeneratingVideo, setIsGeneratingVideo] = useState(false);
 
+  // 텍스트 카드 편집 함수들
+  const handleEditCard = (cardId: number, currentText: string) => {
+    setEditingCardId(cardId);
+    setEditingCardText(currentText);
+  };
+
+  const handleSaveCardEdit = () => {
+    if (editingCardId !== null) {
+      setGeneratedTextCards(prev => 
+        prev.map(card => 
+          card.id === editingCardId 
+            ? { ...card, generatedText: editingCardText }
+            : card
+        )
+      );
+      setEditingCardId(null);
+      setEditingCardText('');
+      addNotification({
+        type: 'success',
+        title: '수정 완료',
+        message: '텍스트 카드가 수정되었습니다.',
+      });
+    }
+  };
+
+  const handleCancelCardEdit = () => {
+    setEditingCardId(null);
+    setEditingCardText('');
+  };
+
+  const handleDeleteCard = (cardId: number) => {
+    if (window.confirm('이 텍스트 카드를 삭제하시겠습니까?')) {
+      setGeneratedTextCards(prev => prev.filter(card => card.id !== cardId));
+      setSelectedTextCards(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(cardId);
+        return newSet;
+      });
+      addNotification({
+        type: 'info',
+        title: '삭제 완료',
+        message: '텍스트 카드가 삭제되었습니다.',
+      });
+    }
+  };
   
   // 텍스트 참조 표시는 props로 받음
 
   // 텍스트 카드 생성 (구조화된 AI 프롬프트 사용)
   const handleGenerateTextCard = async () => {
-    if (!storySceneInput.trim()) {
+    if (!storyInput.trim()) {
       addNotification({
         type: 'error',
         title: '입력 오류',
-        message: '스토리/장면을 입력해주세요.',
+        message: '스토리를 입력해주세요.',
       });
       return;
     }
 
     try {
-      // 간단한 AI 텍스트 생성
-      const textPrompt = `다음 장면을 바탕으로 영상 제작용 텍스트 카드를 생성해주세요:
+      // 컷별 카드 생성 형식의 AI 텍스트 생성
+      const textPrompt = `다음 스토리를 바탕으로 ${cutCount}컷 영상 제작용 텍스트 카드를 생성해주세요:
 
-${storySceneInput}
+**씬 공통설정:**
+${sceneCommonInput ? `- 공통 설정: ${sceneCommonInput}` : ''}
 
-영상 제작에 필요한 다음 요소들을 포함해주세요:
-- 장면 설명
-- 캐릭터 액션
-- 대사 (있는 경우)
-- 시각적 요소
-- 카메라 앵글 제안
-- 분위기와 감정`;
+**스토리:**
+${storyInput}
+
+=== 🚨 절대적 제한사항 🚨 ===
+⚠️ 생성되는 텍스트는 반드시 ${textLimit}자 이내여야 합니다.
+⚠️ ${textLimit}자를 초과하면 생성이 실패합니다.
+⚠️ 각 컷별 설명을 간결하고 명확하게 작성하세요.
+
+**중요한 출력 형식 요구사항:**
+반드시 다음 형식으로 출력해주세요 (공백과 마크다운 형식을 정확히 지켜주세요):
+
+--- **컷 1: [컷 제목]**
+
+**필수 항목:**
+* **캐릭터:** [캐릭터 설명]
+* **액션:** [액션 설명]  
+* **배경:** [배경 설명]
+* **대사:** [대사 내용]
+
+**추가 항목 (필요한 경우):**
+* **구도:** [구도 설명]
+* **조명:** [조명 설명]
+* **카메라 움직임:** [카메라 움직임 설명]
+
+**⚠️ 형식 주의사항:**
+1. * **항목명:** 형식에서 * 뒤에 공백은 정확히 1개만 사용
+2. **필수 항목:** 헤더는 반드시 포함
+3. 각 항목은 새로운 줄에서 시작
+4. 마크다운 형식을 정확히 준수
+
+--- **컷 2: [컷 제목]**
+
+**필수 항목:**
+* **캐릭터:** [캐릭터의 외모, 의상, 특징을 영어로 상세히 설명]
+* **액션:** [캐릭터의 구체적인 행동을 영어로 설명]
+* **배경:** [장면의 배경과 환경을 영어로 설명]
+* **대사:** [캐릭터의 대사를 한국어로 표시]
+
+**추가 항목 (필요한 경우):**
+* **구도:** [카메라 앵글과 구도를 영어로 설명]
+* **조명:** [조명과 분위기를 영어로 설명]
+* **카메라 움직임:** [카메라의 움직임을 영어로 설명]
+
+... (총 ${cutCount}컷까지)
+
+**중요한 지침:**
+1. 필수 항목은 모든 컷에 반드시 포함되어야 합니다.
+2. 추가 항목은 장면에 필요한 경우에만 포함하세요.
+3. 캐릭터, 액션, 배경은 영어로 작성하세요.
+4. 대사는 한국어로 작성하세요.
+5. 각 항목은 구체적이고 상세하게 작성하세요.
+
+**중요**: 반드시 ${textLimit}자 이내로 작성하고, 위의 --- **컷 X: [제목]** 형식을 정확히 따라주세요.`;
 
       const result = await googleAIService.generateText(textPrompt);
+      
+      // 씬 공통설정 추가 생성
+      let generatedSceneCommon = sceneCommonInput;
+      if (sceneCommonInput.trim()) {
+        try {
+          const sceneCommonPrompt = `다음 씬 공통설정을 더 상세하고 구체적으로 확장해주세요:
+
+${sceneCommonInput}
+
+다음 요소들을 포함하여 확장해주세요:
+- 전체적인 분위기와 무드
+- 시각적 스타일과 톤
+- 음악과 사운드 디자인
+- 색감과 조명의 기본 톤
+- 전체적인 카메라 워크 스타일
+
+**중요**: 반드시 ${Math.floor(textLimit * 0.3)}자 이내로 작성하세요.`;
+          
+          generatedSceneCommon = await googleAIService.generateText(sceneCommonPrompt);
+        } catch (error) {
+          console.warn('씬 공통설정 생성 실패:', error);
+          generatedSceneCommon = sceneCommonInput;
+        }
+      }
+      
+      // 스토리 추가 생성
+      let generatedStory = storyInput;
+      if (storyInput.trim()) {
+        try {
+          const storyPrompt = `다음 스토리를 더 상세하고 감정적으로 확장해주세요:
+
+${storyInput}
+
+다음 요소들을 포함하여 확장해주세요:
+- 캐릭터의 내면 심리와 감정
+- 장면의 긴장감과 드라마
+- 시각적 메타포와 상징
+- 감정적 몰입을 위한 세부 묘사
+- 스토리의 깊이와 의미
+
+**중요**: 반드시 ${Math.floor(textLimit * 0.4)}자 이내로 작성하세요.`;
+          
+          generatedStory = await googleAIService.generateText(storyPrompt);
+        } catch (error) {
+          console.warn('스토리 생성 실패:', error);
+          generatedStory = storyInput;
+        }
+      }
       
       const newTextCard = {
         id: Date.now(),
         generatedText: result,
         timestamp: new Date().toISOString(),
+        cutCount: cutCount,
+        sceneCommon: generatedSceneCommon,
+        story: generatedStory,
+        originalSceneCommon: sceneCommonInput,
+        originalStory: storyInput,
+        sceneNumber: generatedTextCards.length + 1 // 새로운 씬 번호
       };
       
       setGeneratedTextCards([...generatedTextCards, newTextCard]);
-      setStorySceneInput('');
       
       addNotification({
         type: 'success',
         title: '생성 완료',
-        message: '구조화된 텍스트 카드가 생성되었습니다.',
+        message: `씬${generatedTextCards.length + 1} (${cutCount}컷) 텍스트 카드가 생성되었습니다.`,
       });
     } catch (error) {
       addNotification({
@@ -326,8 +499,8 @@ ${storySceneInput}
     });
   };
 
-  // 모델별 영상 생성 함수
-  const generateVideoWithModel = async (prompt: string, videoRatio: string, modelVersion: string) => {
+  // 모델별 영상 생성 함수 - 이미지 참조 지원
+  const generateVideoWithModel = async (prompt: string, videoRatio: string, modelVersion: string, referenceImages?: string[]) => {
     // VideoGenerationService 임포트 및 사용
     const { VideoGenerationService } = await import('../../services/ai/VideoGenerationService');
     const videoService = new VideoGenerationService(
@@ -339,15 +512,115 @@ ${storySceneInput}
       duration: 8,
       resolution: modelVersion === 'veo-3.0-standard' ? '1080p' : '720p'
       // audioEnabled와 fps는 Gemini API에서 지원되지 않으므로 제거
-    });
+    }, referenceImages);
   };
 
   // AI 영상 생성
   const handleGenerateAIVideo = async () => {
-    // 선택된 항목들만 사용
-    const selectedTextCardsFiltered = generatedTextCards.filter(card => 
-      selectedTextCards.has(card.id)
-    );
+    // 선택된 컷들만 사용 (개별 컷 선택 기반)
+    const selectedCutsArray = Array.from(selectedCuts);
+    if (selectedCutsArray.length === 0) {
+      addNotification({
+        type: 'error',
+        title: '선택 오류',
+        message: '최소 1개의 컷을 선택해주세요.',
+      });
+      return;
+    }
+
+    // 선택된 컷들의 정보 수집
+    const allCutInfo: any[] = [];
+    const sceneCommonSettings: string[] = []; // 씬 공통설정 수집
+    
+    selectedCutsArray.forEach(cutKey => {
+      const [cardId, cutNumber] = cutKey.split('-');
+      const card = generatedTextCards.find(c => c.id === parseInt(cardId));
+      if (card) {
+        // 씬 공통설정 수집 (중복 제거)
+        if (card.sceneCommon && !sceneCommonSettings.includes(card.sceneCommon)) {
+          sceneCommonSettings.push(card.sceneCommon);
+        }
+        // 컷별 텍스트 파싱 함수 (간단한 버전)
+        const parseCutTexts = (text: string) => {
+          const cutPattern = /--- \*\*컷\s*(\d+):\s*([^*]+)\*\*/g;
+          const cuts: { [key: number]: { title: string; content: string; sections: any } } = {};
+          let match;
+
+          while ((match = cutPattern.exec(text)) !== null) {
+            const cutNum = parseInt(match[1]);
+            const cutTitle = match[2].trim();
+            const startIndex = match.index + match[0].length;
+            
+            const nextMatch = cutPattern.exec(text);
+            const endIndex = nextMatch ? nextMatch.index : text.length;
+            
+            const cutContent = text.substring(startIndex, endIndex).trim();
+            
+            const sections = {
+              character: '',
+              action: '',
+              background: '',
+              dialogue: '',
+              composition: '',
+              lighting: '',
+              cameraMovement: ''
+            };
+            
+            // 개선된 파싱 패턴들
+            const patterns = {
+              character: [/\*\s*\*\*캐릭터:\*\*\s*([\s\S]*?)(?=\*\s*\*\*|$)/],
+              action: [/\*\s*\*\*액션:\*\*\s*([\s\S]*?)(?=\*\s*\*\*|$)/],
+              background: [/\*\s*\*\*배경:\*\*\s*([\s\S]*?)(?=\*\s*\*\*|$)/],
+              dialogue: [/\*\s*\*\*대사:\*\*\s*([\s\S]*?)(?=\*\s*\*\*|$)/],
+              composition: [/\*\s*\*\*구도:\*\*\s*([\s\S]*?)(?=\*\s*\*\*|$)/],
+              lighting: [/\*\s*\*\*조명:\*\*\s*([\s\S]*?)(?=\*\s*\*\*|$)/],
+              cameraMovement: [/\*\s*\*\*카메라 움직임:\*\*\s*([\s\S]*?)(?=\*\s*\*\*|$)/]
+            };
+
+            Object.keys(patterns).forEach(sectionKey => {
+              for (const pattern of patterns[sectionKey as keyof typeof patterns]) {
+                const match = cutContent.match(pattern);
+                if (match) {
+                  sections[sectionKey as keyof typeof sections] = match[1].trim();
+                  break;
+                }
+              }
+            });
+            
+            cuts[cutNum] = {
+              title: cutTitle,
+              content: cutContent,
+              sections: sections
+            };
+            
+            cutPattern.lastIndex = endIndex;
+          }
+
+          return cuts;
+        };
+
+        const cutTexts = parseCutTexts(card.generatedText || '');
+        const cut = cutTexts[parseInt(cutNumber)];
+        if (cut) {
+          allCutInfo.push({
+            cutNumber: parseInt(cutNumber),
+            title: cut.title,
+            content: cut.content,
+            sections: cut.sections,
+            textCardId: card.id,
+            // 컷의 모든 섹션을 통합한 텍스트
+            integratedText: `컷 ${cutNumber}: ${cut.title}
+캐릭터: ${cut.sections.character || '없음'}
+액션: ${cut.sections.action || '없음'}
+배경: ${cut.sections.background || '없음'}
+대사: ${cut.sections.dialogue || '없음'}
+구도: ${cut.sections.composition || '없음'}
+조명: ${cut.sections.lighting || '없음'}
+카메라 움직임: ${cut.sections.cameraMovement || '없음'}`
+          });
+        }
+      }
+    });
     const selectedCharacterImagesFiltered = generatedCharacterImages.filter(img => 
       selectedCharacterImages.has(img.id)
     );
@@ -355,11 +628,11 @@ ${storySceneInput}
       selectedVideoBackgrounds.has(bg.id)
     );
 
-    if (selectedTextCardsFiltered.length === 0 || selectedCharacterImagesFiltered.length === 0 || selectedBackgroundsFiltered.length === 0) {
+    if (allCutInfo.length === 0 || selectedCharacterImagesFiltered.length === 0 || selectedBackgroundsFiltered.length === 0) {
       addNotification({
         type: 'error',
         title: '선택 오류',
-        message: '최소 1개씩 텍스트 카드, 캐릭터 이미지, 배경 이미지를 선택해주세요.',
+        message: '최소 1개씩 컷, 캐릭터 이미지, 배경 이미지를 선택해주세요.',
       });
       return;
     }
@@ -390,6 +663,23 @@ ${storySceneInput}
         if (videoGroup?.videoOptimization) aiReviewTexts.push(`통합 영상 최적화: ${videoGroup.videoOptimization}`);
       }
 
+      // 선택된 이미지들에서 참조 이미지 추출
+      const referenceImages: string[] = [];
+      
+      // 캐릭터 이미지 참조 추가
+      selectedCharacterImagesFiltered.forEach(img => {
+        if (img.image) {
+          referenceImages.push(img.image);
+        }
+      });
+      
+      // 배경 이미지 참조 추가
+      selectedBackgroundsFiltered.forEach(bg => {
+        if (bg.image) {
+          referenceImages.push(bg.image);
+        }
+      });
+
       // 기본 프롬프트 구성
       let prompt = `다음 선택된 요소들과 프로젝트 개요 텍스트를 바탕으로 컷별 영상을 생성해주세요:
 
@@ -399,14 +689,33 @@ ${projectTexts.join('\n\n')}
 === AI 검토 결과 ===
 ${aiReviewTexts.join('\n\n')}
 
-=== 선택된 스토리/장면 (컷별) ===
-${selectedTextCardsFiltered.map((card, index) => `컷 ${index + 1}: ${card.generatedText}`).join('\n\n')}
+=== 씬 공통설정 ===
+${sceneCommonSettings.length > 0 ? 
+  sceneCommonSettings.map((setting, index) => `씬 ${index + 1} 공통설정:\n${setting}`).join('\n\n') : 
+  '씬 공통설정이 없습니다.'}
+
+=== 선택된 컷들의 완전한 정보 ===
+${allCutInfo.length > 0 ? 
+  allCutInfo.map(cut => `컷 ${cut.cutNumber}: ${cut.title}
+캐릭터: ${cut.sections.character || '없음'}
+액션: ${cut.sections.action || '없음'}
+배경: ${cut.sections.background || '없음'}
+대사: ${cut.sections.dialogue || '없음'}
+구도: ${cut.sections.composition || '없음'}
+조명: ${cut.sections.lighting || '없음'}
+카메라 움직임: ${cut.sections.cameraMovement || '없음'}`).join('\n\n') : 
+  '선택된 컷 정보가 없습니다.'}
 
 === 선택된 캐릭터 이미지 ===
 ${selectedCharacterImagesFiltered.map(img => img.input).join(', ')}
 
 === 선택된 배경 ===
 ${selectedBackgroundsFiltered.map(bg => bg.input).join(', ')}
+
+=== 참조 이미지 정보 ===
+${referenceImages.length > 0 ? 
+  `총 ${referenceImages.length}개의 참조 이미지가 제공됩니다. 이 이미지들을 참고하여 일관된 스타일과 캐릭터, 배경을 유지하여 영상을 생성해주세요.` : 
+  '참조 이미지가 없습니다. 텍스트 설명만을 바탕으로 영상을 생성해주세요.'}
 
 === 영상 설정 ===
 영상 비율: ${videoRatio}`;
@@ -433,16 +742,17 @@ ${videoOptions.customPrompt}`;
 
 위의 모든 정보를 통합하여 각 컷별로 완성된 영상을 생성해주세요.`;
 
-      // 선택된 모델에 따라 영상 생성
-      const videoResult = await generateVideoWithModel(prompt, videoRatio, selectedVideoModel);
+      // 선택된 모델에 따라 영상 생성 (참조 이미지 포함)
+      const videoResult = await generateVideoWithModel(prompt, videoRatio, selectedVideoModel, referenceImages);
       
       const newVideo = {
         id: Date.now(),
-        textCards: selectedTextCardsFiltered,
+        textCards: allCutInfo,
         characterImages: selectedCharacterImagesFiltered,
         backgrounds: selectedBackgroundsFiltered,
         projectTexts: projectTexts,
         aiReviewTexts: aiReviewTexts,
+        sceneCommonSettings: sceneCommonSettings,
         video: videoResult,
         videoRatio: videoRatio,
         timestamp: new Date().toISOString()
@@ -467,121 +777,11 @@ ${videoOptions.customPrompt}`;
     }
   };
 
-  // 재생성 함수들
-  const handleRegenerateTextCard = async (cardId: number) => {
-    try {
-      const textCard = generatedTextCards.find(card => card.id === cardId);
-      if (!textCard) return;
 
-      const textResult = await googleAIService.generateText(textCard.generatedText);
-      
-      setGeneratedTextCards((prev: GeneratedTextCard[]) =>
-        prev.map((card: GeneratedTextCard) =>
-          card.id === cardId
-            ? { ...card, generatedText: textResult, timestamp: new Date().toISOString() }
-            : card
-        )
-      );
-      
-      addNotification({
-        type: 'success',
-        title: '재생성 완료',
-        message: '텍스트 카드가 재생성되었습니다.',
-      });
-    } catch (error) {
-      addNotification({
-        type: 'error',
-        title: '재생성 실패',
-        message: '텍스트 카드 재생성에 실패했습니다.',
-      });
-    }
-  };
 
-  const handleRegenerateCharacterImage = async (imageId: number) => {
-    try {
-      const characterImage = generatedCharacterImages.find(img => img.id === imageId);
-      if (!characterImage) return;
 
-      const imageResult = await googleAIService.generateCharacterImage(characterImage.input);
-      
-      setGeneratedCharacterImages((prev: GeneratedImage[]) =>
-        prev.map((img: GeneratedImage) =>
-          img.id === imageId
-            ? { ...img, image: imageResult, timestamp: new Date().toISOString() }
-            : img
-        )
-      );
-      
-      addNotification({
-        type: 'success',
-        title: '재생성 완료',
-        message: '캐릭터 이미지가 재생성되었습니다.',
-      });
-    } catch (error) {
-      addNotification({
-        type: 'error',
-        title: '재생성 실패',
-        message: '캐릭터 이미지 재생성에 실패했습니다.',
-      });
-    }
-  };
 
-  const handleRegenerateVideoBackground = async (backgroundId: number) => {
-    try {
-      const background = generatedVideoBackgrounds.find(bg => bg.id === backgroundId);
-      if (!background) return;
 
-      const imageResult = await googleAIService.generateBackgroundImage(background.input);
-      
-      setGeneratedVideoBackgrounds((prev: GeneratedImage[]) =>
-        prev.map((bg: GeneratedImage) =>
-          bg.id === backgroundId
-            ? { ...bg, image: imageResult, timestamp: new Date().toISOString() }
-            : bg
-        )
-      );
-      
-      addNotification({
-        type: 'success',
-        title: '재생성 완료',
-        message: '배경 이미지가 재생성되었습니다.',
-      });
-    } catch (error) {
-      addNotification({
-        type: 'error',
-        title: '재생성 실패',
-        message: '배경 이미지 재생성에 실패했습니다.',
-      });
-    }
-  };
-
-  // 삭제 함수들
-  const handleDeleteTextCard = (cardId: number) => {
-    setGeneratedTextCards((prev: GeneratedTextCard[]) => prev.filter((card: GeneratedTextCard) => card.id !== cardId));
-    addNotification({
-      type: 'info',
-      title: '삭제 완료',
-      message: '텍스트 카드가 삭제되었습니다.',
-    });
-  };
-
-  const handleDeleteCharacterImage = (imageId: number) => {
-    setGeneratedCharacterImages((prev: GeneratedImage[]) => prev.filter((img: GeneratedImage) => img.id !== imageId));
-    addNotification({
-      type: 'info',
-      title: '삭제 완료',
-      message: '캐릭터 이미지가 삭제되었습니다.',
-    });
-  };
-
-  const handleDeleteVideoBackground = (backgroundId: number) => {
-    setGeneratedVideoBackgrounds((prev: GeneratedImage[]) => prev.filter((bg: GeneratedImage) => bg.id !== backgroundId));
-    addNotification({
-      type: 'info',
-      title: '삭제 완료',
-      message: '배경 이미지가 삭제되었습니다.',
-    });
-  };
 
 
   return (
@@ -614,25 +814,70 @@ ${videoOptions.customPrompt}`;
         <p className="text-xs text-gray-500 mt-1">1:1 비율은 현재 지원되지 않습니다.</p>
       </div>
 
-      {/* 1. 스토리/장면 입력 */}
+      {/* 1. 씬 공통설정 */}
       <div className="space-y-3">
-        <h3 className="font-medium text-gray-800">1. 스토리/장면 입력 (컷별 텍스트 생성)</h3>
+        <h3 className="font-medium text-gray-800">1. 씬 공통설정</h3>
         <textarea
-          value={storySceneInput}
-          onChange={(e) => setStorySceneInput(e.target.value)}
-          placeholder="스토리나 장면을 입력하세요 (컷별로 텍스트 카드가 생성됩니다)"
+          value={sceneCommonInput}
+          onChange={(e) => setSceneCommonInput(e.target.value)}
+          placeholder="씬 공통설정을 입력하세요 (선택사항)"
           rows={3}
           className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
+      </div>
+
+      {/* 2. 컷 숫자 설정 */}
+      <div className="space-y-3">
+        <h3 className="font-medium text-gray-800">2. 컷 숫자 설정</h3>
+        <div className="flex items-center gap-2">
+          <input
+            type="number"
+            value={cutCount}
+            onChange={(e) => setCutCount(Number(e.target.value))}
+            min="1"
+            max="10"
+            className="w-20 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          <span className="text-sm text-gray-600">컷</span>
+        </div>
+      </div>
+
+      {/* 3. 텍스트 출력 제한 */}
+      <div className="space-y-3">
+        <h3 className="font-medium text-gray-800">3. 텍스트 출력 제한</h3>
+        <div className="flex items-center gap-2">
+          <input
+            type="number"
+            value={textLimit}
+            onChange={(e) => setTextLimit(Number(e.target.value))}
+            min="500"
+            max="5000"
+            className="w-24 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          <span className="text-sm text-gray-600">자</span>
+        </div>
+        <p className="text-xs text-gray-500">AI 생성 텍스트의 최대 길이를 설정합니다 (기본: 2000자)</p>
+      </div>
+
+      {/* 4. 스토리 입력 - 컷별 이미지 생성 프롬프트 */}
+      <div className="space-y-3">
+        <h3 className="font-medium text-gray-800">4. 스토리 입력 - 컷별 이미지 생성 프롬프트</h3>
+        <textarea
+          value={storyInput}
+          onChange={(e) => setStoryInput(e.target.value)}
+          placeholder="스토리를 입력하세요 (컷별 이미지 생성 프롬프트가 생성됩니다)"
+          rows={4}
+          className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
         <Button className="w-full" onClick={handleGenerateTextCard}>
-          AI 생성
+          AI 생성 텍스트 ({cutCount}컷, {textLimit}자 제한)
         </Button>
       </div>
 
 
-      {/* 2. 캐릭터 + 의상 + 이미지 */}
+      {/* 5. 캐릭터 + 의상 + 이미지 */}
       <div className="space-y-3">
-        <h3 className="font-medium text-gray-800">2. 캐릭터 + 의상 + 이미지</h3>
+        <h3 className="font-medium text-gray-800">5. 캐릭터 + 의상 + 이미지</h3>
         <textarea
           value={characterOutfitInput}
           onChange={(e) => setCharacterOutfitInput(e.target.value)}
@@ -663,9 +908,9 @@ ${videoOptions.customPrompt}`;
         </div>
       </div>
 
-      {/* 3. 배경 생성 */}
+      {/* 6. 배경 생성 */}
       <div className="space-y-3">
-        <h3 className="font-medium text-gray-800">3. 배경 생성</h3>
+        <h3 className="font-medium text-gray-800">6. 배경 생성</h3>
         <textarea
           value={videoBackgroundInput}
           onChange={(e) => setVideoBackgroundInput(e.target.value)}
@@ -698,11 +943,11 @@ ${videoOptions.customPrompt}`;
 
       {/* 생성 결과는 오른쪽 본문에 표시되므로 왼쪽에서는 제거 */}
 
-      {/* AI 영상 생성 */}
+      {/* 7. AI 영상 생성 */}
       <div className="space-y-3 p-4 bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg border border-purple-200">
         <h3 className="font-medium text-gray-800 flex items-center gap-2">
           <span className="text-purple-600">🎬</span>
-          AI 영상 생성
+          7. AI 영상 생성
         </h3>
         <p className="text-sm text-gray-600">
           선택된 요소들을 통합하여 실제 영상을 생성합니다.
@@ -779,14 +1024,14 @@ ${videoOptions.customPrompt}`;
           </div>
         </div>
         <div className="text-xs text-gray-500 space-y-1">
-          <div>선택된 스토리: {selectedTextCards.size}개</div>
+          <div>선택된 컷: {selectedCuts.size}개</div>
           <div>선택된 캐릭터: {selectedCharacterImages.size}개</div>
           <div>선택된 배경: {selectedVideoBackgrounds.size}개</div>
         </div>
         <Button 
           className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed"
           onClick={handleGenerateAIVideo}
-          disabled={selectedTextCards.size === 0 || selectedCharacterImages.size === 0 || selectedVideoBackgrounds.size === 0 || isGeneratingVideo}
+          disabled={selectedCuts.size === 0 || selectedCharacterImages.size === 0 || selectedVideoBackgrounds.size === 0 || isGeneratingVideo}
         >
           {isGeneratingVideo ? '🎬 영상 생성 중...' : `🎬 AI 영상 생성 (${selectedVideoModel})`}
         </Button>
@@ -801,9 +1046,9 @@ ${videoOptions.customPrompt}`;
           </div>
         </div>
         
-        {(selectedTextCards.size === 0 || selectedCharacterImages.size === 0 || selectedVideoBackgrounds.size === 0) && (
+        {(selectedCuts.size === 0 || selectedCharacterImages.size === 0 || selectedVideoBackgrounds.size === 0) && (
           <div className="text-xs text-gray-500 mt-2 text-center">
-            스토리, 캐릭터, 배경을 선택해주세요.
+            컷, 캐릭터, 배경을 선택해주세요.
           </div>
         )}
       </div>

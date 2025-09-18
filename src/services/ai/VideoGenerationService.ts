@@ -23,19 +23,30 @@ export class VideoGenerationService {
     return getVideoModelConfig(this.currentModelVersion);
   }
 
-  // 영상 생성 (버전별 최적화)
+  // 영상 생성 (버전별 최적화) - 이미지 참조 지원
   async generateVideo(
     prompt: string, 
     videoRatio: string = '16:9',
     customOptions?: Partial<{
       duration: number;
       resolution: string;
-    }>
+    }>,
+    referenceImages?: string[] // Base64 이미지 배열
   ): Promise<string> {
     const modelConfig = this.getCurrentModelConfig();
     
+    // 이미지 참조가 있는 경우 프롬프트에 추가
+    let finalPrompt = prompt;
+    if (referenceImages && referenceImages.length > 0) {
+      const imageReferences = referenceImages.map((img, index) => 
+        `참조 이미지 ${index + 1}: ${img}`
+      ).join('\n\n');
+      
+      finalPrompt = `${prompt}\n\n=== 참조 이미지 ===\n${imageReferences}`;
+    }
+    
     // 모델별 최적화된 프롬프트 생성
-    const optimizedPrompt = await this.createOptimizedPrompt(prompt, videoRatio, modelConfig);
+    const optimizedPrompt = await this.createOptimizedPrompt(finalPrompt, videoRatio, modelConfig);
     
     // 모델별 설정 적용
     const videoConfig = this.createVideoConfig(modelConfig, videoRatio, customOptions);

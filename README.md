@@ -1,6 +1,6 @@
-# AI 기반 스토리→이미지→영상 제작 워크플로우 툴 v2.1
+# AI 기반 스토리→이미지→영상 제작 워크플로우 툴 v2.3
 
-## 📋 프로젝트 개요 (2025-09-14 기준)
+## 📋 프로젝트 개요 (2025-09-17 기준)
 
 AI 기반 프로젝트 파이프라인 툴로, **스토리 입력 → 캐릭터/배경 이미지 생성 → 컷별 영상 생성**까지의 전체 워크플로우를 관리하는 웹 애플리케이션입니다.
 
@@ -27,20 +27,26 @@ frontend/
 │   │   │   ├── ProgressTracker.tsx # 진행률 추적기
 │   │   │   ├── StreamingText.tsx # 스트리밍 텍스트 컴포넌트
 │   │   │   ├── FormattedText.tsx # 포맷된 텍스트 표시
-│   │   │   └── AISettingsModal.tsx # AI 설정 모달
+│   │   │   ├── AISettingsModal.tsx # AI 설정 모달
+│   │   │   ├── AuthModal.tsx   # 사용자 인증 모달
+│   │   │   └── ProjectReferenceSection.tsx # 프로젝트 참고 섹션
 │   │   ├── layout/             # 레이아웃 컴포넌트
 │   │   │   ├── Header.tsx      # 헤더 컴포넌트
 │   │   │   └── MainLayout.tsx  # 메인 레이아웃 컴포넌트
 │   │   └── steps/              # 단계별 컴포넌트
 │   │       ├── ProjectOverviewStep.tsx # 프로젝트 개요 단계
 │   │       ├── ImageGenerationStep.tsx # 이미지 생성 단계
+│   │       ├── NanoBananaImageStep.tsx # 나노바나나 이미지 생성 단계
 │   │       └── VideoGenerationStep.tsx # 영상 생성 단계
 │   ├── hooks/                  # 커스텀 훅
 │   │   ├── useProject.ts       # 프로젝트 관련 훅
 │   │   ├── useAIService.ts     # AI 서비스 훅
+│   │   ├── useAIServiceManager.ts # AI 서비스 관리 훅
 │   │   ├── useProjectHandlers.ts # 프로젝트 핸들러 훅
 │   │   ├── useImageHandlers.ts # 이미지 핸들러 훅
-│   │   └── useVideoHandlers.ts # 영상 핸들러 훅
+│   │   ├── useVideoHandlers.ts # 영상 핸들러 훅
+│   │   ├── useImageHandlers.ts # 이미지 핸들러 훅
+│   │   └── useDatabase.ts      # 데이터베이스 훅
 │   ├── services/               # 비즈니스 로직 서비스
 │   │   ├── ai/                 # AI 서비스
 │   │   │   ├── BaseAIService.ts # AI 서비스 기본 클래스
@@ -48,8 +54,7 @@ frontend/
 │   │   │   ├── OpenAIService.ts # OpenAI 서비스
 │   │   │   ├── AIServiceFactory.ts # AI 서비스 팩토리
 │   │   │   └── PromptValidationService.ts # 프롬프트 검증 서비스
-│   │   ├── database/           # 데이터베이스 서비스
-│   │   │   └── DatabaseService.ts # 데이터베이스 서비스
+│   │   ├── authService.ts      # 사용자 인증 서비스
 │   │   ├── googleAIService.ts  # Google AI 통합 서비스
 │   │   ├── api.ts             # API 서비스
 │   │   ├── characterService.ts # 캐릭터 관련 서비스
@@ -62,11 +67,13 @@ frontend/
 │   │   ├── project.ts         # 프로젝트 타입 정의
 │   │   ├── common.ts          # 공통 타입 정의
 │   │   ├── api.ts             # API 타입 정의
-│   │   └── ai.ts              # AI 관련 타입 정의
+│   │   ├── ai.ts              # AI 관련 타입 정의
+│   │   └── auth.ts            # 인증 관련 타입 정의
 │   └── utils/                 # 유틸리티 함수
 │       ├── constants.ts       # 상수 정의
 │       ├── helpers.ts         # 유틸리티 함수
-│       └── downloadUtils.ts   # 다운로드 유틸리티
+│       ├── downloadUtils.ts   # 다운로드 유틸리티
+│       └── videoModelConfig.ts # 영상 모델 설정
 ```
 
 ### 2. 현재 기능 구현 상태
@@ -74,427 +81,179 @@ frontend/
 #### ✅ 완료된 기능
 - **프로젝트 개요**: AI 텍스트 생성 (스토리, 캐릭터, 시나리오)
 - **이미지 생성**: Google AI Studio를 통한 이미지 생성 (캐릭터, 배경, 설정컷)
+- **나노바나나 이미지 생성**: Gemini 2.5 Flash Image Preview를 통한 고급 이미지 생성
 - **영상 생성**: 컷별 영상 생성 및 관리 (선택 기능, 영상 옵션)
+- **사용자 인증**: 로그인, 회원가입, 프로필 관리
 - **상태 관리**: Zustand를 통한 전역 상태 관리
 - **UI/UX**: 반응형 디자인 및 진행률 추적
 - **파일 다운로드**: 텍스트, 이미지, 영상 파일 다운로드 기능
 - **선택 기능**: 영상 생성 시 항목별 선택 기능
 
 #### ⚠️ 개선이 필요한 부분
-- **App.tsx 거대화**: 3908줄의 단일 파일로 인한 유지보수 어려움
-- **컴포넌트 분리 부족**: 일부 컴포넌트에서 UI 로직과 비즈니스 로직 혼재
-- **AI 서비스 단일화**: Google AI만 지원, 확장성 부족
 - **데이터 저장**: 로컬 상태만 사용, 영구 저장 불가
+- **AI 서비스 확장**: Google AI 외 다른 서비스 지원 확대
+- **에러 처리**: 상세한 에러 메시지 및 복구 로직 개선
 
-## 🏗️ App.tsx 리팩토링 구조 분석
+## 🎬 메뉴별 기능 상세 분석
 
-### 1. 전체 아키텍처 개선
+### 1. 프로젝트 개요 메뉴
 
-#### **리팩토링 전 (v1.x)**
-- **단일 파일**: 3908줄의 거대한 App.tsx
-- **혼재된 로직**: UI 로직과 비즈니스 로직이 한 파일에 혼재
-- **유지보수 어려움**: 코드 수정 시 전체 파일 영향
-- **재사용성 부족**: 중복 코드 다수 존재
-
-#### **리팩토링 후 (v2.1)**
-- **모듈화된 구조**: 200줄의 깔끔한 App.tsx
-- **관심사 분리**: UI 로직과 비즈니스 로직 완전 분리
-- **커스텀 훅 활용**: 각 기능별 핸들러 훅으로 분리
-- **타입 안정성**: TypeScript 타입 정의 완전 적용
-
-### 2. App.tsx 코드 구조 분석
-
-#### **Import 구조**
-```typescript
-// React 및 상태 관리
-import React, { useState } from 'react';
-import { useUIStore } from './stores/uiStore';
-
-// 레이아웃 컴포넌트
-import { Header } from './components/layout/Header';
-import { MainLayout } from './components/layout/MainLayout';
-import { AISettingsModal } from './components/common/AISettingsModal';
-
-// 커스텀 훅 (비즈니스 로직)
-import { useProjectHandlers } from './hooks/useProjectHandlers';
-import { useImageHandlers } from './hooks/useImageHandlers';
-import { useVideoHandlers } from './hooks/useVideoHandlers';
-import { useAIServiceManager } from './hooks/useAIServiceManager';
-
-// TypeScript 타입 정의
-import { 
-  GeneratedCharacter, GeneratedBackground, GeneratedSettingCut,
-  GeneratedTextCard, GeneratedImage, GeneratedVideo, GeneratedProjectData
-} from './types/project';
-import { AIProvider } from './types/ai';
-```
-
-#### **상태 관리 구조**
-```typescript
-// 1. 기본 UI 상태
-const [currentStep, setCurrentStep] = useState("프로젝트 개요");
-const [isLoggedIn, setIsLoggedIn] = useState(false);
-const [showAISettings, setShowAISettings] = useState(false);
-
-// 2. AI 서비스 관리
-const { selectedProvider, changeAIService } = useAIServiceManager();
-
-// 3. 프로젝트 개요 상태 (5개 상태)
-const [story, setStory] = useState("");
-const [characterList, setCharacterList] = useState<any[]>([]);
-const [scenarioPrompt, setScenarioPrompt] = useState("");
-const [storySummary, setStorySummary] = useState("");
-const [finalScenario, setFinalScenario] = useState("");
-const [generatedProjectData, setGeneratedProjectData] = useState<GeneratedProjectData | null>(null);
-
-// 4. 이미지 생성 상태 (3개 상태)
-const [generatedCharacters, setGeneratedCharacters] = useState<GeneratedCharacter[]>([]);
-const [generatedBackgrounds, setGeneratedBackgrounds] = useState<GeneratedBackground[]>([]);
-const [generatedSettingCuts, setGeneratedSettingCuts] = useState<GeneratedSettingCut[]>([]);
-
-// 5. 영상 생성 상태 (4개 상태)
-const [generatedTextCards, setGeneratedTextCards] = useState<GeneratedTextCard[]>([]);
-const [generatedCharacterImages, setGeneratedCharacterImages] = useState<GeneratedImage[]>([]);
-const [generatedVideoBackgrounds, setGeneratedVideoBackgrounds] = useState<GeneratedImage[]>([]);
-const [generatedVideos, setGeneratedVideos] = useState<GeneratedVideo[]>([]);
-
-// 6. 영상 생성 선택 상태 (3개 상태)
-const [selectedTextCards, setSelectedTextCards] = useState<Set<number>>(new Set());
-const [selectedCharacterImages, setSelectedCharacterImages] = useState<Set<number>>(new Set());
-const [selectedVideoBackgrounds, setSelectedVideoBackgrounds] = useState<Set<number>>(new Set());
-
-// 7. UI 상태
-const [showTextResults, setShowTextResults] = useState(false);
-```
-
-#### **핸들러 훅 구조**
-```typescript
-// 프로젝트 핸들러 (프로젝트 개요 관련)
-const projectHandlers = useProjectHandlers(
-  story, setStory,
-  characterList, setCharacterList,
-  scenarioPrompt, setScenarioPrompt,
-  storySummary, setStorySummary,
-  finalScenario, setFinalScenario,
-  generatedProjectData, setGeneratedProjectData,
-  currentStep, setCurrentStep
-);
-
-// 이미지 핸들러 (이미지 생성 관련)
-const imageHandlers = useImageHandlers(
-  generatedCharacters, setGeneratedCharacters,
-  generatedBackgrounds, setGeneratedBackgrounds,
-  generatedSettingCuts, setGeneratedSettingCuts,
-  generatedProjectData
-);
-
-// 영상 핸들러 (영상 생성 관련)
-const videoHandlers = useVideoHandlers(
-  generatedTextCards, setGeneratedTextCards,
-  generatedCharacterImages, setGeneratedCharacterImages,
-  generatedVideoBackgrounds, setGeneratedVideoBackgrounds,
-  generatedVideos, setGeneratedVideos,
-  generatedProjectData
-);
-```
-
-#### **이벤트 핸들러 구조**
-```typescript
-// 인증 관련 핸들러
-const handleLogin = () => { /* 로그인 로직 */ };
-const handleLogout = () => { /* 로그아웃 로직 */ };
-
-// AI 설정 관련 핸들러
-const handleAISettingsClick = () => { /* AI 설정 모달 열기 */ };
-const handleAISettingsClose = () => { /* AI 설정 모달 닫기 */ };
-const handleAIProviderChange = async (provider: AIProvider) => { /* AI 서비스 변경 */ };
-const handleAISettingsSave = () => { /* AI 설정 저장 */ };
-```
-
-#### **컴포넌트 렌더링 구조**
-```typescript
-return (
-  <div className="h-screen flex flex-col bg-gray-50">
-    {/* 헤더 컴포넌트 */}
-    <Header
-      currentStep={currentStep}
-      onStepChange={setCurrentStep}
-      isLoggedIn={isLoggedIn}
-      onLogin={handleLogin}
-      onLogout={handleLogout}
-      onAISettingsClick={handleAISettingsClick}
-      selectedAIProvider={selectedProvider}
-    />
-    
-    {/* 메인 레이아웃 컴포넌트 */}
-    <MainLayout 
-      currentStep={currentStep}
-      // 프로젝트 개요 props (6개)
-      story={story} setStory={setStory}
-      characterList={characterList} setCharacterList={setCharacterList}
-      scenarioPrompt={scenarioPrompt} setScenarioPrompt={setScenarioPrompt}
-      storySummary={storySummary} setStorySummary={setStorySummary}
-      finalScenario={finalScenario} setFinalScenario={setFinalScenario}
-      generatedProjectData={generatedProjectData} setGeneratedProjectData={setGeneratedProjectData}
-      
-      // 이미지 생성 props (3개)
-      generatedCharacters={generatedCharacters} setGeneratedCharacters={setGeneratedCharacters}
-      generatedBackgrounds={generatedBackgrounds} setGeneratedBackgrounds={setGeneratedBackgrounds}
-      generatedSettingCuts={generatedSettingCuts} setGeneratedSettingCuts={setGeneratedSettingCuts}
-      
-      // 영상 생성 props (4개)
-      generatedTextCards={generatedTextCards} setGeneratedTextCards={setGeneratedTextCards}
-      generatedCharacterImages={generatedCharacterImages} setGeneratedCharacterImages={setGeneratedCharacterImages}
-      generatedVideoBackgrounds={generatedVideoBackgrounds} setGeneratedVideoBackgrounds={setGeneratedVideoBackgrounds}
-      generatedVideos={generatedVideos} setGeneratedVideos={setGeneratedVideos}
-      
-      // 영상 생성 선택 상태 (3개)
-      selectedTextCards={selectedTextCards} setSelectedTextCards={setSelectedTextCards}
-      selectedCharacterImages={selectedCharacterImages} setSelectedCharacterImages={setSelectedCharacterImages}
-      selectedVideoBackgrounds={selectedVideoBackgrounds} setSelectedVideoBackgrounds={setSelectedVideoBackgrounds}
-      
-      // 핸들러들 (3개)
-      projectHandlers={projectHandlers}
-      imageHandlers={imageHandlers}
-      videoHandlers={videoHandlers}
-      
-      // UI 상태 (1개)
-      showTextResults={showTextResults} setShowTextResults={setShowTextResults}
-    />
-    
-    {/* AI 설정 모달 */}
-    <AISettingsModal
-      isOpen={showAISettings}
-      onClose={handleAISettingsClose}
-      selectedProvider={selectedProvider}
-      onProviderChange={handleAIProviderChange}
-      onSave={handleAISettingsSave}
-    />
-  </div>
-);
-```
-
-### 3. 리팩토링 효과 분석
-
-#### **코드 품질 개선**
-- **가독성**: 200줄의 깔끔한 코드로 가독성 대폭 향상
-- **유지보수성**: 각 기능별로 분리되어 수정 시 영향 범위 최소화
-- **재사용성**: 커스텀 훅으로 비즈니스 로직 재사용 가능
-- **테스트 용이성**: 각 훅별로 독립적인 테스트 가능
-
-#### **성능 최적화**
-- **메모이제이션**: 각 훅에서 필요한 상태만 관리
-- **렌더링 최적화**: 상태 변경 시 해당 컴포넌트만 리렌더링
-- **번들 크기**: 코드 분할로 초기 로딩 시간 단축
-
-#### **개발 생산성**
-- **디버깅**: 각 기능별로 독립적인 디버깅 가능
-- **협업**: 여러 개발자가 동시에 다른 기능 개발 가능
-- **확장성**: 새로운 기능 추가 시 기존 코드 영향 최소화
-
-### 4. 핸들러 훅별 기능 분석
-
-#### **useProjectHandlers**
-- **기능**: 프로젝트 개요 관련 모든 비즈니스 로직
-- **상태**: story, characterList, scenarioPrompt, storySummary, finalScenario, generatedProjectData
-- **핸들러**: AI 텍스트 생성, 프로젝트 데이터 관리, 단계 전환
-
-#### **useImageHandlers**
-- **기능**: 이미지 생성 관련 모든 비즈니스 로직
-- **상태**: generatedCharacters, generatedBackgrounds, generatedSettingCuts
-- **핸들러**: AI 이미지 생성, 이미지 관리, 다운로드 기능
-
-#### **useVideoHandlers**
-- **기능**: 영상 생성 관련 모든 비즈니스 로직
-- **상태**: generatedTextCards, generatedCharacterImages, generatedVideoBackgrounds, generatedVideos
-- **핸들러**: AI 영상 생성, 선택 기능, 영상 옵션 설정, 다운로드 기능
-
-#### **useAIServiceManager**
-- **기능**: AI 서비스 관리 및 전환
-- **상태**: selectedProvider
-- **핸들러**: AI 서비스 변경, 설정 관리
-
-### 5. 타입 안정성 분석
-
-#### **TypeScript 타입 정의**
-```typescript
-// 프로젝트 관련 타입
-import { 
-  GeneratedCharacter,    // 생성된 캐릭터 타입
-  GeneratedBackground,   // 생성된 배경 타입
-  GeneratedSettingCut,   // 생성된 설정컷 타입
-  GeneratedTextCard,     // 생성된 텍스트 카드 타입
-  GeneratedImage,        // 생성된 이미지 타입
-  GeneratedVideo,        // 생성된 영상 타입
-  GeneratedProjectData   // 생성된 프로젝트 데이터 타입
-} from './types/project';
-
-// AI 관련 타입
-import { AIProvider } from './types/ai';
-```
-
-#### **타입 안정성 효과**
-- **컴파일 타임 에러 검출**: 개발 중 타입 오류 사전 발견
-- **자동 완성**: IDE에서 정확한 자동 완성 제공
-- **리팩토링 안전성**: 타입 변경 시 영향 범위 자동 검출
-- **문서화 효과**: 타입 정의가 코드의 문서 역할
-
-## 🔧 기능별 상세 분석
-
-### 1. 프로젝트 개요 단계 (ProjectOverviewStep)
-
-#### 메뉴 구조
-- **입력 필드**:
-  - `story`: 기본 스토리 입력
-  - `characterList`: 캐릭터 목록 관리
-  - `scenarioPrompt`: 시나리오 프롬프트 입력
-  - `storySummary`: 500자 스토리 정리 (자동 생성)
-  - `finalScenario`: 최종 시나리오 (AI 검토 후 생성)
-
-#### AI 생성 기능
-  - **개별 생성**: 스토리/캐릭터/시나리오 프롬프트 개별 생성
-- **통합 AI 생성**: 모든 프롬프트를 한 번에 생성
-- **최종 시나리오 생성**: AI 검토 및 최종 시나리오 생성
+#### 📝 주요 기능
+- **스토리 입력**: 기본 스토리 텍스트 입력
+- **캐릭터 관리**: 캐릭터 추가/삭제 및 설명 관리
+- **시나리오 생성**: AI를 통한 시나리오 프롬프트 생성
+- **500자 스토리 정리**: 자동으로 스토리를 500자로 요약
+- **최종 시나리오**: AI 검토 및 최종 시나리오 생성
 - **프로젝트 개요 저장**: 국문/영문 카드 생성
 
-#### 프롬프트 양식
-```typescript
-// 스토리 프롬프트 생성
-const storyPrompt = `다음 스토리를 바탕으로 영상 제작용 스토리 프롬프트를 생성해주세요:
-${story}
+#### 🎯 UI 구성
+- **왼쪽 입력 영역**: 5단계 입력 폼
+  1. 스토리 기본 설정
+  2. 캐릭터 설정 (추가/삭제 기능)
+  3. 시나리오용 프롬프트 AI 생성
+  4. 장소와 에피소드 핵심 상황
+  5. 시나리오 추가 설정
+- **오른쪽 결과 영역**: 
+  - 프로젝트 개요 저장 결과 (맨 하단)
+  - 프로젝트 참고 섹션 (국문/영문 항목별 분류)
 
-주요 요소:
-- 스토리 라인
-- 영상 스타일
-- 시각적 요소
-- 감정적 요소`;
+#### 🔧 핵심 기능
+- **텍스트 길이 제한**: AI 생성 시 텍스트 길이 제한 적용
+- **단계별 활성화**: 이전 단계 완료 시 다음 단계 활성화
+- **JSON 카드 생성**: 국문/영문 카드 자동 생성
+- **삭제 기능**: 프로젝트 개요 삭제 시 2단계로 복귀
 
-// 캐릭터 프롬프트 생성
-const characterPrompt = `다음 캐릭터 정보를 바탕으로 영상 제작용 캐릭터 설정 프롬프트를 생성해주세요:
-${characterList.join(', ')}
+### 2. 이미지 생성 메뉴
 
-캐릭터 설정:
-- 외모 특징
-- 성격 특성
-- 의상 스타일
-- 행동 패턴`;
+#### 📝 주요 기능
+- **Google AI (Imagen)**: 기본 이미지 생성 API
+- **이미지 비율 선택**: 16:9, 9:16, 1:1 (세로 배치)
+- **캐릭터 이미지 생성**: 텍스트 설명 또는 이미지 업로드
+- **배경 이미지 생성**: 텍스트 설명 또는 이미지 업로드
+- **설정 컷 이미지 생성**: 텍스트 설명 또는 이미지 업로드
 
-// 시나리오 프롬프트 생성
-const scenarioPrompt = `다음 정보를 바탕으로 영상 제작용 시나리오 프롬프트를 생성해주세요:
-스토리: ${story}
-캐릭터: ${characterList.join(', ')}
+#### 🎯 UI 구성
+- **왼쪽 입력 영역**: 
+  - API 선택 (Google AI 고정)
+  - 이미지 비율 선택 (세로 배치)
+  - 각 항목별 입력 폼 및 이미지 업로드
+- **오른쪽 결과 영역**:
+  - 토큰 사용량 표시
+  - 생성된 이미지 카드 (API 표시 포함)
+  - 개별/전체 재생성 및 저장 기능
 
-시나리오 구성:
-- 장면별 구성
-- 대사 및 내레이션
-- 시각적 연출
-- 감정적 흐름`;
-```
-
-### 2. 이미지 생성 단계 (ImageGenerationStep)
-
-#### 메뉴 구조
-- **생성 항목**:
-  - **캐릭터 이미지**: 텍스트 설명 또는 이미지 업로드로 생성
-  - **배경 이미지**: 텍스트 설명 또는 이미지 업로드로 생성
-  - **설정 컷 이미지**: 텍스트 설명 또는 이미지 업로드로 생성
-
-#### AI 생성 기능
-- **Google Imagen 4.0 API**: 실제 이미지 생성
+#### 🔧 핵심 기능
 - **멀티모달 생성**: 텍스트 + 이미지 조합 생성
 - **비율 최적화**: 캐릭터(1:1), 배경/설정컷(16:9)
+- **API 표시**: 생성된 이미지에 사용된 API 표시
 - **에러 처리**: API 응답 구조 다양성 대응
 
-#### 프롬프트 양식
-```typescript
-// 캐릭터 이미지 생성
-const characterPrompt = `Create a detailed character image: ${description}
-Style: Animation, high quality, detailed facial features
-Aspect ratio: 1:1
-Additional requirements: ${attachedImages.length > 0 ? 'Reference the attached images' : ''}`;
+### 3. 이미지 생성/나노 바나나 메뉴
 
-// 배경 이미지 생성
-const backgroundPrompt = `Create a detailed background image: ${description}
-Style: High quality, cinematic lighting, detailed environment
-Aspect ratio: 16:9
-Additional requirements: ${attachedImages.length > 0 ? 'Reference the attached images' : ''}`;
+#### 📝 주요 기능
+- **Gemini 2.5 Flash Image Preview**: 고급 이미지 생성
+- **커스텀 사이즈**: 사용자 정의 이미지 크기 설정
+- **추가 프롬프트**: 세부 요구사항 지정
+- **이미지 스타일**: realistic, cartoon, anime, 3d, watercolor, oil_painting
+- **이미지 품질**: high, standard, ultra
 
-// 설정 컷 이미지 생성
-const settingPrompt = `Create a detailed setting cut image: ${description}
-Style: High quality, cinematic composition, detailed architectural design
-Aspect ratio: 16:9
-Additional requirements: ${attachedImages.length > 0 ? 'Reference the attached images' : ''}`;
-```
+#### 🎯 UI 구성
+- **왼쪽 입력 영역**:
+  - 나노바나나 전용 헤더
+  - 고급 옵션 설정 (스타일, 품질, 비율)
+  - 커스텀 사이즈 및 추가 프롬프트 입력
+- **오른쪽 결과 영역**:
+  - 토큰 사용량 표시
+  - 고급 이미지 생성 결과
+  - 개별/전체 재생성 및 저장 기능
 
-### 3. 영상 생성 단계 (VideoGenerationStep)
+#### 🔧 핵심 기능
+- **고급 이미지 생성**: 모달을 통한 단계별 이미지 생성
+- **멀티모달 지원**: 텍스트 + 이미지 참조 생성
+- **커스텀 설정**: 사용자 정의 크기 및 스타일
+- **품질 선택**: 다양한 품질 옵션 제공
 
-#### 메뉴 구조
-- **입력 필드**:
-  - `storySceneInput`: 스토리/장면 입력
-  - `characterOutfitInput`: 캐릭터/의상 입력
-  - `videoBackgroundInput`: 영상 배경 입력
+### 4. 영상 생성 메뉴
 
-#### AI 생성 기능
-- **텍스트 카드 생성**: 스토리/장면 기반 텍스트 카드 생성
+#### 📝 주요 기능
+- **씬 공통설정**: 전체 씬에 적용되는 공통 설정
+- **컷 숫자 설정**: 기본 1컷, 사용자 정의 가능
+- **스토리 입력**: 컷별 이미지 생성 프롬프트 생성
+- **텍스트 출력 제한**: 500-5000자 범위 설정 (기본 2000자)
+- **AI 텍스트 생성**: 구조화된 컷별 텍스트 생성
 - **캐릭터 이미지 생성**: 캐릭터/의상 기반 이미지 생성
 - **영상 배경 생성**: 영상 배경 이미지 생성
 - **AI 영상 생성**: 선택된 항목들로 최종 영상 생성
 
-#### 영상 옵션 설정
-- **스타일**: 애니메이션, 실사, 만화, 픽사
-- **무드**: 밝은, 어두운, 신비로운, 드라마틱
-- **카메라 워크**: 정적, 팬, 줌, 트래킹
-- **음악**: 액션, 드라마, 코미디, 모험
-- **커스텀 프롬프트**: 사용자 정의 추가 프롬프트
+#### 🎯 UI 구성
+- **왼쪽 입력 영역**: 
+  1. 씬 공통설정 (단일 입력 필드)
+  2. 컷 숫자 설정 (기본 1, 편집 가능)
+  3. 스토리 입력 - 컷별 이미지 생성 프롬프트 생성
+  4. 텍스트 출력 제한 (500-5000자)
+  5. 캐릭터 + 의상 + 이미지
+  6. 배경 생성
+  7. AI 영상 생성
+- **오른쪽 결과 영역**:
+  - 토큰 사용량 표시
+  - 씬 설정 결과 (씬별 메인 블록)
+  - 씬 공통설정, 스토리, 컷별 상세 표시
+  - 필수/추가 항목 구조화 표시
+  - 개별/전체 재생성 및 저장 기능
 
-#### 프롬프트 양식
-```typescript
-// 텍스트 카드 생성
-const textCardPrompt = `다음 스토리/장면을 바탕으로 영상 제작용 텍스트 카드를 생성해주세요:
-${storySceneInput}
+#### 🔧 핵심 기능
+- **구조화된 출력**: 필수/추가 항목으로 분류된 컷별 설명
+- **씬별 관리**: 씬 단위로 그룹화된 컷 관리
+- **감추기/보이기**: 씬별, 컷별 개별 토글 기능
+- **영상 모델 선택**: VEO 2.0 (기본), VEO 3.0 Fast, VEO 3.0 Standard
+- **선택 기능**: 텍스트 카드, 캐릭터 이미지, 영상 배경 선택
 
-컷별로 나누어 상세한 텍스트 카드를 만들어주세요.`;
+## 🔐 사용자 인증 시스템
 
-// AI 영상 생성
-const videoPrompt = `Create a video based on the following elements:
-Text Cards: ${selectedTextCards.map(id => textCards.find(c => c.id === id)?.generatedText).join(' ')}
-Character Images: ${selectedCharacterImages.map(id => characters.find(c => c.id === id)?.description).join(' ')}
-Background Images: ${selectedVideoBackgrounds.map(id => backgrounds.find(b => b.id === id)?.description).join(' ')}
+### 📝 주요 기능
+- **로그인**: 이메일/비밀번호 로그인
+- **회원가입**: 이름, 이메일, 비밀번호, API 키 설정
+- **프로필 관리**: 회원정보 수정 및 API 키 관리
+- **하드코딩된 관리자**: star612.net@gmail.com / star6120
 
-Video Options:
-- Style: ${videoOptions.style}
-- Mood: ${videoOptions.mood}
-- Camera Work: ${videoOptions.cameraWork}
-- Music: ${videoOptions.music}
-- Custom Prompt: ${videoOptions.customPrompt}
+### 🎯 UI 구성
+- **헤더**: 로그인 상태에 따른 버튼 표시
+  - 로그인 전: [로그인], [회원가입] 버튼
+  - 로그인 후: 사용자명, [프로필], [로그아웃] 버튼
+- **인증 모달**: 로그인/회원가입/프로필 수정 통합 모달
+- **API 키 관리**: Google, OpenAI, Midjourney, Anthropic API 키 설정
 
-Aspect Ratio: ${videoRatio}`;
-```
+### 🔧 핵심 기능
+- **로컬 스토리지**: 사용자 데이터 로컬 저장
+- **세션 관리**: 로그인 상태 유지
+- **API 키 관리**: 개별 사용자별 API 키 설정
+- **폼 검증**: 이메일 형식, 비밀번호 길이 검증
 
-## 🚀 주요 개선사항 (v2.1)
+## 🚀 주요 개선사항 (v2.3)
 
-### 1. 영상 생성 메뉴 개선
-- **선택 기능**: 텍스트 카드, 캐릭터 이미지, 영상 배경 선택 기능 추가
-- **영상 옵션**: 스타일, 무드, 카메라 워크, 음악, 커스텀 프롬프트 설정
-- **비율 제한**: 1:1 비율 제거 (API 지원 불가)
-- **중복 제거**: 왼쪽 하단 중복 출력 제거
+### 1. 영상 생성 메뉴 대폭 개선
+- **단순화된 입력**: 복잡한 옵션을 단순한 입력 필드로 변경
+- **구조화된 출력**: 필수/추가 항목으로 분류된 컷별 설명
+- **씬별 관리**: 씬 단위로 그룹화된 컷 관리 시스템
+- **텍스트 길이 제한**: AI 생성 시 텍스트 길이 제한 적용
+- **감추기/보이기**: 씬별, 컷별 개별 토글 기능
 
-### 2. 파일 다운로드 기능
-- **개별 다운로드**: 각 항목별 개별 다운로드 기능
-- **전체 다운로드**: 모든 항목 일괄 다운로드 기능
-- **파일 형식**: 텍스트(.txt), 이미지(.jpg), 영상(.mp4)
-- **에러 처리**: 다운로드 실패 시 상세한 에러 메시지
+### 2. 이미지 생성 메뉴 개선
+- **API 단일화**: Google AI (Imagen)만 사용
+- **비율 선택**: 16:9, 9:16, 1:1 세로 배치
+- **API 표시**: 생성된 이미지에 사용된 API 표시
+- **나노바나나 분리**: 별도 메뉴로 고급 이미지 생성
 
-### 3. AI 서비스 개선
-- **API 응답 처리**: 다양한 API 응답 구조 대응
-- **에러 처리**: 상세한 에러 메시지 및 복구 로직
-- **타입 안정성**: TypeScript 타입 안정성 향상
+### 3. 프로젝트 개요 메뉴 개선
+- **텍스트 길이 제한**: AI 생성 시 텍스트 길이 제한 적용
+- **UI 재구성**: 프로젝트 개요 저장 결과를 맨 하단으로 이동
+- **버튼 정리**: [수정] 버튼 삭제, [삭제] 기능 개선
+- **JSON 카드**: [대사] 국문/영문 프롬프트 제거
 
-### 4. UI/UX 개선
-- **프로젝트 개요 참고**: 오른쪽 하단으로 이동, 토글 버튼 추가
-- **선택 인터페이스**: 체크박스 기반 선택 시스템
-- **진행률 표시**: 실시간 생성 진행률 표시
-- **알림 시스템**: 성공/실패/경고 알림 구분
+### 4. 사용자 인증 시스템 추가
+- **완전한 인증 시스템**: 로그인, 회원가입, 프로필 관리
+- **API 키 관리**: 개별 사용자별 API 키 설정
+- **하드코딩된 관리자**: 초기 설정용 관리자 계정
 
 ## 📊 메뉴별 단계별 프롬프트 양식
 
@@ -724,25 +483,58 @@ Requirements:
 #### 입력 프롬프트
 ```typescript
 // 텍스트 카드 생성
-const textCardPrompt = `스토리/장면을 입력해주세요:
-- 컷별 스토리 내용
-- 장면 설명
-- 대사 및 내레이션
-- 시각적 연출 방향`;
+const textCardPrompt = `다음 스토리를 바탕으로 ${cutCount}컷 영상 제작용 텍스트 카드를 생성해주세요:
 
-// 캐릭터 이미지 생성
-const characterImagePrompt = `캐릭터/의상을 입력해주세요:
-- 캐릭터 설명
-- 의상 및 스타일
-- 포즈 및 표정
-- 추가 특징`;
+**씬 공통설정:**
+${sceneCommonInput ? `- 공통 설정: ${sceneCommonInput}` : ''}
 
-// 영상 배경 생성
-const videoBackgroundPrompt = `영상 배경을 입력해주세요:
-- 배경 장소
-- 분위기 및 조명
-- 색감 및 스타일
-- 구도 및 시점`;
+**스토리:**
+${storyInput}
+
+=== 🚨 절대적 제한사항 🚨 ===
+⚠️ 생성되는 텍스트는 반드시 ${textLimit}자 이내여야 합니다.
+⚠️ ${textLimit}자를 초과하면 생성이 실패합니다.
+⚠️ 각 컷별 설명을 간결하고 명확하게 작성하세요.
+
+**중요한 출력 형식 요구사항:**
+반드시 다음 형식으로 출력해주세요:
+
+--- **컷 1: [컷 제목]**
+
+**필수 항목:**
+* **캐릭터:** [예시] A young woman with long brown hair wearing a red coat
+* **액션:** [예시] walking slowly through a forest
+* **배경:** [예시] a misty morning in a dense forest
+* **대사:** [예시] "이 길의 끝은 어디일까?"
+
+**추가 항목 (필요한 경우):**
+* **구도:** [예시] Wide shot showing the entire landscape
+* **조명:** [예시] Warm golden hour lighting with lens flare
+* **카메라 움직임:** [예시] The camera slowly pans to the right
+
+--- **컷 2: [컷 제목]**
+
+**필수 항목:**
+* **캐릭터:** [캐릭터의 외모, 의상, 특징을 영어로 상세히 설명]
+* **액션:** [캐릭터의 구체적인 행동을 영어로 설명]
+* **배경:** [장면의 배경과 환경을 영어로 설명]
+* **대사:** [캐릭터의 대사를 한국어로 표시]
+
+**추가 항목 (필요한 경우):**
+* **구도:** [카메라 앵글과 구도를 영어로 설명]
+* **조명:** [조명과 분위기를 영어로 설명]
+* **카메라 움직임:** [카메라의 움직임을 영어로 설명]
+
+... (총 ${cutCount}컷까지)
+
+**중요한 지침:**
+1. 필수 항목은 모든 컷에 반드시 포함되어야 합니다.
+2. 추가 항목은 장면에 필요한 경우에만 포함하세요.
+3. 캐릭터, 액션, 배경은 영어로 작성하세요.
+4. 대사는 한국어로 작성하세요.
+5. 각 항목은 구체적이고 상세하게 작성하세요.
+
+**중요**: 반드시 ${textLimit}자 이내로 작성하고, 위의 --- **컷 X: [제목]** 형식을 정확히 따라주세요.`;
 ```
 
 #### AI 생성 프롬프트
@@ -811,6 +603,11 @@ cp .env.example .env
 # API 키 설정
 REACT_APP_GEMINI_API_KEY=your-gemini-api-key  # Google AI 및 나노 바나나 API용
 REACT_APP_OPENAI_API_KEY=your-openai-api-key  # OpenAI API용
+REACT_APP_ANTHROPIC_API_KEY=your-anthropic-api-key  # Anthropic API용
+
+# 관리자 계정 설정 (보안을 위해 환경변수로 관리)
+REACT_APP_ADMIN_EMAIL=star612.net@gmail.com
+REACT_APP_ADMIN_PASSWORD=star6120@@
 ```
 
 ## 📈 성능 최적화
@@ -832,17 +629,37 @@ REACT_APP_OPENAI_API_KEY=your-openai-api-key  # OpenAI API용
 
 ## 🔒 보안 고려사항
 
-### 1. API 키 보안
+### 1. 비밀번호 보안
+- **해시화**: SHA-256 해시로 비밀번호 저장
+- **솔트**: 고유한 솔트로 레인보우 테이블 공격 방지
+- **평문 저장 금지**: 비밀번호는 절대 평문으로 저장되지 않음
+
+### 2. 환경변수 관리
+- **민감한 정보**: 관리자 계정 정보는 환경변수로 관리
+- **API 키**: 모든 API 키는 환경변수로 설정
+- **기본값**: 안전한 기본값 제공
+
+### 3. 데이터 보호
+- **민감한 정보 제거**: 사용자 객체에서 비밀번호 제거
+- **API 키 마스킹**: 로그에서 API 키 일부만 표시
+- **에러 로깅**: 민감한 정보가 포함되지 않은 에러 메시지
+
+### 4. 인증 시스템
+- **로그인**: 해시화된 비밀번호 검증
+- **회원가입**: 비밀번호 자동 해시화
+- **프로필 수정**: 비밀번호 변경 시 해시화
+
+### 5. API 키 보안
 - 환경변수 사용
 - 클라이언트 사이드 노출 방지
 - API 키 로테이션 정책
 
-### 2. 데이터 보안
+### 6. 데이터 보안
 - 사용자 입력 검증
 - XSS 공격 방지
 - 파일 업로드 검증
 
-### 3. 에러 처리
+### 7. 에러 처리
 - 상세한 에러 메시지
 - 사용자 친화적 에러 표시
 - 로깅 및 모니터링
@@ -882,6 +699,15 @@ REACT_APP_OPENAI_API_KEY=your-openai-api-key  # OpenAI API용
 - 모니터링 및 로깅
 
 ## 🔄 업데이트 로그
+
+### v2.3.0 (2025-09-17)
+- **영상 생성 메뉴 대폭 개선**: 단순화된 입력, 구조화된 출력, 씬별 관리
+- **이미지 생성 메뉴 개선**: API 단일화, 비율 선택 세로 배치, API 표시
+- **프로젝트 개요 메뉴 개선**: 텍스트 길이 제한, UI 재구성, 버튼 정리
+- **사용자 인증 시스템 추가**: 완전한 인증 시스템, API 키 관리, 하드코딩된 관리자
+- **텍스트 길이 제한**: AI 생성 시 텍스트 길이 제한 적용
+- **구조화된 출력**: 필수/추가 항목으로 분류된 컷별 설명
+- **씬별 관리**: 씬 단위로 그룹화된 컷 관리 시스템
 
 ### v2.2.0 (2025-09-15)
 - **나노 바나나 API 추가**: Gemini 2.5 Flash Image Preview 모델 지원
@@ -938,7 +764,7 @@ MIT License
 
 ---
 
-**최종 업데이트**: 2025-09-14  
-**버전**: v2.2.0  
+**최종 업데이트**: 2025-09-17  
+**버전**: v2.3.0  
 **개발자**: star612.net  
 **라이선스**: MIT

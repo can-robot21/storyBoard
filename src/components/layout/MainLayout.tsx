@@ -6,8 +6,10 @@ import { VideoGenerationStep } from '../steps/VideoGenerationStep';
 import ProgressTracker from '../common/ProgressTracker';
 import { FormattedText, FormattedJSON } from '../common/FormattedText';
 import Button from '../common/Button';
+import { ProjectReferenceSection } from '../common/ProjectReferenceSection';
 import { useUIStore } from '../../stores/uiStore';
 import { safeBase64ToObject } from '../../utils/base64Utils';
+import { UI_CONSTANTS, EMOJIS } from '../../utils/constants';
 
 // 텍스트 카드 아이템 컴포넌트
 interface TextCardItemProps {
@@ -52,6 +54,17 @@ const TextCardItem: React.FC<TextCardItemProps> = ({
     setEditedText(card.generatedText);
   };
 
+  const handleDelete = () => {
+    if (window.confirm('이 텍스트 카드를 삭제하시겠습니까?')) {
+      setGeneratedTextCards(prev => prev.filter(c => c.id !== card.id));
+      setSelectedTextCards(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(card.id);
+        return newSet;
+      });
+    }
+  };
+
   const handleToggleExpand = () => {
     setIsExpanded(!isExpanded);
   };
@@ -60,7 +73,7 @@ const TextCardItem: React.FC<TextCardItemProps> = ({
     <div className="bg-white border border-blue-200 rounded-lg p-4 shadow-sm hover:shadow-md transition-shadow w-full">
       <div className="flex items-start justify-between mb-3">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-blue-600">컷 {index + 1}</span>
+          <span className="text-sm font-medium text-blue-600">씬 {index + 1}</span>
           {(card.generatedText.split('\n').length > 2 || card.generatedText.length > 150) && (
             <button
               onClick={handleToggleExpand}
@@ -105,39 +118,36 @@ const TextCardItem: React.FC<TextCardItemProps> = ({
       <div className="flex gap-2 w-full">
         {isEditing ? (
           <>
-            <button 
+            <Button 
               onClick={handleSave}
-              className="flex-1 px-3 py-2 text-sm bg-green-500 text-white rounded hover:bg-green-600 transition-colors"
+              className="flex-1 bg-green-600 hover:bg-green-700 text-white text-sm"
             >
               저장
-            </button>
-            <button 
+            </Button>
+            <Button 
               onClick={handleCancel}
-              className="flex-1 px-3 py-2 text-sm bg-gray-500 text-white rounded hover:bg-gray-600 transition-colors"
+              variant="outline"
+              className="flex-1 text-sm"
             >
               취소
-            </button>
+            </Button>
           </>
         ) : (
           <>
-            <button 
+            <Button 
               onClick={handleEdit}
-              className="flex-1 px-3 py-2 text-sm bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
+              variant="outline"
+              className="flex-1 text-sm"
             >
               수정
-            </button>
-            <button 
-              onClick={() => videoHandlers.handleSaveTextCard?.(card.id)}
-              className="flex-1 px-3 py-2 text-sm bg-green-500 text-white rounded hover:bg-green-600 transition-colors"
-            >
-              다운로드
-            </button>
-            <button 
-              onClick={() => videoHandlers.handleDeleteTextCard?.(card.id)}
-              className="flex-1 px-3 py-2 text-sm bg-red-500 text-white rounded hover:bg-red-600 transition-colors"
+            </Button>
+            <Button 
+              onClick={handleDelete}
+              variant="outline"
+              className="flex-1 text-red-600 border-red-300 hover:bg-red-50 text-sm"
             >
               삭제
-            </button>
+            </Button>
           </>
         )}
       </div>
@@ -193,6 +203,19 @@ interface MainLayoutProps {
   // UI 상태
   showTextResults: boolean;
   setShowTextResults: (show: boolean) => void;
+  showCutTextCards: boolean;
+  setShowCutTextCards: (show: boolean) => void;
+  cutVisibility: { [key: string]: boolean };
+  setCutVisibility: React.Dispatch<React.SetStateAction<{ [key: string]: boolean }>>;
+  // 단계 상태
+  stepStatus: any;
+  setStepStatus: (status: any) => void;
+  // 토큰 사용량
+  tokenUsage: {
+    imageGeneration: { current: number; total: number };
+    videoGeneration: { current: number; total: number };
+  };
+  setTokenUsage: (usage: any) => void;
 }
 
 export const MainLayout: React.FC<MainLayoutProps> = ({ 
@@ -216,7 +239,13 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
   selectedCharacterImages, setSelectedCharacterImages,
   selectedVideoBackgrounds, setSelectedVideoBackgrounds,
   projectHandlers, imageHandlers, videoHandlers,
-  showTextResults, setShowTextResults
+  showTextResults, setShowTextResults,
+  showCutTextCards, setShowCutTextCards,
+  cutVisibility, setCutVisibility,
+  // 단계 상태
+  stepStatus, setStepStatus,
+  // 토큰 사용량
+  tokenUsage, setTokenUsage
 }) => {
   const { addNotification } = useUIStore();
   const [finalPromptCards, setFinalPromptCards] = useState<{
@@ -232,6 +261,481 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
   const [editingText, setEditingText] = useState<{[key: string]: boolean}>({});
   const [savedTexts, setSavedTexts] = useState<{[key: string]: boolean}>({});
 
+  // 통합된 섹션 표시 상태 관리
+  const [sectionVisibility, setSectionVisibility] = useState({
+    projectOverview: true,
+    videoPrompt: true,
+    scenarioPrompt: true,
+    koreanCards: true,
+    englishCards: true,
+    projectKoreanCards: true,
+    projectEnglishCards: true
+  });
+
+  // 섹션 표시 상태 토글 함수
+  const toggleSectionVisibility = (section: keyof typeof sectionVisibility) => {
+    setSectionVisibility(prev => ({
+      ...prev,
+      [section]: !prev[section]
+    }));
+  };
+
+  // 토큰 사용량 업데이트 함수
+  const updateTokenUsage = (type: 'imageGeneration' | 'videoGeneration', current: number) => {
+    setTokenUsage((prev: any) => ({
+      ...prev,
+      [type]: {
+        current: current,
+        total: prev[type].total + current
+      }
+    }));
+  };
+
+  // 컷 카드 편집 상태 관리
+  const [editingCutCard, setEditingCutCard] = useState<{cardId: number, cutNumber: number} | null>(null);
+  const [editingCutData, setEditingCutData] = useState<any>(null);
+  
+  // 컷별 텍스트카드 선택 상태 관리
+  const [cutTextCardSelections, setCutTextCardSelections] = useState<{[key: string]: Set<number>}>({});
+  
+  // 개별 컷 선택 상태 관리 (영상 생성용)
+  const [selectedCuts, setSelectedCuts] = useState<Set<string>>(new Set());
+
+  // 컷 카드 편집 함수들
+  const handleEditCutCard = (cardId: number, cutNumber: number, cutData: any) => {
+    setEditingCutCard({cardId, cutNumber});
+    setEditingCutData({...cutData});
+  };
+
+  const handleSaveCutCard = () => {
+    if (editingCutCard && editingCutData) {
+      // 해당 텍스트 카드의 컷 데이터 업데이트 또는 추가
+      setGeneratedTextCards(prev => 
+        prev.map(card => {
+          if (card.id === editingCutCard.cardId) {
+            const cutTexts = parseCutTexts(card.generatedText || '');
+            const isNewCut = !cutTexts[editingCutCard.cutNumber];
+            
+            // 기존 컷이 있는지 확인하여 업데이트 또는 추가
+            if (cutTexts[editingCutCard.cutNumber]) {
+              // 기존 컷 업데이트
+              cutTexts[editingCutCard.cutNumber] = {
+                ...cutTexts[editingCutCard.cutNumber],
+                ...editingCutData
+              };
+            } else {
+              // 새로운 컷 추가
+              cutTexts[editingCutCard.cutNumber] = editingCutData;
+            }
+            
+            // 업데이트된 컷 데이터를 텍스트로 변환
+            const updatedText = Object.keys(cutTexts)
+              .sort((a, b) => parseInt(a) - parseInt(b))
+              .map(cutNum => {
+                const cut = cutTexts[parseInt(cutNum)];
+                return `--- **컷 ${cutNum}: ${cut.title}**
+
+**필수 항목:**
+* **캐릭터:** ${cut.sections.character || ''}
+* **액션:** ${cut.sections.action || ''}
+* **배경:** ${cut.sections.background || ''}
+* **대사:** ${cut.sections.dialogue || ''}
+
+**추가 항목:**
+* **구도:** ${cut.sections.composition || ''}
+* **조명:** ${cut.sections.lighting || ''}
+* **카메라 움직임:** ${cut.sections.cameraMovement || ''}`;
+              }).join('\n\n');
+            
+            // 새로운 컷이 추가된 경우 cutCount 업데이트
+            const updatedCutCount = Object.keys(cutTexts).length;
+            
+            return { 
+              ...card, 
+              generatedText: updatedText,
+              cutCount: updatedCutCount
+            };
+          }
+          return card;
+        })
+      );
+      
+      setEditingCutCard(null);
+      setEditingCutData(null);
+    }
+  };
+
+  const handleCancelCutCardEdit = () => {
+    setEditingCutCard(null);
+    setEditingCutData(null);
+  };
+
+  // 새로운 컷 추가 함수
+  const handleAddNewCut = (cardId: number) => {
+    // 모든 텍스트 카드에서 컷들을 수집하여 가장 큰 컷 번호 찾기
+    let maxCutNumber = 0;
+    generatedTextCards.forEach(card => {
+      const cutTexts = parseCutTexts(card.generatedText || '');
+      const cardMaxCut = Math.max(...Object.keys(cutTexts).map(Number), 0);
+      maxCutNumber = Math.max(maxCutNumber, cardMaxCut);
+    });
+    
+    const newCutNumber = maxCutNumber + 1;
+    
+    // 새로운 컷 데이터 생성 (빈 데이터)
+    const newCutData = {
+      title: `새 컷 ${newCutNumber}`,
+      content: '',
+      sections: {
+        character: '',
+        action: '',
+        background: '',
+        dialogue: '',
+        composition: '',
+        lighting: '',
+        cameraMovement: ''
+      }
+    };
+    
+    // 수정 모달 열기
+    setEditingCutCard({ cardId, cutNumber: newCutNumber });
+    setEditingCutData(newCutData);
+  };
+
+  // 컷 삭제 함수
+  const handleDeleteCutCard = (cardId: number, cutNumber: number) => {
+    if (window.confirm(`컷 ${cutNumber}을 삭제하시겠습니까?`)) {
+      setGeneratedTextCards(prev => 
+        prev.map(card => {
+          if (card.id === cardId) {
+            const cutTexts = parseCutTexts(card.generatedText || '');
+            
+            // 해당 컷 삭제
+            delete cutTexts[cutNumber];
+            
+            // 업데이트된 컷 데이터를 텍스트로 변환
+            const updatedText = Object.keys(cutTexts)
+              .sort((a, b) => parseInt(a) - parseInt(b))
+              .map(cutNum => {
+                const cut = cutTexts[parseInt(cutNum)];
+                return `--- **컷 ${cutNum}: ${cut.title}**
+
+**필수 항목:**
+* **캐릭터:** ${cut.sections.character || ''}
+* **액션:** ${cut.sections.action || ''}
+* **배경:** ${cut.sections.background || ''}
+* **대사:** ${cut.sections.dialogue || ''}
+
+**추가 항목:**
+* **구도:** ${cut.sections.composition || ''}
+* **조명:** ${cut.sections.lighting || ''}
+* **카메라 움직임:** ${cut.sections.cameraMovement || ''}`;
+              }).join('\n\n');
+            
+            // 컷 수 업데이트
+            const updatedCutCount = Object.keys(cutTexts).length;
+            
+            return { 
+              ...card, 
+              generatedText: updatedText,
+              cutCount: updatedCutCount
+            };
+          }
+          return card;
+        })
+      );
+      
+      // 선택된 컷에서도 제거
+      const cutKey = `${cardId}-${cutNumber}`;
+      setSelectedCuts(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(cutKey);
+        return newSet;
+      });
+    }
+  };
+
+
+  // 컷별 텍스트카드 선택 함수들
+  const handleCutTextCardToggle = (cardId: number, cutNumber: number, textCardId: number) => {
+    const key = `${cardId}-${cutNumber}`;
+    setCutTextCardSelections(prev => {
+      const current = prev[key] || new Set();
+      const newSet = new Set(current);
+      if (newSet.has(textCardId)) {
+        newSet.delete(textCardId);
+      } else {
+        newSet.add(textCardId);
+      }
+      return { ...prev, [key]: newSet };
+    });
+  };
+
+  const getCutTextCardSelections = (cardId: number, cutNumber: number) => {
+    const key = `${cardId}-${cutNumber}`;
+    return cutTextCardSelections[key] || new Set();
+  };
+
+  // 컷별 텍스트 파싱 함수 (개선된 버전)
+  const parseCutTexts = (text: string) => {
+    const cutPattern = /--- \*\*컷\s*(\d+):\s*([^*]+)\*\*/g;
+    const cuts: { [key: number]: { title: string; content: string; sections: any } } = {};
+    let match;
+    
+    // 모든 컷 매치를 먼저 찾기
+    const allMatches: Array<{
+      cutNumber: number;
+      cutTitle: string;
+      startIndex: number;
+      match: RegExpExecArray;
+    }> = [];
+    while ((match = cutPattern.exec(text)) !== null) {
+      allMatches.push({
+        cutNumber: parseInt(match[1]),
+        cutTitle: match[2].trim(),
+        startIndex: match.index + match[0].length,
+        match: match
+      });
+    }
+
+    // 각 컷의 내용 추출
+    allMatches.forEach((cutMatch, index) => {
+      const cutNumber = cutMatch.cutNumber;
+      const cutTitle = cutMatch.cutTitle;
+      const startIndex = cutMatch.startIndex;
+      
+      // 다음 컷의 시작 위치 또는 텍스트 끝까지
+      const nextCutStart = index < allMatches.length - 1 
+        ? allMatches[index + 1].match.index 
+        : text.length;
+      
+      const cutContent = text.substring(startIndex, nextCutStart).trim();
+      
+      // 각 섹션 파싱 (필수/추가 항목)
+      const sections = {
+        character: '',
+        action: '',
+        background: '',
+        dialogue: '',
+        composition: '',
+        lighting: '',
+        cameraMovement: ''
+      };
+      
+      // 개선된 파싱 패턴들 (여러 가능한 형식 지원)
+      const patterns = {
+        character: [
+          /\*\s*\*\*캐릭터:\*\*\s*([\s\S]*?)(?=\*\s*\*\*|$)/,  // * **캐릭터:**
+          /\*\*\*캐릭터:\*\*\s*([\s\S]*?)(?=\*\*\*|$)/,        // ***캐릭터:**
+          /\*\*\*캐릭터:\*\*\s*([\s\S]*?)(?=\*\*\*|$)/,        // **캐릭터:**
+          /캐릭터:\s*([\s\S]*?)(?=\*\*|$)/                     // 캐릭터: (간단한 형태)
+        ],
+        action: [
+          /\*\s*\*\*액션:\*\*\s*([\s\S]*?)(?=\*\s*\*\*|$)/,
+          /\*\*\*액션:\*\*\s*([\s\S]*?)(?=\*\*\*|$)/,
+          /\*\*\*액션:\*\*\s*([\s\S]*?)(?=\*\*\*|$)/,
+          /액션:\s*([\s\S]*?)(?=\*\*|$)/
+        ],
+        background: [
+          /\*\s*\*\*배경:\*\*\s*([\s\S]*?)(?=\*\s*\*\*|$)/,
+          /\*\*\*배경:\*\*\s*([\s\S]*?)(?=\*\*\*|$)/,
+          /\*\*\*배경:\*\*\s*([\s\S]*?)(?=\*\*\*|$)/,
+          /배경:\s*([\s\S]*?)(?=\*\*|$)/
+        ],
+        dialogue: [
+          /\*\s*\*\*대사:\*\*\s*([\s\S]*?)(?=\*\s*\*\*|$)/,
+          /\*\*\*대사:\*\*\s*([\s\S]*?)(?=\*\*\*|$)/,
+          /\*\*\*대사:\*\*\s*([\s\S]*?)(?=\*\*\*|$)/,
+          /대사:\s*([\s\S]*?)(?=\*\*|$)/
+        ],
+        composition: [
+          /\*\s*\*\*구도:\*\*\s*([\s\S]*?)(?=\*\s*\*\*|$)/,
+          /\*\*\*구도:\*\*\s*([\s\S]*?)(?=\*\*\*|$)/,
+          /\*\*\*구도:\*\*\s*([\s\S]*?)(?=\*\*\*|$)/,
+          /구도:\s*([\s\S]*?)(?=\*\*|$)/
+        ],
+        lighting: [
+          /\*\s*\*\*조명:\*\*\s*([\s\S]*?)(?=\*\s*\*\*|$)/,
+          /\*\*\*조명:\*\*\s*([\s\S]*?)(?=\*\*\*|$)/,
+          /\*\*\*조명:\*\*\s*([\s\S]*?)(?=\*\*\*|$)/,
+          /조명:\s*([\s\S]*?)(?=\*\*|$)/
+        ],
+        cameraMovement: [
+          /\*\s*\*\*카메라 움직임:\*\*\s*([\s\S]*?)(?=\*\s*\*\*|$)/,
+          /\*\*\*카메라 움직임:\*\*\s*([\s\S]*?)(?=\*\*\*|$)/,
+          /\*\*\*카메라 움직임:\*\*\s*([\s\S]*?)(?=\*\*\*|$)/,
+          /카메라 움직임:\s*([\s\S]*?)(?=\*\*|$)/
+        ]
+      };
+
+      // 각 섹션에 대해 여러 패턴 시도
+      Object.keys(patterns).forEach(sectionKey => {
+        for (const pattern of patterns[sectionKey as keyof typeof patterns]) {
+          const match = cutContent.match(pattern);
+          if (match) {
+            sections[sectionKey as keyof typeof sections] = match[1].trim();
+            break;
+          }
+        }
+      });
+      
+      // 파싱 실패 시 대체 파싱 방법
+      if (!sections.character && !sections.action && !sections.background && !sections.dialogue) {
+        // 기존 형식으로 파싱 시도
+        const descMatch = cutContent.match(/\* \*\*설명:\*\*\s*([\s\S]*?)(?=\* \*\*|$)/);
+        if (descMatch) {
+          sections.background = descMatch[1].trim();
+        }
+        
+        const actionDialogueMatch = cutContent.match(/\* \*\*액션\/대사:\*\*\s*([\s\S]*?)(?=\* \*\*|$)/);
+        if (actionDialogueMatch) {
+          sections.action = actionDialogueMatch[1].trim();
+        }
+        
+        const cameraMatch = cutContent.match(/\* \*\*카메라:\*\*\s*([\s\S]*?)(?=\* \*\*|$)/);
+        if (cameraMatch) {
+          sections.composition = cameraMatch[1].trim();
+        }
+        
+        const visualMatch = cutContent.match(/\* \*\*시각 효과:\*\*\s*([\s\S]*?)(?=\* \*\*|$)/);
+        if (visualMatch) {
+          sections.lighting = visualMatch[1].trim();
+        }
+      }
+      
+      // 디버깅을 위한 로그 추가
+      console.log(`컷 ${cutNumber} 파싱 결과:`, {
+        character: sections.character,
+        action: sections.action,
+        background: sections.background,
+        dialogue: sections.dialogue,
+        composition: sections.composition,
+        lighting: sections.lighting,
+        cameraMovement: sections.cameraMovement
+      });
+      
+      cuts[cutNumber] = {
+        title: cutTitle,
+        content: cutContent,
+        sections: sections
+      };
+    });
+
+    return cuts;
+  };
+
+  // 프로젝트 개요 삭제 함수
+  const handleDeleteProjectOverview = () => {
+    if (window.confirm('프로젝트 개요 저장 결과를 삭제하시겠습니까?\n\n삭제 시 4단계 버튼이 재활성화되고 2단계로 돌아갑니다.')) {
+      setGeneratedProjectData(null);
+      setSectionVisibility(prev => ({ ...prev, projectOverview: true }));
+      
+      // 4단계 재활성화 및 2단계로 돌아가기
+      setStepStatus((prev: any) => ({
+        ...prev,
+        jsonCardsGenerated: false,
+        aiReviewCompleted: false,
+        projectOverviewSaved: false
+      }));
+      
+      addNotification({
+        type: 'info',
+        title: '삭제 완료',
+        message: '프로젝트 개요 저장 결과가 삭제되었습니다. 2단계부터 다시 진행하세요.',
+      });
+    }
+  };
+
+  // 설정용 영상 설정 프롬프트 삭제 함수
+  const handleDeleteVideoPrompt = () => {
+    if (window.confirm('설정용 영상 설정 프롬프트를 삭제하시겠습니까?')) {
+      setScenarioPrompt('');
+      setSectionVisibility(prev => ({ ...prev, videoPrompt: true }));
+    }
+  };
+
+  // 설정용 시나리오 설정 프롬프트 삭제 함수
+  const handleDeleteScenarioPrompt = () => {
+    if (window.confirm('설정용 시나리오 설정 프롬프트를 삭제하시겠습니까?')) {
+      setFinalScenario('');
+      setSectionVisibility(prev => ({ ...prev, scenarioPrompt: true }));
+    }
+  };
+
+  // 텍스트/토큰 카운트 계산 함수
+  const calculateTextStats = (text: string) => {
+    if (!text) return { characters: 0, tokens: 0 };
+    const characters = text.length;
+    const tokens = Math.ceil(characters / 4); // 대략적인 토큰 계산 (1토큰 ≈ 4문자)
+    return { characters, tokens };
+  };
+
+  // 현재 표시 중인 텍스트 통계 계산
+  const getCurrentTextStats = () => {
+    let totalCharacters = 0;
+    let totalTokens = 0;
+    let stats = [];
+
+    if (currentStep === "프로젝트 개요") {
+      if (story) {
+        const storyStats = calculateTextStats(story);
+        totalCharacters += storyStats.characters;
+        totalTokens += storyStats.tokens;
+        stats.push(`스토리: ${storyStats.characters}자/${storyStats.tokens}토큰`);
+      }
+      if (scenarioPrompt) {
+        const scenarioStats = calculateTextStats(scenarioPrompt);
+        totalCharacters += scenarioStats.characters;
+        totalTokens += scenarioStats.tokens;
+        stats.push(`영상설정: ${scenarioStats.characters}자/${scenarioStats.tokens}토큰`);
+      }
+      if (finalScenario) {
+        const finalStats = calculateTextStats(finalScenario);
+        totalCharacters += finalStats.characters;
+        totalTokens += finalStats.tokens;
+        stats.push(`시나리오: ${finalStats.characters}자/${finalStats.tokens}토큰`);
+      }
+    } else if (currentStep === "이미지 생성" || currentStep === "이미지 생성/나노 바나나") {
+      // 이미지 생성 관련 통계
+      const characterTexts = generatedCharacters.map(c => c.prompt || '').join(' ');
+      const backgroundTexts = generatedBackgrounds.map(b => b.prompt || '').join(' ');
+      const settingTexts = generatedSettingCuts.map(s => s.prompt || '').join(' ');
+      
+      if (characterTexts) {
+        const charStats = calculateTextStats(characterTexts);
+        totalCharacters += charStats.characters;
+        totalTokens += charStats.tokens;
+        stats.push(`캐릭터: ${charStats.characters}자/${charStats.tokens}토큰`);
+      }
+      if (backgroundTexts) {
+        const bgStats = calculateTextStats(backgroundTexts);
+        totalCharacters += bgStats.characters;
+        totalTokens += bgStats.tokens;
+        stats.push(`배경: ${bgStats.characters}자/${bgStats.tokens}토큰`);
+      }
+      if (settingTexts) {
+        const settingStats = calculateTextStats(settingTexts);
+        totalCharacters += settingStats.characters;
+        totalTokens += settingStats.tokens;
+        stats.push(`설정: ${settingStats.characters}자/${settingStats.tokens}토큰`);
+      }
+    } else if (currentStep === "영상 생성") {
+      // 영상 생성 관련 통계
+      const videoTexts = generatedTextCards.map(c => c.generatedText || '').join(' ');
+      if (videoTexts) {
+        const videoStats = calculateTextStats(videoTexts);
+        totalCharacters += videoStats.characters;
+        totalTokens += videoStats.tokens;
+        stats.push(`영상프롬프트: ${videoStats.characters}자/${videoStats.tokens}토큰`);
+      }
+    }
+
+    return {
+      total: { characters: totalCharacters, tokens: totalTokens },
+      breakdown: stats
+    };
+  };
+
   // 최종 프롬프트 JSON 카드 생성
   const handleGenerateFinalPromptCards = async () => {
     try {
@@ -241,7 +745,6 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
         story: story,
         characters: characterList.map(c => `${c.name}: ${c.description}`).join(', '),
         scenario: scenarioPrompt,
-        dialogue: '', // 대사 데이터가 있다면 추가
         finalScenario: finalScenario
       };
 
@@ -251,7 +754,6 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
         '캐릭터': promptData.characters,
         '시각및설정': promptData.scenario, // 시각 및 설정은 scenarioPrompt 사용
         '시나리오': promptData.finalScenario,
-        '대사': promptData.dialogue,
         '영상설정프롬프트': promptData.scenario
       };
 
@@ -261,7 +763,6 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
         'Characters': englishPromptResults.characters || `[English] ${promptData.characters}`,
         'Visual Settings': englishPromptResults.visualSettings || `[English] ${promptData.scenario}`,
         'Scenario': englishPromptResults.scenario || `[English] ${promptData.finalScenario}`,
-        'Dialogue': englishPromptResults.dialogue || `[English] ${promptData.dialogue}`,
         'Visual Settings Prompt': englishPromptResults.visualSettingsPrompt || `[English] ${promptData.scenario}`
       };
 
@@ -324,7 +825,6 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
     switch (type) {
       case 'story': return story;
       case 'scenario': return scenarioPrompt;
-      case 'dialogue': return ''; // 대사 데이터가 있다면 추가
       case 'storySummary': return storySummary;
       case 'finalScenario': return finalScenario;
       case 'review': return generatedProjectData ? JSON.stringify(generatedProjectData.reviewResult, null, 2) : '';
@@ -337,7 +837,6 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
     switch (type) {
       case 'story': setStory(content); break;
       case 'scenario': setScenarioPrompt(content); break;
-      case 'dialogue': /* 대사 업데이트 */ break;
       case 'storySummary': setStorySummary(content); break;
       case 'finalScenario': setFinalScenario(content); break;
       case 'review': 
@@ -372,6 +871,9 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
             generatedProjectData={generatedProjectData}
             setGeneratedProjectData={setGeneratedProjectData}
             onNext={projectHandlers.handleNextStep}
+            canProceedToNext={projectHandlers.canProceedToNext}
+            stepStatus={stepStatus}
+            setStepStatus={setStepStatus}
           />
         )}
         
@@ -392,6 +894,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
             storySummary={storySummary}
             finalScenario={finalScenario}
             onNext={projectHandlers.handleNextStep}
+            canProceedToNext={projectHandlers.canProceedToNext}
           />
         )}
 
@@ -414,6 +917,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
             storySummary={storySummary}
             finalScenario={finalScenario}
             onNext={projectHandlers.handleNextStep}
+            canProceedToNext={projectHandlers.canProceedToNext}
           />
         )}
         
@@ -433,6 +937,8 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
             setSelectedCharacterImages={setSelectedCharacterImages}
             selectedVideoBackgrounds={selectedVideoBackgrounds}
             setSelectedVideoBackgrounds={setSelectedVideoBackgrounds}
+            cutTextCardSelections={cutTextCardSelections}
+            selectedCuts={selectedCuts}
             characterPrompt=""
             scenarioPrompt={scenarioPrompt}
             storySummary={storySummary}
@@ -481,6 +987,46 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
           
           <h2 className="text-xl font-semibold mb-6 text-gray-800 mt-6">생성 결과</h2>
           
+          {/* 토큰 사용량 표시 */}
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-6">
+            <div className="flex items-center justify-between text-sm">
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <span className="text-blue-600 font-medium">이미지 생성:</span>
+                  <span className="text-blue-800">회당 {tokenUsage.imageGeneration.current}토큰</span>
+                  <span className="text-blue-600">|</span>
+                  <span className="text-blue-800">누적 {tokenUsage.imageGeneration.total}토큰</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-purple-600 font-medium">영상 생성:</span>
+                  <span className="text-purple-800">회당 {tokenUsage.videoGeneration.current}토큰</span>
+                  <span className="text-purple-600">|</span>
+                  <span className="text-purple-800">누적 {tokenUsage.videoGeneration.total}토큰</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          {/* 텍스트/토큰 카운트 표시 */}
+          {(() => {
+            const stats = getCurrentTextStats();
+            if (stats.total.characters > 0) {
+              return (
+                <div className="bg-gray-100 border border-gray-200 rounded-lg p-3 mb-6">
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm text-gray-600">
+                      <span className="font-medium">총합: {stats.total.characters}자 / {stats.total.tokens}토큰</span>
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      {stats.breakdown.join(' | ')}
+                    </div>
+                  </div>
+                </div>
+              );
+            }
+            return null;
+          })()}
+          
           {currentStep === "프로젝트 개요" && (
             <div className="space-y-6">
               {/* 영상 설정 프롬프트 결과 (1~3번 입력 기반) */}
@@ -493,35 +1039,65 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
                     </h3>
                     <div className="flex space-x-2">
                       <button 
-                        onClick={() => handleEditText('scenario')}
-                        className="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600"
-                        disabled={savedTexts.scenario}
+                        onClick={() => toggleSectionVisibility('videoPrompt')}
+                        className="px-3 py-1 text-sm bg-gray-500 text-white rounded hover:bg-gray-600"
                       >
-                        수정
+                        {sectionVisibility.videoPrompt ? '감추기' : '보이기'}
                       </button>
-                      <button 
-                        onClick={() => handleSaveText('scenario')}
-                        className="px-3 py-1 text-sm bg-green-500 text-white rounded hover:bg-green-600"
-                        disabled={savedTexts.scenario}
-                      >
-                        저장
-                      </button>
+                      {editingText.scenario ? (
+                        <>
+                          <button 
+                            onClick={() => {
+                              setEditingText(prev => ({ ...prev, scenario: false }));
+                            }}
+                            className="px-3 py-1 text-sm bg-red-500 text-white rounded hover:bg-red-600"
+                          >
+                            취소
+                          </button>
+                          <button 
+                            onClick={() => handleSaveText('scenario')}
+                            className="px-3 py-1 text-sm bg-green-500 text-white rounded hover:bg-green-600"
+                          >
+                            저장
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button 
+                            onClick={() => handleEditText('scenario')}
+                            className="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600"
+                            disabled={savedTexts.scenario}
+                          >
+                            수정
+                          </button>
+                          <button 
+                            onClick={handleDeleteVideoPrompt}
+                            className="px-3 py-1 text-sm bg-red-500 text-white rounded hover:bg-red-600"
+                          >
+                            삭제
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
-                  {editingText.scenario ? (
-                    <textarea
-                      value={scenarioPrompt}
-                      onChange={(e) => setScenarioPrompt(e.target.value)}
-                      className="w-full px-3 py-2 border border-blue-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      rows={8}
-                    />
-                  ) : (
-                    <div className="bg-white p-4 rounded border border-blue-100">
-                      <FormattedText 
-                        text={scenarioPrompt}
-                        className="text-gray-700"
-                      />
-                    </div>
+                  {sectionVisibility.videoPrompt && (
+                    <>
+                      {editingText.scenario ? (
+                        <textarea
+                          value={scenarioPrompt}
+                          onChange={(e) => setScenarioPrompt(e.target.value)}
+                          className="w-full px-3 py-2 border border-blue-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          rows={8}
+                        />
+                      ) : (
+                        <div className="bg-white p-4 rounded border border-blue-100">
+                          <FormattedText 
+                            text={scenarioPrompt}
+                            className="text-gray-700"
+                          />
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               )}
@@ -536,11 +1112,10 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
                     </h3>
                     <div className="flex space-x-2">
                       <button 
-                        onClick={() => handleEditText('finalScenario')}
-                        className="px-3 py-1 text-sm bg-green-500 text-white rounded hover:bg-green-600"
-                        disabled={savedTexts.finalScenario}
+                        onClick={() => toggleSectionVisibility('scenarioPrompt')}
+                        className="px-3 py-1 text-sm bg-gray-500 text-white rounded hover:bg-gray-600"
                       >
-                        수정
+                        {sectionVisibility.scenarioPrompt ? '감추기' : '보이기'}
                       </button>
                       {editingText.finalScenario ? (
                         <>
@@ -560,76 +1135,46 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
                           </button>
                         </>
                       ) : (
-                        <button 
-                          onClick={() => handleSaveText('finalScenario')}
-                          className="px-3 py-1 text-sm bg-green-500 text-white rounded hover:bg-green-600"
-                          disabled={savedTexts.finalScenario}
-                        >
-                          저장
-                        </button>
+                        <>
+                          <button 
+                            onClick={() => handleEditText('finalScenario')}
+                            className="px-3 py-1 text-sm bg-green-500 text-white rounded hover:bg-green-600"
+                            disabled={savedTexts.finalScenario}
+                          >
+                            수정
+                          </button>
+                          <button 
+                            onClick={handleDeleteScenarioPrompt}
+                            className="px-3 py-1 text-sm bg-red-500 text-white rounded hover:bg-red-600"
+                          >
+                            삭제
+                          </button>
+                        </>
                       )}
                     </div>
                   </div>
-                  {editingText.finalScenario ? (
-                    <textarea
-                      value={finalScenario}
-                      onChange={(e) => setFinalScenario(e.target.value)}
-                      className="w-full px-3 py-2 border border-green-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-                      rows={10}
-                    />
-                  ) : (
-                    <div className="bg-white p-4 rounded border border-green-100">
-                      <FormattedText 
-                        text={finalScenario}
-                        className="text-gray-700"
-                      />
-                    </div>
+                  {sectionVisibility.scenarioPrompt && (
+                    <>
+                      {editingText.finalScenario ? (
+                        <textarea
+                          value={finalScenario}
+                          onChange={(e) => setFinalScenario(e.target.value)}
+                          className="w-full px-3 py-2 border border-green-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                          rows={10}
+                        />
+                      ) : (
+                        <div className="bg-white p-4 rounded border border-green-100">
+                          <FormattedText 
+                            text={finalScenario}
+                            className="text-gray-700"
+                          />
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               )}
 
-              {/* 프로젝트 개요 저장 결과 - 국문/영문 카드 */}
-              {generatedProjectData && (
-                <div className="bg-purple-50 rounded-lg border border-purple-200 p-6">
-                  <div className="flex justify-between items-center mb-4">
-                    <h3 className="text-lg font-medium text-purple-800 flex items-center gap-2">
-                      <span className="text-xl">📋</span>
-                      프로젝트 개요 저장 결과
-                    </h3>
-                    <div className="flex space-x-2">
-                      <button 
-                        onClick={() => handleEditText('review')}
-                        className="px-3 py-1 text-sm bg-purple-500 text-white rounded hover:bg-purple-600"
-                        disabled={savedTexts.review}
-                      >
-                        수정
-                      </button>
-                      <button 
-                        onClick={() => handleSaveText('review')}
-                        className="px-3 py-1 text-sm bg-green-500 text-white rounded hover:bg-green-600"
-                        disabled={savedTexts.review}
-                      >
-                        저장
-                      </button>
-                    </div>
-                  </div>
-                  {editingText.review ? (
-                    <textarea
-                      value={getTextContent('review')}
-                      onChange={(e) => updateTextContent('review', e.target.value)}
-                      className="w-full px-3 py-2 border border-purple-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                      rows={8}
-                    />
-                  ) : (
-                    <div className="bg-white p-4 rounded border border-purple-100">
-                      <FormattedJSON 
-                        data={generatedProjectData.reviewResult}
-                        className="text-sm text-gray-700"
-                      />
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
           )}
           
@@ -678,7 +1223,12 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
                             </div>
                           )}
                         </div>
-                        <h4 className="font-medium mb-2 text-gray-800">캐릭터 {index + 1}</h4>
+                        <div className="flex items-center justify-between mb-2">
+                          <h4 className="font-medium text-gray-800">캐릭터 {index + 1}</h4>
+                          <span className="px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded-full">
+                            Imagen
+                          </span>
+                        </div>
                         <FormattedText 
                           text={character.description}
                           className="text-sm text-gray-600 mb-3 line-clamp-3"
@@ -752,7 +1302,12 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
                             </div>
                           )}
                         </div>
-                        <h4 className="font-medium mb-2 text-gray-800">배경 {index + 1}</h4>
+                        <div className="flex items-center justify-between mb-2">
+                          <h4 className="font-medium text-gray-800">배경 {index + 1}</h4>
+                          <span className="px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded-full">
+                            Imagen
+                          </span>
+                        </div>
                         <FormattedText 
                           text={background.description}
                           className="text-sm text-gray-600 mb-3 line-clamp-3"
@@ -826,7 +1381,12 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
                             </div>
                           )}
                         </div>
-                        <h4 className="font-medium mb-2 text-gray-800">설정 컷 {index + 1}</h4>
+                        <div className="flex items-center justify-between mb-2">
+                          <h4 className="font-medium text-gray-800">설정 컷 {index + 1}</h4>
+                          <span className="px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded-full">
+                            Imagen
+                          </span>
+                        </div>
                         <FormattedText 
                           text={cut.description}
                           className="text-sm text-gray-600 mb-3 line-clamp-3"
@@ -861,47 +1421,667 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
           
           {currentStep === "영상 생성" && (
             <div className="space-y-6">
-              {/* 텍스트 카드 결과 */}
-              {generatedTextCards.length > 0 && (
-                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200 p-6">
-                  <div className="flex justify-between items-center mb-4">
-                    <h3 className="text-lg font-medium text-blue-800 flex items-center gap-2">
-                      <span className="text-xl">📝</span>
-                      생성된 텍스트 카드
-                      <span className="text-sm bg-blue-100 text-blue-600 px-2 py-1 rounded-full">
-                        {generatedTextCards.length}개
-                      </span>
-                    </h3>
-                    <div className="flex space-x-2">
-                      <button 
-                        onClick={() => videoHandlers.handleRegenerateAllTextCards?.()}
-                        className="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600"
-                      >
-                        전체 재생성
-                      </button>
-                      <button 
-                        onClick={() => videoHandlers.handleSaveAllTextCards?.()}
-                        className="px-3 py-1 text-sm bg-green-500 text-white rounded hover:bg-green-600"
-                      >
-                        전체 저장
-                      </button>
-                    </div>
+              {/* 영상 생성 진행 상태 및 선택 현황 */}
+              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200 p-6">
+                <h3 className="text-lg font-medium text-blue-800 flex items-center gap-2 mb-4">
+                  <span className="text-xl">📊</span>
+                  영상 생성 현황
+                </h3>
+                
+                {/* 진행 표시기 */}
+                <div className="mb-6">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium text-gray-700">진행 단계</span>
+                    <span className="text-xs text-gray-500">
+                      {generatedTextCards.length > 0 ? '4/4' : '1/4'} 완료
+                    </span>
                   </div>
-                  <div className="space-y-4">
-                    {generatedTextCards.map((card, index) => (
-                      <TextCardItem
-                        key={card.id}
-                        card={card}
-                        index={index}
-                        selectedTextCards={selectedTextCards}
-                        setSelectedTextCards={setSelectedTextCards}
-                        setGeneratedTextCards={setGeneratedTextCards}
-                        videoHandlers={videoHandlers}
-                      />
-                    ))}
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div 
+                      className="bg-gradient-to-r from-blue-500 to-indigo-500 h-2 rounded-full transition-all duration-300"
+                      style={{ 
+                        width: generatedTextCards.length > 0 ? '100%' : '25%' 
+                      }}
+                    ></div>
+                  </div>
+                  <div className="flex justify-between mt-2 text-xs text-gray-600">
+                    <span className={generatedTextCards.length > 0 ? 'text-blue-600 font-medium' : ''}>
+                      ✓ 기본 설정
+                    </span>
+                    <span className={generatedTextCards.length > 0 ? 'text-blue-600 font-medium' : ''}>
+                      ✓ 콘텐츠 생성
+                    </span>
+                    <span className={selectedCuts.size > 0 && selectedCharacterImages.size > 0 && selectedVideoBackgrounds.size > 0 ? 'text-blue-600 font-medium' : ''}>
+                      ✓ 요소 선택
+                    </span>
+                    <span className={generatedVideos.length > 0 ? 'text-blue-600 font-medium' : ''}>
+                      ✓ 영상 생성
+                    </span>
                   </div>
                 </div>
+
+                {/* 선택 상태 통합 표시 */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                  <div className="bg-white rounded-lg p-4 border border-gray-200">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-medium text-gray-700">선택된 컷</span>
+                      <span className={`text-xs px-2 py-1 rounded-full ${
+                        selectedCuts.size > 0 
+                          ? 'bg-green-100 text-green-800' 
+                          : 'bg-red-100 text-red-800'
+                      }`}>
+                        {selectedCuts.size}개
+                      </span>
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      {selectedCuts.size === 0 ? '컷을 선택해주세요' : '선택 완료'}
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-lg p-4 border border-gray-200">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-medium text-gray-700">선택된 캐릭터</span>
+                      <span className={`text-xs px-2 py-1 rounded-full ${
+                        selectedCharacterImages.size > 0 
+                          ? 'bg-green-100 text-green-800' 
+                          : 'bg-red-100 text-red-800'
+                      }`}>
+                        {selectedCharacterImages.size}개
+                      </span>
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      {selectedCharacterImages.size === 0 ? '캐릭터를 선택해주세요' : '선택 완료'}
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-lg p-4 border border-gray-200">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-medium text-gray-700">선택된 배경</span>
+                      <span className={`text-xs px-2 py-1 rounded-full ${
+                        selectedVideoBackgrounds.size > 0 
+                          ? 'bg-green-100 text-green-800' 
+                          : 'bg-red-100 text-red-800'
+                      }`}>
+                        {selectedVideoBackgrounds.size}개
+                      </span>
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      {selectedVideoBackgrounds.size === 0 ? '배경을 선택해주세요' : '선택 완료'}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 미리보기 기능 */}
+                {(selectedCuts.size > 0 || selectedCharacterImages.size > 0 || selectedVideoBackgrounds.size > 0) && (
+                  <div className="bg-white rounded-lg p-4 border border-gray-200">
+                    <h4 className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
+                      <span className="text-lg">👁️</span>
+                      선택된 요소 미리보기
+                    </h4>
+                    <div className="space-y-3">
+                      {selectedCuts.size > 0 && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">컷</span>
+                          <span className="text-sm text-gray-600">
+                            {Array.from(selectedCuts).map(cutKey => {
+                              const [, cutNumber] = cutKey.split('-');
+                              return `컷${cutNumber}`;
+                            }).join(', ')}
+                          </span>
+                        </div>
+                      )}
+                      {selectedCharacterImages.size > 0 && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">캐릭터</span>
+                          <span className="text-sm text-gray-600">
+                            {selectedCharacterImages.size}개 캐릭터 이미지
+                          </span>
+                        </div>
+                      )}
+                      {selectedVideoBackgrounds.size > 0 && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded">배경</span>
+                          <span className="text-sm text-gray-600">
+                            {selectedVideoBackgrounds.size}개 배경 이미지
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* 에러 메시지 개선 */}
+                {selectedCuts.size === 0 || selectedCharacterImages.size === 0 || selectedVideoBackgrounds.size === 0 ? (
+                  <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                    <div className="flex items-start gap-3">
+                      <span className="text-yellow-600 text-lg">⚠️</span>
+                      <div>
+                        <h4 className="text-sm font-medium text-yellow-800 mb-1">영상 생성을 위해 필요한 요소</h4>
+                        <ul className="text-xs text-yellow-700 space-y-1">
+                          {selectedCuts.size === 0 && (
+                            <li>• 최소 1개의 컷을 선택해주세요</li>
+                          )}
+                          {selectedCharacterImages.size === 0 && (
+                            <li>• 최소 1개의 캐릭터 이미지를 선택해주세요</li>
+                          )}
+                          {selectedVideoBackgrounds.size === 0 && (
+                            <li>• 최소 1개의 배경 이미지를 선택해주세요</li>
+                          )}
+                        </ul>
+                        <p className="text-xs text-yellow-600 mt-2">
+                          모든 요소를 선택하면 영상 생성 버튼이 활성화됩니다.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <span className="text-green-600 text-lg">✅</span>
+                      <div>
+                        <h4 className="text-sm font-medium text-green-800">영상 생성 준비 완료</h4>
+                        <p className="text-xs text-green-700">
+                          모든 필요한 요소가 선택되었습니다. 영상 생성 버튼을 클릭하여 진행하세요.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* 씬별 메인 블록 구조 */}
+              {generatedTextCards.length > 0 && (
+                <div className="space-y-6">
+                  {/* 씬 설정 결과 헤더 */}
+                  <div className="flex justify-between items-center">
+                    <h3 className="text-lg font-medium text-green-800 flex items-center gap-2">
+                      <span className="text-xl">🎬</span>
+                      씬 설정 결과
+                      <span className="text-sm bg-green-100 text-green-600 px-2 py-1 rounded-full">
+                        {generatedTextCards.length}개 씬
+                      </span>
+                    </h3>
+                  </div>
+                  
+                  {/* 씬별 메인 블록 */}
+                  {generatedTextCards.map((card, cardIndex) => {
+                    const cutTexts = parseCutTexts(card.generatedText || '');
+                    const cutCount = card.cutCount || 1;
+                    const sceneKey = `scene${cardIndex + 1}`;
+                    const isSceneVisible = cutVisibility[sceneKey] !== false;
+                    
+                    return (
+                      <div key={card.id} className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg border border-green-200 p-6">
+                        {/* 씬 헤더 */}
+                        <div className="flex items-center justify-between mb-4">
+                          <div className="flex items-center gap-2">
+                            <h4 className="text-lg font-medium text-green-700">씬{cardIndex + 1}</h4>
+                            <span className="text-xs bg-green-100 text-green-600 px-2 py-1 rounded">
+                              {cutCount}컷
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => setCutVisibility(prev => ({ ...prev, [sceneKey]: !isSceneVisible }))}
+                              className="text-xs bg-green-100 text-green-600 px-2 py-1 rounded hover:bg-green-200 transition-colors"
+                            >
+                              {isSceneVisible ? '[감추기]' : '[보이기]'}
+                            </button>
+                            <button
+                              onClick={() => handleAddNewCut(card.id)}
+                              className="text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded hover:bg-blue-200 transition-colors"
+                            >
+                              [컷추가]
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (window.confirm(`씬${cardIndex + 1}을 삭제하시겠습니까?`)) {
+                                  setGeneratedTextCards(prev => prev.filter((_, index) => index !== cardIndex));
+                                }
+                              }}
+                              className="text-xs bg-red-100 text-red-600 px-2 py-1 rounded hover:bg-red-200 transition-colors"
+                            >
+                              [삭제]
+                            </button>
+                          </div>
+                        </div>
+                        
+                        {/* 컷 카드 편집 모달 - 씬 레벨용 */}
+                        {editingCutCard && editingCutCard.cardId === card.id && editingCutData && (
+                          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                            <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[80vh] overflow-y-auto">
+                              <h3 className="text-lg font-medium text-gray-800 mb-4">컷 카드 편집</h3>
+                              
+                              <div className="space-y-4">
+                                <div>
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">컷 제목</label>
+                                  <input
+                                    type="text"
+                                    value={editingCutData.title}
+                                    onChange={(e) => setEditingCutData({...editingCutData, title: e.target.value})}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                  />
+                                </div>
+                                
+                                <div>
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">캐릭터</label>
+                                  <textarea
+                                    value={editingCutData.sections.character}
+                                    onChange={(e) => setEditingCutData({
+                                      ...editingCutData, 
+                                      sections: {...editingCutData.sections, character: e.target.value}
+                                    })}
+                                    rows={3}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                  />
+                                </div>
+                                
+                                <div>
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">액션</label>
+                                  <textarea
+                                    value={editingCutData.sections.action}
+                                    onChange={(e) => setEditingCutData({
+                                      ...editingCutData, 
+                                      sections: {...editingCutData.sections, action: e.target.value}
+                                    })}
+                                    rows={3}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                  />
+                                </div>
+                                
+                                <div>
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">배경</label>
+                                  <textarea
+                                    value={editingCutData.sections.background}
+                                    onChange={(e) => setEditingCutData({
+                                      ...editingCutData, 
+                                      sections: {...editingCutData.sections, background: e.target.value}
+                                    })}
+                                    rows={3}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                  />
+                                </div>
+                                
+                                <div>
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">대사</label>
+                                  <textarea
+                                    value={editingCutData.sections.dialogue}
+                                    onChange={(e) => setEditingCutData({
+                                      ...editingCutData, 
+                                      sections: {...editingCutData.sections, dialogue: e.target.value}
+                                    })}
+                                    rows={3}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                  />
+                                </div>
+                                
+                                <div>
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">구도</label>
+                                  <textarea
+                                    value={editingCutData.sections.composition}
+                                    onChange={(e) => setEditingCutData({
+                                      ...editingCutData, 
+                                      sections: {...editingCutData.sections, composition: e.target.value}
+                                    })}
+                                    rows={2}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                  />
+                                </div>
+                                
+                                <div>
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">조명</label>
+                                  <textarea
+                                    value={editingCutData.sections.lighting}
+                                    onChange={(e) => setEditingCutData({
+                                      ...editingCutData, 
+                                      sections: {...editingCutData.sections, lighting: e.target.value}
+                                    })}
+                                    rows={2}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                  />
+                                </div>
+                                
+                                <div>
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">카메라 움직임</label>
+                                  <textarea
+                                    value={editingCutData.sections.cameraMovement}
+                                    onChange={(e) => setEditingCutData({
+                                      ...editingCutData, 
+                                      sections: {...editingCutData.sections, cameraMovement: e.target.value}
+                                    })}
+                                    rows={2}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                  />
+                                </div>
+                              </div>
+                              
+                              <div className="flex gap-2 mt-6">
+                                <Button 
+                                  onClick={handleSaveCutCard}
+                                  className="flex-1 bg-green-600 hover:bg-green-700 text-white"
+                                >
+                                  저장
+                                </Button>
+                                <Button 
+                                  onClick={handleCancelCutCardEdit}
+                                  variant="outline"
+                                  className="flex-1"
+                                >
+                                  취소
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                        
+                        {isSceneVisible && (
+                          <div className="space-y-4">
+                            {/* 씬 공통설정 */}
+                            {card.sceneCommon && (
+                              <div className="bg-white border border-green-200 rounded-lg p-4">
+                                <h5 className="text-md font-medium text-green-700 mb-2">씬 공통설정</h5>
+                                <div className="text-sm text-gray-700 whitespace-pre-wrap">{card.sceneCommon}</div>
+                                {card.originalSceneCommon && card.originalSceneCommon !== card.sceneCommon && (
+                                  <div className="mt-2 pt-2 border-t border-gray-200">
+                                    <div className="text-xs text-gray-500 mb-1">원본 입력:</div>
+                                    <div className="text-xs text-gray-600 italic">{card.originalSceneCommon}</div>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            {/* 스토리 */}
+                            {card.story && (
+                              <div className="bg-white border border-green-200 rounded-lg p-4">
+                                <h5 className="text-md font-medium text-green-700 mb-2">스토리</h5>
+                                <div className="text-sm text-gray-700 whitespace-pre-wrap">{card.story}</div>
+                                {card.originalStory && card.originalStory !== card.story && (
+                                  <div className="mt-2 pt-2 border-t border-gray-200">
+                                    <div className="text-xs text-gray-500 mb-1">원본 입력:</div>
+                                    <div className="text-xs text-gray-600 italic">{card.originalStory}</div>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            {/* 컷별 카드 */}
+                            <div className="space-y-3">
+                              <h5 className="text-md font-medium text-green-700 mb-2">컷별 상세</h5>
+                              {Array.from({ length: cutCount }, (_, cutIndex) => {
+                                const cutNumber = cutIndex + 1;
+                                const cutData = cutTexts[cutNumber];
+                                const cutKey = `scene${cardIndex + 1}_cut${cutNumber}`;
+                                const isCutVisible = cutVisibility[cutKey] !== false;
+                                
+                                return (
+                                  <div key={cutIndex} className="bg-white border border-green-200 rounded-lg p-3">
+                                    <div className="flex items-center justify-between mb-2">
+                                      <div className="flex items-center gap-2">
+                                        <h6 className="font-medium text-green-700">컷{cutNumber}</h6>
+                                        <button
+                                          onClick={() => setCutVisibility(prev => ({ ...prev, [cutKey]: !isCutVisible }))}
+                                          className="text-xs bg-green-100 text-green-600 px-2 py-1 rounded hover:bg-green-200 transition-colors"
+                                        >
+                                          {isCutVisible ? '[감추기]' : '[보이기]'}
+                                        </button>
+                                        <div className="flex gap-1 ml-2">
+                                          <button
+                                            onClick={() => handleEditCutCard(card.id, cutNumber, cutData)}
+                                            className="text-xs px-2 py-1 bg-blue-100 text-blue-600 rounded hover:bg-blue-200 transition-colors"
+                                            title="컷 수정"
+                                          >
+                                            수정
+                                          </button>
+                                          <button
+                                            onClick={() => handleDeleteCutCard(card.id, cutNumber)}
+                                            className="text-xs px-2 py-1 bg-red-100 text-red-600 rounded hover:bg-red-200 transition-colors"
+                                            title="컷 삭제"
+                                          >
+                                            삭제
+                                          </button>
+                                          <input
+                                            type="checkbox"
+                                            checked={selectedCuts.has(`${card.id}-${cutNumber}`)}
+                                            onChange={() => {
+                                              const cutKey = `${card.id}-${cutNumber}`;
+                                              const newSet = new Set(selectedCuts);
+                                              if (newSet.has(cutKey)) {
+                                                newSet.delete(cutKey);
+                                              } else {
+                                                newSet.add(cutKey);
+                                              }
+                                              setSelectedCuts(newSet);
+                                            }}
+                                            className="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
+                                            title="컷 선택"
+                                          />
+                                        </div>
+                                      </div>
+                                    </div>
+                                    
+                                    {isCutVisible && cutData && (
+                                      <div className="space-y-2">
+                                        <div className="border-l-4 border-green-400 pl-3">
+                                          <h6 className="font-medium text-green-600 mb-1">{cutData.title}</h6>
+                                        </div>
+                                        
+                                        {/* 필수 항목 */}
+                                        <div className="space-y-2">
+                                          <div className="text-xs font-medium text-gray-500 mb-1">필수 항목</div>
+                                          
+                                          {cutData.sections.character && (
+                                            <div className="bg-blue-50 rounded p-2">
+                                              <div className="text-xs font-medium text-blue-600 mb-1">👤 캐릭터</div>
+                                              <div className="text-sm text-gray-700">{cutData.sections.character}</div>
+                                            </div>
+                                          )}
+                                          
+                                          {cutData.sections.action && (
+                                            <div className="bg-green-50 rounded p-2">
+                                              <div className="text-xs font-medium text-green-600 mb-1">🏃 액션</div>
+                                              <div className="text-sm text-gray-700">{cutData.sections.action}</div>
+                                            </div>
+                                          )}
+                                          
+                                          {cutData.sections.background && (
+                                            <div className="bg-purple-50 rounded p-2">
+                                              <div className="text-xs font-medium text-purple-600 mb-1">🏞️ 배경</div>
+                                              <div className="text-sm text-gray-700">{cutData.sections.background}</div>
+                                            </div>
+                                          )}
+                                          
+                                          {cutData.sections.dialogue && (
+                                            <div className="bg-orange-50 rounded p-2">
+                                              <div className="text-xs font-medium text-orange-600 mb-1">💬 대사</div>
+                                              <div className="text-sm text-gray-700 whitespace-pre-wrap">{cutData.sections.dialogue}</div>
+                                            </div>
+                                          )}
+                                        </div>
+                                        
+                                        {/* 추가 항목 */}
+                                        {(cutData.sections.composition || cutData.sections.lighting || cutData.sections.cameraMovement) && (
+                                          <div className="space-y-2">
+                                            <div className="text-xs font-medium text-gray-500 mb-1">추가 항목</div>
+                                            
+                                            {cutData.sections.composition && (
+                                              <div className="bg-gray-50 rounded p-2">
+                                                <div className="text-xs font-medium text-gray-600 mb-1">📐 구도</div>
+                                                <div className="text-sm text-gray-700">{cutData.sections.composition}</div>
+                                              </div>
+                                            )}
+                                            
+                                            {cutData.sections.lighting && (
+                                              <div className="bg-yellow-50 rounded p-2">
+                                                <div className="text-xs font-medium text-yellow-600 mb-1">💡 조명</div>
+                                                <div className="text-sm text-gray-700">{cutData.sections.lighting}</div>
+                                              </div>
+                                            )}
+                                            
+                                            {cutData.sections.cameraMovement && (
+                                              <div className="bg-indigo-50 rounded p-2">
+                                                <div className="text-xs font-medium text-indigo-600 mb-1">🎥 카메라 움직임</div>
+                                                <div className="text-sm text-gray-700">{cutData.sections.cameraMovement}</div>
+                                              </div>
+                                            )}
+                                          </div>
+                                        )}
+
+                                      </div>
+                                    )}
+                                    
+                                    {isCutVisible && !cutData && (
+                                      <div className="text-sm text-gray-500 italic">
+                                        컷별 상세 설명이 아직 생성되지 않았습니다.
+                                      </div>
+                                    )}
+                                    
+                                    {isCutVisible && cutData && !cutData.sections.character && !cutData.sections.action && !cutData.sections.background && !cutData.sections.dialogue && (
+                                      <div className="bg-gray-50 rounded p-3">
+                                        <div className="text-xs font-medium text-gray-600 mb-2">원본 텍스트 (파싱 실패)</div>
+                                        <div className="text-sm text-gray-700 whitespace-pre-wrap">{cutData.content}</div>
+                                      </div>
+                                    )}
+
+                                    {/* 컷 카드 편집 모달 - 개별 컷용 */}
+                                    {editingCutCard && editingCutCard.cardId === card.id && editingCutCard.cutNumber === cutNumber && editingCutData && (
+                                      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                                        <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[80vh] overflow-y-auto">
+                                          <h3 className="text-lg font-medium text-gray-800 mb-4">컷 카드 편집</h3>
+                                          
+                                          <div className="space-y-4">
+                                            <div>
+                                              <label className="block text-sm font-medium text-gray-700 mb-1">컷 제목</label>
+                                              <input
+                                                type="text"
+                                                value={editingCutData.title}
+                                                onChange={(e) => setEditingCutData({...editingCutData, title: e.target.value})}
+                                                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                              />
+                                            </div>
+                                            
+                                            <div>
+                                              <label className="block text-sm font-medium text-gray-700 mb-1">캐릭터</label>
+                                              <textarea
+                                                value={editingCutData.sections.character}
+                                                onChange={(e) => setEditingCutData({
+                                                  ...editingCutData, 
+                                                  sections: {...editingCutData.sections, character: e.target.value}
+                                                })}
+                                                rows={2}
+                                                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                              />
+                                            </div>
+                                            
+                                            <div>
+                                              <label className="block text-sm font-medium text-gray-700 mb-1">액션</label>
+                                              <textarea
+                                                value={editingCutData.sections.action}
+                                                onChange={(e) => setEditingCutData({
+                                                  ...editingCutData, 
+                                                  sections: {...editingCutData.sections, action: e.target.value}
+                                                })}
+                                                rows={2}
+                                                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                              />
+                                            </div>
+                                            
+                                            <div>
+                                              <label className="block text-sm font-medium text-gray-700 mb-1">배경</label>
+                                              <textarea
+                                                value={editingCutData.sections.background}
+                                                onChange={(e) => setEditingCutData({
+                                                  ...editingCutData, 
+                                                  sections: {...editingCutData.sections, background: e.target.value}
+                                                })}
+                                                rows={2}
+                                                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                              />
+                                            </div>
+                                            
+                                            <div>
+                                              <label className="block text-sm font-medium text-gray-700 mb-1">대사</label>
+                                              <textarea
+                                                value={editingCutData.sections.dialogue}
+                                                onChange={(e) => setEditingCutData({
+                                                  ...editingCutData, 
+                                                  sections: {...editingCutData.sections, dialogue: e.target.value}
+                                                })}
+                                                rows={2}
+                                                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                              />
+                                            </div>
+                                            
+                                            <div>
+                                              <label className="block text-sm font-medium text-gray-700 mb-1">구도</label>
+                                              <textarea
+                                                value={editingCutData.sections.composition}
+                                                onChange={(e) => setEditingCutData({
+                                                  ...editingCutData, 
+                                                  sections: {...editingCutData.sections, composition: e.target.value}
+                                                })}
+                                                rows={2}
+                                                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                              />
+                                            </div>
+                                            
+                                            <div>
+                                              <label className="block text-sm font-medium text-gray-700 mb-1">조명</label>
+                                              <textarea
+                                                value={editingCutData.sections.lighting}
+                                                onChange={(e) => setEditingCutData({
+                                                  ...editingCutData, 
+                                                  sections: {...editingCutData.sections, lighting: e.target.value}
+                                                })}
+                                                rows={2}
+                                                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                              />
+                                            </div>
+                                            
+                                            <div>
+                                              <label className="block text-sm font-medium text-gray-700 mb-1">카메라 움직임</label>
+                                              <textarea
+                                                value={editingCutData.sections.cameraMovement}
+                                                onChange={(e) => setEditingCutData({
+                                                  ...editingCutData, 
+                                                  sections: {...editingCutData.sections, cameraMovement: e.target.value}
+                                                })}
+                                                rows={2}
+                                                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                              />
+                                            </div>
+                                          </div>
+                                          
+                                          <div className="flex gap-2 mt-6">
+                                            <Button 
+                                              onClick={handleSaveCutCard}
+                                              className="flex-1 bg-green-600 hover:bg-green-700 text-white"
+                                            >
+                                              저장
+                                            </Button>
+                                            <Button 
+                                              onClick={handleCancelCutCardEdit}
+                                              variant="outline"
+                                              className="flex-1"
+                                            >
+                                              취소
+                                            </Button>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+
+                </div>
               )}
+
               
               {/* 캐릭터 이미지 결과 */}
               {generatedCharacterImages.length > 0 && (
@@ -914,20 +2094,6 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
                         {generatedCharacterImages.length}개
                       </span>
                     </h3>
-                    <div className="flex space-x-2">
-                      <button 
-                        onClick={() => videoHandlers.handleRegenerateAllCharacterImages?.()}
-                        className="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600"
-                      >
-                        전체 재생성
-                      </button>
-                      <button 
-                        onClick={() => videoHandlers.handleSaveAllCharacterImages?.()}
-                        className="px-3 py-1 text-sm bg-green-500 text-white rounded hover:bg-green-600"
-                      >
-                        전체 저장
-                      </button>
-                    </div>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {generatedCharacterImages.map((image, index) => (
@@ -1001,20 +2167,6 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
                         {generatedVideoBackgrounds.length}개
                       </span>
                     </h3>
-                    <div className="flex space-x-2">
-                      <button 
-                        onClick={() => videoHandlers.handleRegenerateAllVideoBackgrounds?.()}
-                        className="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600"
-                      >
-                        전체 재생성
-                      </button>
-                      <button 
-                        onClick={() => videoHandlers.handleSaveAllVideoBackgrounds?.()}
-                        className="px-3 py-1 text-sm bg-green-500 text-white rounded hover:bg-green-600"
-                      >
-                        전체 저장
-                      </button>
-                    </div>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {generatedVideoBackgrounds.map((background, index) => (
@@ -1082,20 +2234,6 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
                 <div className="bg-white rounded-lg border p-6">
                   <div className="flex justify-between items-center mb-4">
                     <h3 className="text-lg font-medium">생성된 영상</h3>
-                    <div className="flex space-x-2">
-                      <button 
-                        onClick={() => videoHandlers.handleRegenerateAllVideos?.()}
-                        className="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600"
-                      >
-                        전체 재생성
-                      </button>
-                      <button 
-                        onClick={() => videoHandlers.handleSaveAllVideos?.()}
-                        className="px-3 py-1 text-sm bg-green-500 text-white rounded hover:bg-green-600"
-                      >
-                        전체 저장
-                      </button>
-                    </div>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {generatedVideos.map((video, index) => {
@@ -1189,21 +2327,6 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
                         {generatedAdvancedImages.length}개
                       </span>
                     </h3>
-                    <div className="flex space-x-2">
-                      <button 
-                        onClick={() => {
-                          generatedAdvancedImages.forEach((image) => {
-                            const link = document.createElement('a');
-                            link.href = image.image;
-                            link.download = `advanced_image_${image.id}.png`;
-                            link.click();
-                          });
-                        }}
-                        className="px-3 py-1 text-sm bg-purple-500 text-white rounded hover:bg-purple-600 transition-colors"
-                      >
-                        전체 다운로드
-                      </button>
-                    </div>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {generatedAdvancedImages.map((image, index) => (
@@ -1264,21 +2387,6 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
                         {generatedCharacters.length}개
                       </span>
                     </h3>
-                    <div className="flex space-x-2">
-                      <button 
-                        onClick={() => {
-                          generatedCharacters.forEach((character) => {
-                            const link = document.createElement('a');
-                            link.href = character.image;
-                            link.download = `nano_character_${character.id}.png`;
-                            link.click();
-                          });
-                        }}
-                        className="px-3 py-1 text-sm bg-yellow-500 text-white rounded hover:bg-yellow-600 transition-colors"
-                      >
-                        전체 다운로드
-                      </button>
-                    </div>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {generatedCharacters.map((character, index) => (
@@ -1510,64 +2618,17 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
 
           {/* 프로젝트 참고 섹션 - 오른쪽 본문 하단 */}
           {(currentStep === "이미지 생성" || currentStep === "이미지 생성/나노 바나나" || currentStep === "영상 생성") && showTextResults && (
-            <div className="mt-8 space-y-6">
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
-                <h2 className="text-xl font-semibold text-blue-800 mb-4 flex items-center gap-2">
-                  <span className="text-2xl">📋</span>
-                  생성 프로젝트 참고
-                </h2>
-                
-                <div className="space-y-4">
-                  {/* 스토리 정보 */}
-                  {story && (
-                    <div className="bg-white rounded-lg border p-4">
-                      <h3 className="text-lg font-medium text-gray-800 mb-2">📖 스토리</h3>
-                      <FormattedText 
-                        text={story}
-                        className="text-sm text-gray-700"
-                      />
-                    </div>
-                  )}
-                  
-                  {/* 캐릭터 정보 */}
-                  {characterList.length > 0 && (
-                    <div className="bg-white rounded-lg border p-4">
-                      <h3 className="text-lg font-medium text-gray-800 mb-2">👥 캐릭터</h3>
-                      <div className="space-y-2">
-                        {characterList.map((char, index) => (
-                          <div key={index} className="border-l-4 border-blue-200 pl-3">
-                            <div className="font-medium text-gray-800">{char.name}</div>
-                            <div className="text-sm text-gray-600">{char.description}</div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  
-                  {/* 시나리오 정보 */}
-                  {finalScenario && (
-                    <div className="bg-white rounded-lg border p-4">
-                      <h3 className="text-lg font-medium text-gray-800 mb-2">🎬 시나리오</h3>
-                      <FormattedText 
-                        text={finalScenario}
-                        className="text-sm text-gray-700"
-                      />
-                    </div>
-                  )}
-                  
-                  {/* 영상 설정 프롬프트 */}
-                  {scenarioPrompt && (
-                    <div className="bg-white rounded-lg border p-4">
-                      <h3 className="text-lg font-medium text-gray-800 mb-2">🎨 영상 설정</h3>
-                      <FormattedText 
-                        text={scenarioPrompt}
-                        className="text-sm text-gray-700"
-                      />
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
+            <ProjectReferenceSection
+              generatedProjectData={generatedProjectData}
+              story={story}
+              characterList={characterList}
+              finalScenario={finalScenario}
+              scenarioPrompt={scenarioPrompt}
+              showKoreanCards={sectionVisibility.koreanCards}
+              showEnglishCards={sectionVisibility.englishCards}
+              onToggleKoreanCards={() => toggleSectionVisibility('koreanCards')}
+              onToggleEnglishCards={() => toggleSectionVisibility('englishCards')}
+            />
           )}
 
           {/* 최종 프롬프트 JSON 카드 - 오른쪽 메인 메뉴 하단 */}
@@ -1588,54 +2649,121 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
               {/* 국문 프롬프트 카드 */}
               {Object.keys(finalPromptCards.korean).length > 0 && (
                 <div className="space-y-4">
-                  <h3 className="text-lg font-medium text-gray-700 flex items-center gap-2">
-                    <span className="text-xl">🇰🇷</span>
-                    국문 프롬프트
-                  </h3>
-                  <div className="space-y-4">
-                    {Object.entries(finalPromptCards.korean).map(([title, content]) => {
-                      const isFullWidth = ['스토리', '시나리오', '대사', '시각및설정', '영상설정프롬프트'].includes(title);
-                      return (
-                        <div key={title} className={`bg-white border border-gray-200 rounded-lg p-4 shadow-sm ${isFullWidth ? 'w-full' : ''}`}>
-                          <h4 className="text-lg font-medium text-gray-800 mb-3 flex items-center gap-2">
-                            <span className="text-xl">🇰🇷</span>
-                            [{title}] 국문 프롬프트
-                          </h4>
-                          <div className="bg-gray-50 p-4 rounded border border-gray-100">
-                            <p className="text-base text-gray-800 leading-relaxed whitespace-pre-wrap">{content}</p>
-                          </div>
-                        </div>
-                      );
-                    })}
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-lg font-medium text-gray-700 flex items-center gap-2">
+                      <span className="text-xl">🇰🇷</span>
+                      국문 프롬프트
+                    </h3>
+                    <button 
+                      onClick={() => toggleSectionVisibility('projectKoreanCards')}
+                      className="px-3 py-1 text-sm bg-gray-500 text-white rounded hover:bg-gray-600"
+                    >
+                      {sectionVisibility.projectKoreanCards ? '감추기' : '보이기'}
+                    </button>
                   </div>
+                  {sectionVisibility.projectKoreanCards && (
+                    <div className="space-y-4">
+                      {Object.entries(finalPromptCards.korean).map(([title, content]) => {
+                        const isFullWidth = UI_CONSTANTS.FULL_WIDTH_CARDS.KOREAN.includes(title);
+                        return (
+                          <div key={title} className={`bg-white border border-gray-200 rounded-lg p-4 shadow-sm ${isFullWidth ? 'w-full' : ''}`}>
+                            <h4 className="text-lg font-medium text-gray-800 mb-3 flex items-center gap-2">
+                              <span className="text-xl">🇰🇷</span>
+                              [{title}] 국문 프롬프트
+                            </h4>
+                            <div className="bg-gray-50 p-4 rounded border border-gray-100">
+                              <p className="text-base text-gray-800 leading-relaxed whitespace-pre-wrap">{content}</p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
 
               {/* 영문 프롬프트 카드 */}
               {Object.keys(finalPromptCards.english).length > 0 && (
                 <div className="space-y-4">
-                  <h3 className="text-lg font-medium text-gray-700 flex items-center gap-2">
-                    <span className="text-xl">🇺🇸</span>
-                    영문 프롬프트
-                  </h3>
-                  <div className="space-y-4">
-                    {Object.entries(finalPromptCards.english).map(([title, content]) => {
-                      const isFullWidth = ['Story', 'Scenario', 'Dialogue', 'Visual Settings', 'Visual Settings Prompt'].includes(title);
-                      return (
-                        <div key={title} className={`bg-blue-50 border border-blue-200 rounded-lg p-4 shadow-sm ${isFullWidth ? 'w-full' : ''}`}>
-                          <h4 className="text-lg font-medium text-blue-800 mb-3 flex items-center gap-2">
-                            <span className="text-xl">🇺🇸</span>
-                            [{title}] 영문 프롬프트
-                          </h4>
-                          <div className="bg-white p-4 rounded border border-blue-100">
-                            <p className="text-base text-gray-800 leading-relaxed whitespace-pre-wrap">{content}</p>
-                          </div>
-                        </div>
-                      );
-                    })}
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-lg font-medium text-gray-700 flex items-center gap-2">
+                      <span className="text-xl">🇺🇸</span>
+                      영문 프롬프트
+                    </h3>
+                    <button 
+                      onClick={() => toggleSectionVisibility('projectEnglishCards')}
+                      className="px-3 py-1 text-sm bg-gray-500 text-white rounded hover:bg-gray-600"
+                    >
+                      {sectionVisibility.projectEnglishCards ? '감추기' : '보이기'}
+                    </button>
                   </div>
+                  {sectionVisibility.projectEnglishCards && (
+                    <div className="space-y-4">
+                      {Object.entries(finalPromptCards.english).map(([title, content]) => {
+                        const isFullWidth = UI_CONSTANTS.FULL_WIDTH_CARDS.ENGLISH.includes(title);
+                        return (
+                          <div key={title} className={`bg-blue-50 border border-blue-200 rounded-lg p-4 shadow-sm ${isFullWidth ? 'w-full' : ''}`}>
+                            <h4 className="text-lg font-medium text-blue-800 mb-3 flex items-center gap-2">
+                              <span className="text-xl">🇺🇸</span>
+                              [{title}] 영문 프롬프트
+                            </h4>
+                            <div className="bg-white p-4 rounded border border-blue-100">
+                              <p className="text-base text-gray-800 leading-relaxed whitespace-pre-wrap">{content}</p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
+            </div>
+          )}
+
+          {/* 프로젝트 개요 저장 결과 - 가장 하단 */}
+          {currentStep === "프로젝트 개요" && generatedProjectData && (
+            <div className="mt-8 space-y-6">
+              <div className="bg-purple-50 rounded-lg border border-purple-200 p-6">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-medium text-purple-800 flex items-center gap-2">
+                    <span className="text-xl">📋</span>
+                    프로젝트 개요 저장 결과
+                  </h3>
+                  <div className="flex space-x-2">
+                    <button 
+                      onClick={() => toggleSectionVisibility('projectOverview')}
+                      className="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600"
+                    >
+                      {sectionVisibility.projectOverview ? '감추기' : '보이기'}
+                    </button>
+                    <button 
+                      onClick={handleDeleteProjectOverview}
+                      className="px-3 py-1 text-sm bg-red-500 text-white rounded hover:bg-red-600"
+                    >
+                      삭제
+                    </button>
+                  </div>
+                </div>
+                {sectionVisibility.projectOverview && (
+                  <>
+                    {editingText.review ? (
+                      <textarea
+                        value={getTextContent('review')}
+                        onChange={(e) => updateTextContent('review', e.target.value)}
+                        className="w-full px-3 py-2 border border-purple-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        rows={8}
+                      />
+                    ) : (
+                      <div className="bg-white p-4 rounded border border-purple-100">
+                        <FormattedJSON 
+                          data={generatedProjectData.reviewResult}
+                          className="text-sm text-gray-700"
+                        />
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
             </div>
           )}
         </div>

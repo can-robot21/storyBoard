@@ -3,7 +3,6 @@ import { useUIStore } from '../stores/uiStore';
 import { downloadBase64Image } from '../utils/downloadUtils';
 import { googleAIService } from '../services/googleAIService';
 import { AIProvider } from '../types/ai';
-import { NanoBananaService } from '../services/ai/NanoBananaService';
 
 export const useImageHandlers = (
   generatedCharacters: any[],
@@ -14,98 +13,39 @@ export const useImageHandlers = (
   setGeneratedSettingCuts: React.Dispatch<React.SetStateAction<any[]>>,
   generatedProjectData: any,
   imageGenerationAPI: AIProvider = 'google',
-  customSize: string = '',
-  additionalPrompt: string = ''
+  aspectRatio: string = '16:9'
 ) => {
   const { addNotification } = useUIStore();
   
-  // 나노 바나나 서비스 직접 인스턴스화
-  const nanoBananaService = React.useMemo(() => {
-    try {
-      const apiKey = process.env.REACT_APP_GEMINI_API_KEY;
-      if (!apiKey) {
-        console.error('❌ REACT_APP_GEMINI_API_KEY가 설정되지 않았습니다.');
-        return null;
-      }
-      return new NanoBananaService({ apiKey });
-    } catch (error) {
-      console.error('❌ 나노 바나나 서비스 초기화 실패:', error);
-      return null;
-    }
-  }, []);
+  // 나노 바나나 서비스는 더 이상 사용하지 않음 (Google AI만 사용)
 
-  // 통합 이미지 생성 함수 (API 선택에 따라)
+  // 통합 이미지 생성 함수 (Google AI만 사용)
   const generateImageWithAPI = async (prompt: string, attachedImages: File[], type: 'character' | 'background' | 'setting' | 'settingCut') => {
-    console.log('🚀 generateImageWithAPI 호출:', { prompt, attachedImages: attachedImages.length, type, imageGenerationAPI });
+    console.log('🚀 generateImageWithAPI 호출:', { prompt, attachedImages: attachedImages.length, type, imageGenerationAPI, aspectRatio });
     
-    // 나노 바나나 API인 경우 특별 처리
-    if (imageGenerationAPI === 'nano-banana') {
-      console.log('🍌 나노 바나나 API 사용');
-      
-      if (!nanoBananaService) {
-        throw new Error('나노 바나나 AI 서비스를 초기화할 수 없습니다. API 키를 확인해주세요.');
-      }
-      
-      if (attachedImages.length > 0) {
-        // 멀티모달 이미지 생성
-        console.log('📷 멀티모달 이미지 생성');
-        let finalPrompt = prompt;
-        if (additionalPrompt.trim()) {
-          finalPrompt = `${prompt}\n\n추가 요청사항: ${additionalPrompt}`;
-        }
-        if (customSize.trim()) {
-          finalPrompt = `${finalPrompt}\n\n사이즈 요청사항: ${customSize}`;
-        }
-        console.log('🔄 멀티모달 API 호출:', finalPrompt);
-        return await nanoBananaService.generateImageWithReference(finalPrompt, attachedImages[0], customSize);
-      } else {
-        // 텍스트만으로 이미지 생성
-        console.log('📝 텍스트만으로 이미지 생성');
-        let finalPrompt = prompt;
-        if (additionalPrompt.trim()) {
-          finalPrompt = `${prompt}\n\n추가 요청사항: ${additionalPrompt}`;
-        }
-        if (customSize.trim()) {
-          finalPrompt = `${finalPrompt}\n\n사이즈 요청사항: ${customSize}`;
-        }
-        
-        console.log('🔄 텍스트 이미지 생성 API 호출:', finalPrompt);
-        const result = await nanoBananaService.generateImage({
-          prompt: finalPrompt,
-          provider: 'nano-banana',
-          model: 'gemini-2.5-flash-image-preview',
-          aspectRatio: '1:1',
-          quality: 'standard'
-        });
-        
-        console.log('📊 이미지 생성 결과:', result);
-        return result.images[0] || '';
+    // Google AI 서비스 사용
+    console.log('🔍 Google AI 서비스 사용');
+    if (attachedImages.length > 0) {
+      console.log('📷 첨부 이미지와 함께 생성');
+      switch (type) {
+        case 'character':
+          return await googleAIService.generateWithImage(attachedImages[0], prompt, aspectRatio);
+        case 'background':
+          return await googleAIService.generateBackgroundWithImage(attachedImages[0], prompt, aspectRatio);
+        case 'setting':
+        case 'settingCut':
+          return await googleAIService.generateSettingCutWithImage(attachedImages[0], prompt, aspectRatio);
       }
     } else {
-      // Google AI 서비스 사용
-      console.log('🔍 Google AI 서비스 사용');
-      if (attachedImages.length > 0) {
-        console.log('📷 첨부 이미지와 함께 생성');
-        switch (type) {
-          case 'character':
-            return await googleAIService.generateWithImage(attachedImages[0], prompt);
-          case 'background':
-            return await googleAIService.generateBackgroundWithImage(attachedImages[0], prompt);
-          case 'setting':
-          case 'settingCut':
-            return await googleAIService.generateSettingCutWithImage(attachedImages[0], prompt);
-        }
-      } else {
-        console.log('📝 텍스트만으로 생성');
-        switch (type) {
-          case 'character':
-            return await googleAIService.generateCharacterImage(prompt);
-          case 'background':
-            return await googleAIService.generateBackgroundImage(prompt);
-          case 'setting':
-          case 'settingCut':
-            return await googleAIService.generateSettingCutImage(prompt);
-        }
+      console.log('📝 텍스트만으로 생성');
+      switch (type) {
+        case 'character':
+          return await googleAIService.generateCharacterImage(prompt, aspectRatio);
+        case 'background':
+          return await googleAIService.generateBackgroundImage(prompt, aspectRatio);
+        case 'setting':
+        case 'settingCut':
+          return await googleAIService.generateSettingCutImage(prompt, aspectRatio);
       }
     }
   };
