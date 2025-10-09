@@ -23,11 +23,37 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({
   const [apiKeys, setApiKeys] = useState({
     google: process.env.REACT_APP_GEMINI_API_KEY || '',
     openai: process.env.REACT_APP_OPENAI_API_KEY || '',
+    chatgpt: process.env.REACT_APP_OPENAI_API_KEY || '',
     anthropic: process.env.REACT_APP_ANTHROPIC_API_KEY || '',
     'nano-banana': process.env.REACT_APP_GEMINI_API_KEY || '' // 나노 바나나는 Google AI 키 사용
   });
 
   const [showApiKeys, setShowApiKeys] = useState(false);
+  // Prefill from localStorage for non-admin users
+  try {
+    // lightweight guard to avoid SSR issues
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('user_api_keys');
+      if (saved && !apiKeys.google && !apiKeys.openai && !apiKeys.chatgpt && !apiKeys.anthropic) {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === 'object') {
+          // prefill from saved keys without overriding env defaults if already present
+          apiKeys.google = apiKeys.google || parsed.google || '';
+          apiKeys.openai = apiKeys.openai || parsed.openai || '';
+          (apiKeys as any)['nano-banana'] = (apiKeys as any)['nano-banana'] || parsed['nano-banana'] || '';
+          apiKeys.chatgpt = apiKeys.chatgpt || parsed.chatgpt || '';
+          apiKeys.anthropic = apiKeys.anthropic || parsed.anthropic || '';
+        }
+      }
+    }
+  } catch {}
+
+  // Save to localStorage on change
+  try {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('user_api_keys', JSON.stringify(apiKeys));
+    }
+  } catch {}
 
   const handleApiKeyChange = (provider: AIProvider, value: string) => {
     setApiKeys(prev => ({
@@ -88,7 +114,7 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({
 
           {showApiKeys && (
             <div className="space-y-4">
-              {(['google', 'openai', 'anthropic', 'nano-banana'] as AIProvider[]).map((provider) => {
+              {(['google', 'openai', 'chatgpt', 'anthropic', 'nano-banana'] as AIProvider[]).map((provider) => {
                 const keyStatus = getApiKeyStatus(provider);
                 const isSelected = selectedProvider === provider;
                 
@@ -102,8 +128,9 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-2">
                         <h4 className="font-medium text-gray-900 capitalize">
-                          {provider === 'google' ? 'Google AI' : 
-                           provider === 'openai' ? 'OpenAI' : 
+                          {provider === 'google' ? 'Google AI' :
+                           provider === 'openai' ? 'OpenAI' :
+                           provider === 'chatgpt' ? 'ChatGPT' :
                            provider === 'anthropic' ? 'Anthropic' : '나노 바나나'}
                         </h4>
                         <div className={`flex items-center gap-1 ${keyStatus.color}`}>

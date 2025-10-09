@@ -11,7 +11,8 @@ export const useVideoHandlers = (
   setGeneratedVideoBackgrounds: React.Dispatch<React.SetStateAction<any[]>>,
   generatedVideos: any[],
   setGeneratedVideos: React.Dispatch<React.SetStateAction<any[]>>,
-  generatedProjectData: any
+  generatedProjectData: any,
+  onEditCard?: (cardId: number, currentText: string) => void // 편집 콜백 추가
 ) => {
   const { addNotification } = useUIStore();
 
@@ -49,22 +50,45 @@ ${storySceneInput}
       });
     } catch (error) {
       console.error('텍스트 카드 생성 오류:', error);
+      
+      let errorMessage = '텍스트 카드 생성 중 오류가 발생했습니다.';
+      if (error instanceof Error) {
+        if (error.message.includes('API 키')) {
+          errorMessage = 'Google AI API 키가 설정되지 않았습니다. 설정에서 API 키를 입력해주세요.';
+        } else if (error.message.includes('사용량 한도')) {
+          errorMessage = 'API 사용량 한도를 초과했습니다. 잠시 후 다시 시도해주세요.';
+        } else if (error.message.includes('안전 정책')) {
+          errorMessage = '입력 내용이 안전 정책에 위배됩니다. 다른 내용으로 시도해주세요.';
+        } else if (error.message.includes('503') || error.message.includes('UNAVAILABLE')) {
+          errorMessage = 'Google AI 서비스가 일시적으로 사용할 수 없습니다. 잠시 후 다시 시도해주세요.';
+        } else if (error.message.includes('이미지 생성 결과가 없습니다')) {
+          errorMessage = '이미지 생성에 실패했습니다. 프롬프트를 수정하거나 다른 설정으로 시도해주세요.';
+        } else if (error.message.includes('데이터베이스')) {
+          errorMessage = '데이터베이스 연결에 문제가 있습니다. 페이지를 새로고침해주세요.';
+        } else if (error.message.includes('네트워크')) {
+          errorMessage = '네트워크 연결에 문제가 있습니다. 인터넷 연결을 확인해주세요.';
+        } else {
+          errorMessage = `텍스트 카드 생성 중 오류가 발생했습니다: ${error.message}`;
+        }
+      }
+      
       addNotification({
         type: 'error',
         title: '생성 실패',
-        message: '텍스트 카드 생성 중 오류가 발생했습니다.',
+        message: errorMessage,
       });
     }
   };
 
-  const handleEditTextCard = (cardId: number, newText: string) => {
-    setGeneratedTextCards((prev: any[]) =>
-      prev.map((card: any) =>
-        card.id === cardId
-          ? { ...card, generatedText: newText }
-          : card
-      )
-    );
+  const handleEditCard = (cardId: number, currentText: string) => {
+    // VideoGenerationStep의 편집 모달을 열기 위한 콜백 호출
+    if (onEditCard) {
+      onEditCard(cardId, currentText);
+    }
+  };
+
+  const handleDeleteCard = (cardId: number) => {
+    setGeneratedTextCards(prev => prev.filter(c => c.id !== cardId));
   };
 
   const handleDeleteTextCardOld = (cardId: number) => {
@@ -356,10 +380,13 @@ ${storySceneInput}
     try {
       const newVideos = [];
       for (const video of generatedVideos) {
-        const result = await googleAIService.generateVideo(video.projectTexts.join(' '), video.videoRatio);
+        const result = await googleAIService.generateVideo({
+          prompt: video.projectTexts.join(' '),
+          ratio: video.videoRatio
+        });
         newVideos.push({
           ...video,
-          video: result,
+          video: result.videoUrl,
           timestamp: new Date().toISOString(),
         });
       }
@@ -454,9 +481,12 @@ ${storySceneInput}
     if (!video) return;
 
     try {
-      const result = await googleAIService.generateVideo(video.projectTexts.join(' '), video.videoRatio);
+      const result = await googleAIService.generateVideo({
+        prompt: video.projectTexts.join(' '),
+        ratio: video.videoRatio
+      });
       setGeneratedVideos(prev => prev.map(v => 
-        v.id === id ? { ...v, video: result, timestamp: new Date().toISOString() } : v
+        v.id === id ? { ...v, video: result.videoUrl, timestamp: new Date().toISOString() } : v
       ));
       addNotification({
         type: 'success',
@@ -775,8 +805,9 @@ ${storySceneInput}
 
   return {
     handleGenerateTextCard,
-    handleEditTextCard,
     handleDeleteTextCardOld,
+    handleEditCard,
+    handleDeleteCard,
     handleGenerateCharacterImage,
     handleGenerateCharacterVideo,
     handleRegenerateCharacterVideo,

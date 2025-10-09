@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useUIStore } from './stores/uiStore';
 import { Header } from './components/layout/Header';
-import { MainLayout } from './components/layout/MainLayout';
+import { ImprovedMainLayout } from './components/layout/ImprovedMainLayout';
 import { AISettingsModal } from './components/common/AISettingsModal';
-import { AuthModal } from './components/common/AuthModal';
+import { LoginOverlay } from './components/common/LoginOverlay';
 import { useProjectHandlers } from './hooks/useProjectHandlers';
 import { useImageHandlers } from './hooks/useImageHandlers';
 import { useVideoHandlers } from './hooks/useVideoHandlers';
@@ -35,6 +35,7 @@ export default function App() {
   const [showAISettings, setShowAISettings] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<'login' | 'register' | 'profile'>('login');
+  const [AuthModal, setAuthModal] = useState<React.ComponentType<any> | null>(null);
 
   // 인증 서비스 초기화
   useEffect(() => {
@@ -50,8 +51,19 @@ export default function App() {
         console.error('Auth initialization error:', error);
       }
     };
-    
+
+    // AuthModal 동적 로드
+    const loadAuthModal = async () => {
+      try {
+        const { AuthModal: AuthModalComponent } = await import('./components/common/AuthModal');
+        setAuthModal(() => AuthModalComponent);
+      } catch (error) {
+        console.error('Failed to load AuthModal:', error);
+      }
+    };
+
     initializeAuth();
+    loadAuthModal();
   }, []);
   
   // AI 서비스 관리
@@ -61,10 +73,19 @@ export default function App() {
   } = useAIServiceManager();
   
   // 프로젝트 개요 상태
-  const [story, setStory] = useState("");
-  const [characterList, setCharacterList] = useState<any[]>([]);
+  const [story, setStory] = useState(() => {
+    const saved = localStorage.getItem('projectStory');
+    return saved || "";
+  });
+  const [characterList, setCharacterList] = useState<any[]>(() => {
+    const saved = localStorage.getItem('projectCharacterList');
+    return saved ? JSON.parse(saved) : [];
+  });
   const [scenarioPrompt, setScenarioPrompt] = useState("");
-  const [storySummary, setStorySummary] = useState("");
+  const [storySummary, setStorySummary] = useState(() => {
+    const saved = localStorage.getItem('projectStorySummary');
+    return saved || "";
+  });
   const [finalScenario, setFinalScenario] = useState("");
   const [generatedProjectData, setGeneratedProjectData] = useState<GeneratedProjectData | null>(null);
   
@@ -86,23 +107,12 @@ export default function App() {
   const [selectedTextCards, setSelectedTextCards] = useState<Set<number>>(new Set());
   const [selectedCharacterImages, setSelectedCharacterImages] = useState<Set<number>>(new Set());
   const [selectedVideoBackgrounds, setSelectedVideoBackgrounds] = useState<Set<number>>(new Set());
+  const [cutTextCardSelections] = useState<{ [key: string]: Set<number> }>({});
+  const [selectedCuts] = useState<Set<string>>(new Set());
+  const [characterPrompt] = useState("");
   
   // UI 상태
   const [showTextResults, setShowTextResults] = useState(false);
-  const [showCutTextCards, setShowCutTextCards] = useState(false);
-  const [cutVisibility, setCutVisibility] = useState<{ [key: string]: boolean }>({});
-  
-  // 토큰 사용량 상태
-  const [tokenUsage, setTokenUsage] = useState({
-    imageGeneration: {
-      current: 0,
-      total: 0
-    },
-    videoGeneration: {
-      current: 0,
-      total: 0
-    }
-  });
   
   // 단계 상태 관리
   const [stepStatus, setStepStatus] = useState({
@@ -134,12 +144,21 @@ export default function App() {
     '16:9' // aspectRatio 기본값
   );
 
+  // VideoGenerationStep의 편집 핸들러 참조
+  const videoStepEditHandlerRef = React.useRef<((cardId: number, currentText: string) => void) | null>(null);
+
   const videoHandlers = useVideoHandlers(
     generatedTextCards, setGeneratedTextCards,
     generatedCharacterImages, setGeneratedCharacterImages,
     generatedVideoBackgrounds, setGeneratedVideoBackgrounds,
     generatedVideos, setGeneratedVideos,
-    generatedProjectData
+    generatedProjectData,
+    (cardId: number, currentText: string) => {
+      // VideoGenerationStep의 편집 모달을 열기 위한 핸들러
+      if (videoStepEditHandlerRef.current) {
+        videoStepEditHandlerRef.current(cardId, currentText);
+      }
+    }
   );
 
   const handleLogin = () => {
@@ -157,16 +176,20 @@ export default function App() {
     setShowAuthModal(true);
   };
 
-  const handleAuthSuccess = (user: User) => {
+  const handleLoginSuccess = async (user: User) => {
     setCurrentUser(user);
     setIsLoggedIn(true);
     setShowAuthModal(false);
+    
+    // 관리자 계정인 경우 환경 변수 키값 자동 적용
+    if (AuthService.isAdminUser(user.email)) {
+      console.log('🎉 관리자 계정으로 로그인 - 환경 변수 키값 자동 적용');
+    }
+    
     addNotification({
       type: 'success',
-      title: '인증 성공',
-      message: authModalMode === 'login' ? '로그인되었습니다.' : 
-               authModalMode === 'register' ? '회원가입이 완료되었습니다.' :
-               '회원정보가 수정되었습니다.'
+      title: '로그인 성공',
+      message: `${user.name}님, 환영합니다!`
     });
   };
 
@@ -180,6 +203,61 @@ export default function App() {
       message: '로그아웃되었습니다.'
     });
   };
+
+  const handleAPIKeySave = async (apiKeys: any) => {
+    if (currentUser) {
+      try {
+        const result = await AuthService.updateUser(currentUser.id, { apiKeys });
+        if (result.success && result.user) {
+          setCurrentUser(result.user);
+          addNotification({
+            type: 'success',
+            title: 'API 키 저장',
+            message: 'API 키가 성공적으로 저장되었습니다.'
+          });
+        }
+      } catch (error) {
+        console.error('API 키 저장 실패:', error);
+        addNotification({
+          type: 'error',
+          title: '저장 실패',
+          message: 'API 키 저장 중 오류가 발생했습니다.'
+        });
+      }
+    }
+  };
+
+  const handleAuthSuccess = (user: User) => {
+    setCurrentUser(user);
+    setIsLoggedIn(true);
+    setShowAuthModal(false);
+    addNotification({
+      type: 'success',
+      title: '인증 성공',
+      message: authModalMode === 'login' ? '로그인되었습니다.' : 
+               authModalMode === 'register' ? '회원가입이 완료되었습니다.' :
+               '회원정보가 수정되었습니다.'
+    });
+  };
+
+  // 프로젝트 데이터 localStorage 저장
+  useEffect(() => {
+    if (story) {
+      localStorage.setItem('projectStory', story);
+    }
+  }, [story]);
+
+  useEffect(() => {
+    if (characterList.length > 0) {
+      localStorage.setItem('projectCharacterList', JSON.stringify(characterList));
+    }
+  }, [characterList]);
+
+  useEffect(() => {
+    if (storySummary) {
+      localStorage.setItem('projectStorySummary', storySummary);
+    }
+  }, [storySummary]);
 
   const handleAuthModalClose = () => {
     setShowAuthModal(false);
@@ -208,20 +286,17 @@ export default function App() {
   return (
     <div className="h-screen flex flex-col bg-gray-50">
       <Header
-        currentStep={currentStep}
-        onStepChange={setCurrentStep}
         isLoggedIn={isLoggedIn}
         onLogin={handleLogin}
         onLogout={handleLogout}
-        onAISettingsClick={handleAISettingsClick}
         onProfileClick={handleProfile}
         onRegister={handleRegister}
-        selectedAIProvider={selectedProvider}
         currentUser={currentUser}
       />
       
-      <MainLayout 
+      <ImprovedMainLayout
         currentStep={currentStep}
+        setCurrentStep={setCurrentStep}
         // 프로젝트 개요 props
         story={story}
         setStory={setStory}
@@ -242,7 +317,6 @@ export default function App() {
         setGeneratedBackgrounds={setGeneratedBackgrounds}
         generatedSettingCuts={generatedSettingCuts}
         setGeneratedSettingCuts={setGeneratedSettingCuts}
-        // 고급 이미지 생성 props
         generatedAdvancedImages={generatedAdvancedImages}
         setGeneratedAdvancedImages={setGeneratedAdvancedImages}
         // 영상 생성 props
@@ -261,6 +335,9 @@ export default function App() {
         setSelectedCharacterImages={setSelectedCharacterImages}
         selectedVideoBackgrounds={selectedVideoBackgrounds}
         setSelectedVideoBackgrounds={setSelectedVideoBackgrounds}
+        cutTextCardSelections={cutTextCardSelections}
+        selectedCuts={selectedCuts}
+        characterPrompt={characterPrompt}
         // 핸들러들
         projectHandlers={projectHandlers}
         imageHandlers={imageHandlers}
@@ -268,17 +345,22 @@ export default function App() {
         // UI 상태
         showTextResults={showTextResults}
         setShowTextResults={setShowTextResults}
-        showCutTextCards={showCutTextCards}
-        setShowCutTextCards={setShowCutTextCards}
-        cutVisibility={cutVisibility}
-        setCutVisibility={setCutVisibility}
-        // 단계 상태
         stepStatus={stepStatus}
         setStepStatus={setStepStatus}
-        // 토큰 사용량
-        tokenUsage={tokenUsage}
-        setTokenUsage={setTokenUsage}
+        // AI 설정
+        selectedAIProvider={selectedProvider}
+        onAISettingsClick={handleAISettingsClick}
+        currentUser={currentUser}
+        videoStepEditHandlerRef={videoStepEditHandlerRef}
       />
+      
+      {/* 미로그인 상태에서 로그인 오버레이 표시 */}
+      {!isLoggedIn && (
+        <LoginOverlay
+          onLogin={handleLogin}
+          onRegister={handleRegister}
+        />
+      )}
       
       {/* AI 설정 모달 */}
       <AISettingsModal
@@ -290,13 +372,15 @@ export default function App() {
       />
       
       {/* 인증 모달 */}
-      <AuthModal
-        isOpen={showAuthModal}
-        onClose={handleAuthModalClose}
-        mode={authModalMode}
-        onSuccess={handleAuthSuccess}
-        currentUser={currentUser}
-      />
+      {AuthModal && (
+        <AuthModal
+          isOpen={showAuthModal}
+          onClose={handleAuthModalClose}
+          mode={authModalMode}
+          onSuccess={handleLoginSuccess}
+          currentUser={currentUser}
+        />
+      )}
     </div>
   );
 }

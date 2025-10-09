@@ -1,5 +1,5 @@
 import React from 'react';
-import { Bot, Zap, Sparkles } from 'lucide-react';
+import { Bot, Zap, Sparkles, MessageCircle } from 'lucide-react';
 import { AIProvider } from '../../types/ai';
 
 interface AISelectorProps {
@@ -21,9 +21,17 @@ const aiProviders = [
   {
     id: 'openai' as AIProvider,
     name: 'OpenAI',
-    description: 'ChatGPT, DALL-E를 통한 텍스트, 이미지 생성',
+    description: 'GPT-4, DALL-E를 통한 텍스트, 이미지 생성',
     icon: Zap,
     color: 'bg-green-500',
+    available: true
+  },
+  {
+    id: 'chatgpt' as AIProvider,
+    name: 'ChatGPT',
+    description: 'ChatGPT API를 통한 고품질 텍스트 및 이미지 생성',
+    icon: MessageCircle,
+    color: 'bg-emerald-500',
     available: true
   },
   {
@@ -49,7 +57,7 @@ export const AISelector: React.FC<AISelectorProps> = ({
         <h3 className="text-lg font-semibold text-gray-800">AI 서비스 선택</h3>
       </div>
       
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
         {aiProviders.map((provider) => {
           const Icon = provider.icon;
           const isSelected = selectedProvider === provider.id;

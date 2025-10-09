@@ -6,33 +6,80 @@ import { GoogleGenAI } from '@google/genai';
  * 나노 바나나 서비스 구현체 (Google Gemini 2.5 Flash Image Preview)
  */
 export class NanoBananaService extends BaseAIService {
-  private ai: GoogleGenAI;
+  private ai: GoogleGenAI | null = null;
 
   constructor(config: { apiKey: string; baseUrl?: string }) {
     super(config);
-    this.ai = new GoogleGenAI({
-      apiKey: config.apiKey,
-    });
+    
+    // API 키가 있을 때만 GoogleGenAI 인스턴스 생성
+    if (config.apiKey && config.apiKey.trim() !== '') {
+      try {
+        this.ai = new GoogleGenAI({
+          apiKey: config.apiKey,
+        });
+      } catch (error) {
+        console.warn('⚠️ Google AI 초기화 실패:', error);
+        this.ai = null;
+      }
+    }
   }
 
   protected validateConfig(): void {
-    if (!this.config.apiKey) {
-      throw new Error('Google AI API 키가 필요합니다.');
+    if (!this.config.apiKey || this.config.apiKey.trim() === '') {
+      this.isAvailableFlag = false;
+      return;
     }
+
+    // API 키 형식 검증 (Google AI API 키는 보통 39자)
+    if (this.config.apiKey.length < 20) {
+      this.isAvailableFlag = false;
+      return;
+    }
+
+    // Google AI API 키 형식 검증 (AIza로 시작하는지 확인)
+    if (!this.config.apiKey.startsWith('AIza')) {
+      this.isAvailableFlag = false;
+      return;
+    }
+    
+    if (!this.ai) {
+      this.isAvailableFlag = false;
+      return;
+    }
+    
     this.isAvailableFlag = true;
   }
 
   async generateText(options: TextGenerationOptions): Promise<TextGenerationResponse> {
+    if (!this.ai) {
+      return this.formatTextResponse(
+        '⚠️ Google AI API 키가 설정되지 않았습니다. 환경 변수에 REACT_APP_GEMINI_API_KEY를 설정해주세요.',
+        { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+        options.model || 'gemini-2.5-flash',
+        'stop'
+      );
+    }
+
     try {
+      // 프롬프트 검증
+      if (!options.prompt || options.prompt.trim().length === 0) {
+        throw new Error('프롬프트가 비어있습니다.');
+      }
+
       const response = await this.ai.models.generateContent({
         model: options.model || 'gemini-2.5-flash',
-        contents: options.prompt,
+        contents: [{ parts: [{ text: options.prompt }] }],
         config: {
           systemInstruction: "당신은 창의적인 스토리텔러이자 영상 제작 전문가입니다. 주어진 요청에 따라 매력적이고 구체적인 콘텐츠를 생성해주세요."
         }
       });
 
-      const text = response.text || '';
+      // 응답 검증
+      if (!response || !response.text) {
+        throw new Error('AI 응답이 비어있습니다.');
+      }
+
+      const text = response.text;
 
       return this.formatTextResponse(
         text,
@@ -41,11 +88,34 @@ export class NanoBananaService extends BaseAIService {
         'stop'
       );
     } catch (error) {
+      console.error('NanoBanana 텍스트 생성 오류:', error);
+      
+      // 구체적인 에러 메시지 제공
+      if (error instanceof Error) {
+        if (error.message.includes('API key')) {
+          throw new Error('Google AI API 키가 유효하지 않습니다. API 키를 확인해주세요.');
+        } else if (error.message.includes('quota')) {
+          throw new Error('API 사용량 한도를 초과했습니다. 잠시 후 다시 시도해주세요.');
+        } else if (error.message.includes('safety')) {
+          throw new Error('안전 정책에 위배되는 내용이 감지되었습니다. 프롬프트를 수정해주세요.');
+        } else if (error.message.includes('network') || error.message.includes('fetch')) {
+          throw new Error('네트워크 연결에 문제가 있습니다. 인터넷 연결을 확인해주세요.');
+        }
+      }
+      
       this.handleError(error, '텍스트 생성');
     }
   }
 
   async generateImage(options: ImageGenerationOptions): Promise<ImageGenerationResponse> {
+    if (!this.ai) {
+      return {
+        images: [],
+        usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+        model: options.model || 'gemini-2.5-flash-image-preview'
+      };
+    }
+
     try {
       console.log('🍌 Nano Banana 이미지 생성 시작:', options.prompt);
       
@@ -192,6 +262,11 @@ export class NanoBananaService extends BaseAIService {
 
   // 이미지 분석 전용 함수 (텍스트만 반환)
   async analyzeImage(referenceImage: File): Promise<string> {
+    if (!this.ai) {
+      console.warn('⚠️ Google AI API 키가 설정되지 않았습니다.');
+      return '⚠️ Google AI API 키가 설정되지 않았습니다. 환경 변수에 REACT_APP_GEMINI_API_KEY를 설정해주세요.';
+    }
+
     try {
       console.log('🔍 이미지 분석 시작...');
       
@@ -248,16 +323,128 @@ export class NanoBananaService extends BaseAIService {
       return analysisResult;
     } catch (error) {
       console.error('❌ 이미지 분석 오류:', error);
-      throw new Error(`이미지 분석 중 오류가 발생했습니다: ${error instanceof Error ? error.message : '알 수 없는 오류'}`);
+      
+      // 구체적인 에러 메시지 제공
+      if (error instanceof Error) {
+        if (error.message.includes('API key')) {
+          throw new Error('Google AI API 키가 유효하지 않습니다. 설정에서 API 키를 확인해주세요.');
+        } else if (error.message.includes('quota')) {
+          throw new Error('API 사용량 한도를 초과했습니다. 잠시 후 다시 시도해주세요.');
+        } else if (error.message.includes('safety')) {
+          throw new Error('이미지가 안전 정책에 위배됩니다. 다른 이미지로 시도해주세요.');
+        } else if (error.message.includes('503') || error.message.includes('UNAVAILABLE')) {
+          throw new Error('Google AI 서비스가 일시적으로 사용할 수 없습니다. 잠시 후 다시 시도해주세요.');
+        } else if (error.message.includes('network')) {
+          throw new Error('네트워크 연결에 문제가 있습니다. 인터넷 연결을 확인해주세요.');
+        } else {
+          throw new Error(`이미지 분석 중 오류가 발생했습니다: ${error.message}`);
+        }
+      }
+      
+      throw new Error('이미지 분석 중 알 수 없는 오류가 발생했습니다.');
     }
   }
 
-  // 멀티모달 이미지 생성 (텍스트 + 이미지)
+  // 멀티모달 이미지 생성 (여러 이미지 + 텍스트)
+  async generateImageWithMultipleReferences(
+    textPrompt: string, 
+    referenceImages: File[], 
+    customSize?: string
+  ): Promise<string> {
+    if (!this.ai) {
+      console.warn('⚠️ Google AI API 키가 설정되지 않았습니다.');
+      return '';
+    }
+
+    try {
+      console.log('🍌 나노 바나나 멀티 이미지 생성 시작:', { textPrompt, imageCount: referenceImages.length });
+      
+      // Gemini 2.5 Flash Image 모델을 사용한 이미지 생성
+      const config = {
+        responseModalities: ['IMAGE'],
+      };
+      
+      const model = 'gemini-2.5-flash-image';
+      
+      // 여러 이미지를 parts 배열에 추가
+      const parts: any[] = [
+        {
+          text: `Based on these reference images, generate a new image with the following modifications: ${textPrompt}. 
+          
+          Instructions:
+          - Combine elements from all reference images
+          - Maintain consistency in style and quality
+          - Incorporate the requested changes while preserving the best features from each image
+          - Create a cohesive final result that blends the reference images effectively`,
+        }
+      ];
+
+      // 각 이미지를 parts에 추가
+      for (const imageFile of referenceImages) {
+        const imageData = await this.fileToBase64(imageFile);
+        parts.push({
+          inlineData: {
+            mimeType: imageFile.type,
+            data: imageData,
+          },
+        });
+      }
+      
+      const contents = [
+        {
+          role: 'user',
+          parts: parts,
+        },
+      ];
+
+      console.log('🎨 멀티 이미지 생성 중...');
+      const response = await this.ai.models.generateContentStream({
+        model,
+        config,
+        contents,
+      });
+
+      let generatedImage = '';
+      for await (const chunk of response) {
+        if (!chunk.candidates || !chunk.candidates[0].content || !chunk.candidates[0].content.parts) {
+          continue;
+        }
+        
+        if (chunk.candidates?.[0]?.content?.parts?.[0]?.inlineData) {
+          const inlineData = chunk.candidates[0].content.parts[0].inlineData;
+          generatedImage = `data:${inlineData.mimeType};base64,${inlineData.data}`;
+          console.log('✅ 나노 바나나 멀티 이미지 생성 완료');
+          break;
+        }
+      }
+
+      if (!generatedImage) {
+        console.warn('⚠️ 멀티 이미지 생성 실패, 첫 번째 이미지로 단일 생성 시도');
+        return await this.generateImageWithReference(textPrompt, referenceImages[0], customSize);
+      }
+
+      return generatedImage;
+    } catch (error) {
+      console.error('❌ 나노 바나나 멀티 이미지 생성 오류:', error);
+      // 실패 시 첫 번째 이미지로 단일 생성 시도
+      if (referenceImages.length > 0) {
+        return await this.generateImageWithReference(textPrompt, referenceImages[0], customSize);
+      }
+      return '';
+    }
+  }
+
+  // 멀티모달 이미지 생성 (이미지 + 텍스트)
   async generateImageWithReference(
     textPrompt: string, 
     referenceImage: File, 
     customSize?: string
   ): Promise<string> {
+    if (!this.ai) {
+      console.warn('⚠️ Google AI API 키가 설정되지 않았습니다.');
+      return '';
+    }
+
     try {
       console.log('🍌 나노 바나나 멀티모달 이미지 생성 시작:', textPrompt);
       
@@ -268,9 +455,9 @@ export class NanoBananaService extends BaseAIService {
         responseModalities: ['IMAGE'],
       };
       
-      const model = 'gemini-2.5-flash-image-preview';
+      const model = 'gemini-2.5-flash-image';
       
-      // 1단계: 첨부 이미지 분석하여 상세 프롬프트 생성
+      // img2img 이미지 생성
       const analysisPrompt = `Analyze this reference image and create a detailed, professional image generation prompt. 
       
       User's request: "${textPrompt}"
@@ -419,3 +606,8 @@ export class NanoBananaService extends BaseAIService {
     });
   }
 }
+
+// NanoBananaService 인스턴스 생성 및 export
+export const nanoBananaService = new NanoBananaService({
+  apiKey: process.env.REACT_APP_GEMINI_API_KEY || ''
+});

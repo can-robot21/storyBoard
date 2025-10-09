@@ -1,34 +1,135 @@
 import { User, LoginCredentials, RegisterData } from '../types/auth';
 import { CryptoUtils } from '../utils/cryptoUtils';
+import { databaseService } from './database/DatabaseService';
+import { User as DBUser } from '../types/project';
 
-// 관리자 계정 정보 (환경변수에서 가져옴)
-const getAdminUser = async (): Promise<User> => {
-  const adminCreds = CryptoUtils.getAdminCredentials();
-  const hashedPassword = await CryptoUtils.hashPassword(adminCreds.password);
-  
-  return {
-    id: 'admin-001',
-    name: '관리자',
-    email: adminCreds.email,
-    password: hashedPassword,
-    apiKeys: {
-      google: process.env.REACT_APP_GEMINI_API_KEY || 'your-google-api-key',
-      openai: process.env.REACT_APP_OPENAI_API_KEY || 'your-openai-api-key',
-      midjourney: 'your-midjourney-api-key',
-      anthropic: process.env.REACT_APP_ANTHROPIC_API_KEY || 'your-anthropic-api-key'
-    },
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
+  // 관리자 계정 정보 (환경변수에서 가져옴)
+  const getAdminUser = async (): Promise<User> => {
+    const adminCreds = CryptoUtils.getAdminCredentials();
+    const hashedPassword = await CryptoUtils.hashPassword(adminCreds.password);
+    
+    return {
+      id: 'admin-001',
+      name: '관리자',
+      email: adminCreds.email,
+      password: hashedPassword,
+      apiKeys: {
+        google: process.env.REACT_APP_GEMINI_API_KEY || '',
+        openai: process.env.REACT_APP_OPENAI_API_KEY || '',
+        midjourney: '',
+        anthropic: process.env.REACT_APP_ANTHROPIC_API_KEY || ''
+      },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
   };
-};
 
 // 로컬 스토리지에서 사용자 데이터 관리
 const STORAGE_KEY = 'storyboard_users';
 const CURRENT_USER_KEY = 'storyboard_current_user';
 
 export class AuthService {
+  // 관리자 계정 확인
+  static isAdminUser(email: string): boolean {
+    const adminCreds = CryptoUtils.getAdminCredentials();
+    return email === adminCreds.email;
+  }
+
   // 사용자 데이터 초기화
   static async initializeUsers(): Promise<void> {
+    try {
+      // 데이터베이스 관리자 계정 확인
+      const adminCreds = CryptoUtils.getAdminCredentials();
+      let adminUser: DBUser | null = null;
+
+      try {
+        const adminUserId = await databaseService.authenticateUser(adminCreds.email, adminCreds.password);
+        if (adminUserId) {
+          adminUser = await databaseService.getUserById(adminUserId);
+        }
+      } catch (error) {
+        // 관리자 계정이 없으면 생성
+        console.log('관리자 계정이 없어서 새로 생성합니다.');
+      }
+
+      if (!adminUser) {
+        try {
+          // 관리자 계정 생성
+          const adminUserId = await databaseService.createUser(
+            adminCreds.email,
+            '관리자',
+            adminCreds.password
+          );
+
+          // API 키 저장
+          await databaseService.saveUserApiKey(adminUserId, 'google', process.env.REACT_APP_GEMINI_API_KEY || '');
+          await databaseService.saveUserApiKey(adminUserId, 'openai', process.env.REACT_APP_OPENAI_API_KEY || '');
+          await databaseService.saveUserApiKey(adminUserId, 'anthropic', process.env.REACT_APP_ANTHROPIC_API_KEY || '');
+
+          console.log('관리자 계정이 생성되었습니다.');
+        } catch (error) {
+          if (error instanceof Error && error.message.includes('이미 존재하는 이메일')) {
+            console.log('관리자 계정이 이미 존재합니다.');
+            // 기존 관리자 계정으로 인증 시도
+            const adminUserId = await databaseService.authenticateUser(adminCreds.email, adminCreds.password);
+            if (adminUserId) {
+              adminUser = await databaseService.getUserById(adminUserId);
+            }
+          } else {
+            throw error;
+          }
+        }
+      }
+
+      // 기존 localStorage 사용자도 DB로 마이그레이션
+      await this.migrateLocalStorageUsers();
+
+    } catch (error) {
+      console.error('사용자 초기화 실패, localStorage 사용:', error);
+      // DB 초기화 실패시 기존 로직 사용
+      await this.initializeUsersLegacy();
+    }
+  }
+
+  // 기존 localStorage 사용자를 DB로 마이그레이션
+  static async migrateLocalStorageUsers(): Promise<void> {
+    try {
+      const existingUsers = localStorage.getItem(STORAGE_KEY);
+      if (!existingUsers) return;
+
+      const users: User[] = JSON.parse(existingUsers);
+      for (const user of users) {
+        if (user.id === 'admin-001') continue; // 관리자는 이미 처리됨
+
+        try {
+          // 이미 DB에 있는지 확인
+          const existingUserId = await databaseService.authenticateUser(user.email, user.password);
+          if (!existingUserId) {
+            // DB에 사용자 생성 (비밀번호는 이미 해시됨)
+            const newUserId = await databaseService.createUser(user.email, user.name, user.password);
+
+            // API 키 저장
+            if (user.apiKeys) {
+              for (const [provider, apiKey] of Object.entries(user.apiKeys)) {
+                if (apiKey) {
+                  await databaseService.saveUserApiKey(newUserId, provider, apiKey);
+                }
+              }
+            }
+          }
+        } catch (error) {
+          console.error('사용자 마이그레이션 실패:', user.email, error);
+        }
+      }
+
+      console.log('사용자 마이그레이션 완료');
+    } catch (error) {
+      console.error('마이그레이션 프로세스 실패:', error);
+    }
+  }
+
+  // 기존 방식으로 초기화 (폴백)
+  static async initializeUsersLegacy(): Promise<void> {
     const existingUsers = localStorage.getItem(STORAGE_KEY);
     if (!existingUsers) {
       const adminUser = await getAdminUser();
@@ -37,7 +138,7 @@ export class AuthService {
       // 기존 사용자가 있으면 관리자 계정 강제 업데이트
       const users = JSON.parse(existingUsers);
       const adminUser = await getAdminUser();
-      
+
       // 기존 관리자 계정 찾기 및 업데이트
       const adminIndex = users.findIndex((u: User) => u.id === 'admin-001');
       if (adminIndex !== -1) {
@@ -45,7 +146,7 @@ export class AuthService {
       } else {
         users.unshift(adminUser);
       }
-      
+
       localStorage.setItem(STORAGE_KEY, JSON.stringify(users));
     }
   }
@@ -85,25 +186,47 @@ export class AuthService {
   // 로그인
   static async login(credentials: LoginCredentials): Promise<{ success: boolean; user?: User; message?: string }> {
     try {
+      // DB에서 사용자 인증 시도
+      try {
+        const userId = await databaseService.authenticateUser(credentials.email, credentials.password);
+        if (userId) {
+          const dbUser = await databaseService.getUserById(userId);
+          if (dbUser) {
+            // API 키도 함께 로드
+            const apiKeys = await databaseService.getUserApiKeys(userId);
+
+            const user: User = {
+              id: dbUser.id,
+              name: dbUser.name,
+              email: dbUser.email,
+              password: '', // 보안을 위해 비워둠
+              apiKeys,
+              createdAt: new Date(dbUser.created_at).toISOString(),
+              updatedAt: new Date(dbUser.updated_at).toISOString()
+            };
+
+            const sanitizedUser = CryptoUtils.sanitizeUser(user);
+            this.setCurrentUser(sanitizedUser);
+            return { success: true, user: sanitizedUser };
+          }
+        }
+      } catch (error) {
+        console.log('DB 로그인 실패, localStorage 시도:', error);
+      }
+
+      // DB 실패시 localStorage 폴백
       const users = await this.getUsers();
-      console.log('Available users:', users.map(u => ({ email: u.email, id: u.id })));
-      
       const user = users.find(u => u.email === credentials.email);
-      console.log('Found user:', user ? { email: user.email, id: user.id } : 'Not found');
-      
+
       if (user) {
-        // 해시된 비밀번호 검증
         const isValidPassword = await CryptoUtils.verifyPassword(credentials.password, user.password);
-        console.log('Password validation result:', isValidPassword);
-        
         if (isValidPassword) {
-          // 민감한 정보 제거 후 반환
           const sanitizedUser = CryptoUtils.sanitizeUser(user);
           this.setCurrentUser(sanitizedUser);
           return { success: true, user: sanitizedUser };
         }
       }
-      
+
       return { success: false, message: '이메일 또는 비밀번호가 올바르지 않습니다.' };
     } catch (error) {
       console.error('Login error:', error);
@@ -114,8 +237,47 @@ export class AuthService {
   // 회원가입
   static async register(data: RegisterData): Promise<{ success: boolean; user?: User; message?: string }> {
     try {
+      // DB에 사용자 생성 시도
+      try {
+        const userId = await databaseService.createUser(data.email, data.name, data.password);
+
+        // API 키 저장
+        if (data.apiKeys) {
+          for (const [provider, apiKey] of Object.entries(data.apiKeys)) {
+            if (apiKey) {
+              await databaseService.saveUserApiKey(userId, provider, apiKey);
+            }
+          }
+        }
+
+        const dbUser = await databaseService.getUserById(userId);
+        if (dbUser) {
+          const apiKeys = await databaseService.getUserApiKeys(userId);
+
+          const user: User = {
+            id: dbUser.id,
+            name: dbUser.name,
+            email: dbUser.email,
+            password: '', // 보안을 위해 비워둠
+            apiKeys,
+            createdAt: new Date(dbUser.created_at).toISOString(),
+            updatedAt: new Date(dbUser.updated_at).toISOString()
+          };
+
+          const sanitizedUser = CryptoUtils.sanitizeUser(user);
+          this.setCurrentUser(sanitizedUser);
+          return { success: true, user: sanitizedUser };
+        }
+      } catch (error: any) {
+        if (error.message.includes('UNIQUE constraint failed')) {
+          return { success: false, message: '이미 사용 중인 이메일입니다.' };
+        }
+        console.log('DB 회원가입 실패, localStorage 사용:', error);
+      }
+
+      // DB 실패시 localStorage 폴백
       const users = await this.getUsers();
-      
+
       // 이메일 중복 확인
       const existingUser = users.find(u => u.email === data.email);
       if (existingUser) {
@@ -138,7 +300,7 @@ export class AuthService {
 
       users.push(newUser);
       this.saveUsers(users);
-      
+
       // 민감한 정보 제거 후 반환
       const sanitizedUser = CryptoUtils.sanitizeUser(newUser);
       this.setCurrentUser(sanitizedUser);
@@ -158,9 +320,56 @@ export class AuthService {
   // 사용자 정보 업데이트
   static async updateUser(userId: string, updateData: Partial<RegisterData>): Promise<{ success: boolean; user?: User; message?: string }> {
     try {
+      // DB 업데이트 시도
+      try {
+        const dbUpdateData: any = {};
+        if (updateData.name) dbUpdateData.name = updateData.name;
+        if (updateData.email) dbUpdateData.email = updateData.email;
+        if (updateData.password) dbUpdateData.password = updateData.password;
+
+        const success = await databaseService.updateUser(userId, dbUpdateData);
+        if (success) {
+          // API 키 업데이트
+          if (updateData.apiKeys) {
+            for (const [provider, apiKey] of Object.entries(updateData.apiKeys)) {
+              if (apiKey) {
+                await databaseService.saveUserApiKey(userId, provider, apiKey);
+              } else {
+                await databaseService.deleteUserApiKey(userId, provider);
+              }
+            }
+          }
+
+          const dbUser = await databaseService.getUserById(userId);
+          if (dbUser) {
+            const apiKeys = await databaseService.getUserApiKeys(userId);
+
+            const user: User = {
+              id: dbUser.id,
+              name: dbUser.name,
+              email: dbUser.email,
+              password: '', // 보안을 위해 비워둠
+              apiKeys,
+              createdAt: new Date(dbUser.created_at).toISOString(),
+              updatedAt: new Date(dbUser.updated_at).toISOString()
+            };
+
+            const sanitizedUser = CryptoUtils.sanitizeUser(user);
+            this.setCurrentUser(sanitizedUser);
+            return { success: true, user: sanitizedUser };
+          }
+        }
+      } catch (error: any) {
+        if (error.message.includes('UNIQUE constraint failed')) {
+          return { success: false, message: '이미 사용 중인 이메일입니다.' };
+        }
+        console.log('DB 업데이트 실패, localStorage 사용:', error);
+      }
+
+      // DB 실패시 localStorage 폴백
       const users = await this.getUsers();
       const userIndex = users.findIndex(u => u.id === userId);
-      
+
       if (userIndex === -1) {
         return { success: false, message: '사용자를 찾을 수 없습니다.' };
       }
@@ -188,7 +397,7 @@ export class AuthService {
       };
 
       this.saveUsers(users);
-      
+
       // 민감한 정보 제거 후 반환
       const sanitizedUser = CryptoUtils.sanitizeUser(users[userIndex]);
       this.setCurrentUser(sanitizedUser);

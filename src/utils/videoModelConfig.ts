@@ -3,15 +3,16 @@ import { VideoModelConfig, VideoModelVersion } from '../types/ai';
 
 // 영상 모델 설정 데이터
 export const VIDEO_MODEL_CONFIGS: Record<VideoModelVersion, VideoModelConfig> = {
-  'veo-2.0': {
-    version: 'veo-2.0',
-    model: 'veo-2.0-generate-001',
-    displayName: 'Veo 2.0 (기본)',
+  'veo-3.0-generate-001': {
+    version: 'veo-3.0-generate-001',
+    model: 'veo-3.0-generate-001',
+    displayName: 'Veo 3.0 Generate (기본)',
     description: '안정적이고 빠른 영상 생성 모델',
     features: {
       maxDuration: 8,
       maxResolution: '720p',
-      aspectRatios: ['16:9', '1:1', '9:16']
+      aspectRatios: ['16:9', '1:1', '9:16'],
+      supportsPersonGeneration: true
     },
     pricing: {
       tier: 'free',
@@ -27,11 +28,14 @@ export const VIDEO_MODEL_CONFIGS: Record<VideoModelVersion, VideoModelConfig> = 
     version: 'veo-3.0-fast',
     model: 'veo-3.0-fast-generate-001',
     displayName: 'Veo 3.0 Fast (빠른 생성)',
-    description: '고품질 영상을 빠르게 생성',
+    description: '고품질 영상을 빠르게 생성 (오디오 포함, 720p/1080p, personGeneration 미지원)',
     features: {
       maxDuration: 8,
-      maxResolution: '720p',
-      aspectRatios: ['16:9', '1:1', '9:16']
+      maxResolution: '1080p', // Google AI API 문서에 따르면 720p 또는 1080p 지원
+      aspectRatios: ['16:9', '1:1', '9:16'],
+      supportsPersonGeneration: false, // Veo 3.0 Fast는 personGeneration 미지원
+      supportsAudio: true, // Veo 3.0은 기본적으로 오디오 포함
+      maxTokens: 1024 // 텍스트 입력 토큰 제한
     },
     pricing: {
       tier: 'paid',
@@ -48,11 +52,14 @@ export const VIDEO_MODEL_CONFIGS: Record<VideoModelVersion, VideoModelConfig> = 
     version: 'veo-3.0-standard',
     model: 'veo-3.0-generate-001',
     displayName: 'Veo 3.0 Standard (고품질)',
-    description: '최고 품질의 영상 생성',
+    description: '최고 품질의 영상 생성 (오디오 포함, 720p/1080p)',
     features: {
       maxDuration: 8,
-      maxResolution: '1080p',
-      aspectRatios: ['16:9', '1:1', '9:16']
+      maxResolution: '1080p', // Google AI API 문서에 따르면 720p 또는 1080p 지원
+      aspectRatios: ['16:9', '1:1', '9:16'],
+      supportsPersonGeneration: true, // Veo 3.0은 personGeneration 지원
+      supportsAudio: true, // Veo 3.0은 기본적으로 오디오 포함
+      maxTokens: 1024 // 텍스트 입력 토큰 제한
     },
     pricing: {
       tier: 'paid',
@@ -68,7 +75,7 @@ export const VIDEO_MODEL_CONFIGS: Record<VideoModelVersion, VideoModelConfig> = 
 };
 
 // 기본 모델 버전
-export const DEFAULT_VIDEO_MODEL_VERSION: VideoModelVersion = 'veo-2.0';
+export const DEFAULT_VIDEO_MODEL_VERSION: VideoModelVersion = 'veo-3.0-generate-001';
 
 // 모델 버전별 설정 가져오기
 export const getVideoModelConfig = (version: VideoModelVersion): VideoModelConfig => {
@@ -108,11 +115,11 @@ export const compareVideoModels = (version1: VideoModelVersion, version2: VideoM
 // 모델 버전별 추천 사용 사례
 export const getRecommendedUseCase = (version: VideoModelVersion): string[] => {
   switch (version) {
-    case 'veo-2.0':
+    case 'veo-3.0-generate-001':
       return [
         '빠른 프로토타입 제작',
         '테스트용 영상 생성',
-        '오디오가 필요 없는 영상',
+        '일반적인 영상 생성',
         '비용 절약이 중요한 경우'
       ];
     case 'veo-3.0-fast':

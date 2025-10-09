@@ -1,27 +1,10 @@
-import React, { useState } from 'react';
+import React from 'react';
 import Button from '../common/Button';
+import { EpisodeStructureManager } from '../videoGeneration/EpisodeStructureManager';
+import { useProjectOverview } from '../../hooks/useProjectOverview';
+import { ProjectOverviewStepProps, StepStatus, GeneratedProjectData, SceneCutSettings } from '../../types/projectOverview';
 import { useUIStore } from '../../stores/uiStore';
-import { googleAIService } from '../../services/googleAIService';
-import { DEFAULT_SETTINGS } from '../../utils/constants';
-
-interface ProjectOverviewStepProps {
-  story: string;
-  setStory: (story: string) => void;
-  characterList: Array<{ id: number; name: string; description: string }>;
-  setCharacterList: (characters: Array<{ id: number; name: string; description: string }>) => void;
-  scenarioPrompt: string;
-  setScenarioPrompt: (prompt: string) => void;
-  storySummary: string;
-  setStorySummary: (summary: string) => void;
-  finalScenario: string;
-  setFinalScenario: (scenario: string) => void;
-  generatedProjectData: any;
-  setGeneratedProjectData: (data: any) => void;
-  onNext: () => void;
-  canProceedToNext?: () => boolean;
-  stepStatus: any;
-  setStepStatus: (status: any) => void;
-}
+import { useAIService } from '../../hooks/useAIService';
 
 export const ProjectOverviewStep: React.FC<ProjectOverviewStepProps> = ({
   story,
@@ -42,176 +25,166 @@ export const ProjectOverviewStep: React.FC<ProjectOverviewStepProps> = ({
   setStepStatus
 }) => {
   const { addNotification } = useUIStore();
-  const [characterInput, setCharacterInput] = useState('');
-  const [storyText, setStoryText] = useState('');
-  const [dialogue, setDialogue] = useState('');
-  const [additionalScenarioSettings, setAdditionalScenarioSettings] = useState('');
-  const [isGeneratingAll, setIsGeneratingAll] = useState(false);
+  const { generateText } = useAIService();
   
-  // 프롬프트 출력 길이 설정
-  const [promptLengthSettings, setPromptLengthSettings] = useState({
-    video: DEFAULT_SETTINGS.PROMPT_LENGTH.VIDEO,
-    scenario: DEFAULT_SETTINGS.PROMPT_LENGTH.SCENARIO
-  });
-  
-  // 씬/컷 설정
-  const [sceneCutSettings, setSceneCutSettings] = useState({
-    sceneCount: DEFAULT_SETTINGS.SCENE_CUT.SCENE_COUNT,
-    cutCount: DEFAULT_SETTINGS.SCENE_CUT.CUT_COUNT
-  });
+  const {
+    dialogue,
+    setDialogue,
+    additionalScenarioSettings,
+    setAdditionalScenarioSettings,
+    isGeneratingAll,
+    setIsGeneratingAll,
+    showStepInputs,
+    setShowStepInputs,
+    episodes,
+    setEpisodes,
+    promptLengthSettings,
+    sceneCutSettings,
+    setSceneCutSettings,
+    checkAPIKeyStatus,
+    toggleStepInputs,
+    handleCommonInputsComplete,
+    handleCommonInputsReset,
+    translateToEnglish
+  } = useProjectOverview();
 
+  // API 키 상태 표시
+  const apiKeyStatus = checkAPIKeyStatus();
 
-  // 캐릭터 추가
-  const handleAddCharacter = () => {
-    if (characterInput.trim()) {
-      const newCharacter = {
-        id: Date.now(),
-        name: `캐릭터 ${characterList.length + 1}`,
-        description: characterInput.trim()
-      };
-      setCharacterList([...characterList, newCharacter]);
-      setCharacterInput('');
-    }
+  // 공통 입력 완료 처리 (프로젝트 개요 전용)
+  const handleProjectCommonInputsComplete = () => {
+    handleCommonInputsComplete(story, characterList);
   };
 
-  // 캐릭터 삭제
-  const handleDeleteCharacter = (id: number) => {
-    setCharacterList(characterList.filter(char => char.id !== id));
+  // 공통 입력 초기화 (프로젝트 개요 전용)
+  const handleProjectCommonInputsReset = () => {
+    setStory('');
+    setStorySummary('');
+    setCharacterList([]);
+    setSceneCutSettings({ sceneCount: 3, cutCount: 3 });
+    handleCommonInputsReset();
   };
 
-
-  // 영상 설정 AI 생성 (오른쪽 본문 전용)
-  const handleGenerateVisualSettingsPrompt = async () => {
-    if (!story.trim() || characterList.length === 0 || !storyText.trim()) {
+  // 1단계: 시나리오 생성
+  const handleGenerateScenario = async () => {
+    if (!dialogue || !additionalScenarioSettings || !scenarioPrompt) {
       addNotification({
         type: 'error',
         title: '입력 오류',
-        message: '스토리, 캐릭터, 시각적 설정을 모두 입력해주세요.',
+        message: '모든 필수 입력 항목을 채워주세요.',
       });
       return;
     }
 
-    try {
-      const prompt = `다음 정보를 바탕으로 영상 제작을 위한 시각적 설정 프롬프트를 생성해주세요:
-
-스토리: ${story}
-캐릭터: ${characterList.map(char => `${char.name}: ${char.description}`).join(', ')}
-시각적 설정: ${storyText}
-
-영상 제작에 필요한 다음 요소들을 포함한 프롬프트를 작성해주세요:
-- 배경 설정 (장소, 환경, 분위기)
-- 색감 및 조명 (톤, 무드, 분위기)
-- 카메라 워크 (촬영 각도, 이동, 줌)
-- 시각적 효과 (특수효과, 전환, 애니메이션)
-- 의상 및 소품 (캐릭터 외형, 액세서리)
-- 전체적인 영상 스타일 (장르, 톤앤매너)
-
-=== 🚨 절대적 제한사항 🚨 ===
-⚠️ 생성된 프롬프트는 반드시 ${promptLengthSettings.video}자 이내로 작성해주세요.
-⚠️ 이 제한을 초과하면 안 됩니다. ${promptLengthSettings.video}자를 넘으면 생성이 실패합니다.
-⚠️ 핵심 내용만 간결하게 정리하세요.
-⚠️ 영상 제작에 필요한 핵심 정보만 포함하세요.
-⚠️ 불필요한 설명은 제거하고 액션과 시각적 요소에 집중하세요.
-⚠️ 각 문장을 짧고 명확하게 작성하세요.
-
-시각적 설정 프롬프트:`;
-
-      const result = await googleAIService.generateText(prompt);
-      setScenarioPrompt(result);
-      
-      addNotification({
-        type: 'success',
-        title: '생성 완료',
-        message: '영상 설정 프롬프트가 생성되었습니다. 오른쪽 본문에서 확인하세요.',
-      });
-    } catch (error) {
+    // API 키 상태 확인
+    if (!apiKeyStatus.hasApiKey) {
       addNotification({
         type: 'error',
-        title: '생성 실패',
-        message: '영상 설정 프롬프트 생성에 실패했습니다.',
-      });
-    }
-  };
-
-  // 시나리오용 프롬프트 AI 생성 (기존 함수 유지 - 현재 사용하지 않음)
-  /*
-  const handleGenerateScenarioPrompt = async () => {
-    if (!story.trim() || characterList.length === 0) {
-      addNotification({
-        type: 'error',
-        title: '입력 오류',
-        message: '스토리와 캐릭터를 입력해주세요.',
-      });
-      return;
-    }
-
-    try {
-      const prompt = `다음 정보를 바탕으로 시나리오 생성용 프롬프트를 만들어주세요:
-
-스토리: ${story}
-캐릭터: ${characterList.map(char => `${char.name}: ${char.description}`).join(', ')}
-상세 스토리: ${storyText}
-주요 대사: ${dialogue}
-
-시나리오 생성에 필요한 프롬프트를 작성해주세요.`;
-
-      const result = await googleAIService.generateText(prompt);
-      setScenarioPrompt(result);
-      
-      // 500자 스토리 정리 자동 생성
-      await handleGenerateStorySummary();
-      
-      addNotification({
-        type: 'success',
-        title: '생성 완료',
-        message: '시나리오 프롬프트가 생성되었습니다.',
-      });
-    } catch (error) {
-      addNotification({
-        type: 'error',
-        title: '생성 실패',
-        message: '시나리오 프롬프트 생성에 실패했습니다.',
-      });
-    }
-  };
-  */
-
-
-
-  // 3단계: JSON 카드 생성 (국문/영문 프롬프트 카드)
-  const handleGenerateJsonCards = async () => {
-    if (!stepStatus.aiReviewCompleted) {
-      addNotification({
-        type: 'error',
-        title: '순서 오류',
-        message: '먼저 2단계 AI 검토 및 프롬프트 생성을 완료해주세요.',
+        title: 'API 키 오류',
+        message: 'Google AI API 키가 설정되지 않았습니다. 설정에서 API 키를 입력해주세요.',
       });
       return;
     }
 
     setIsGeneratingAll(true);
     try {
-      // 국문 프롬프트 카드 생성
+      const prompt = `다음 정보를 바탕으로 영상 시나리오를 생성해주세요:
+
+기본 정보:
+- 스토리 제목: ${story}
+- 스토리 요약: ${storySummary}
+- 캐릭터 정보: ${characterList.map(c => `${c.name}: ${c.description}`).join(', ')}
+
+씬/컷 구성:
+- 총 씬 개수: ${sceneCutSettings.sceneCount}개
+- 씬당 컷 개수: ${sceneCutSettings.cutCount}개
+- 총 컷 개수: ${sceneCutSettings.sceneCount * sceneCutSettings.cutCount}개
+
+${episodes.length > 0 ? `에피소드/씬 구조:
+${episodes.map(episode => 
+  `- 에피소드: ${episode.title}
+  설명: ${episode.description}
+  씬 구성: ${episode.scenes.map(scene => `${scene.title}: ${scene.description}`).join(', ')}`
+).join('\n')}
+
+` : ''}시나리오 입력:
+- 대화 내용: ${dialogue}
+- 추가 시나리오 설정: ${additionalScenarioSettings}
+- 시나리오 프롬프트: ${scenarioPrompt}
+
+위 정보를 종합하여 ${sceneCutSettings.sceneCount}개 씬, 총 ${sceneCutSettings.sceneCount * sceneCutSettings.cutCount}개 컷으로 구성된 ${promptLengthSettings.scenario}자 이내의 상세한 영상 시나리오를 생성해주세요. 각 씬과 컷이 명확히 구분되도록 작성해주세요.${episodes.length > 0 ? ' 에피소드 구조를 반영하여 시나리오를 구성해주세요.' : ''}`;
+
+      const result = await generateText({
+        prompt,
+        model: 'gemini-2.5-flash',
+        maxTokens: Math.floor(promptLengthSettings.scenario / 2),
+        temperature: 0.7
+      });
+
+      if (result) {
+        setFinalScenario(result);
+        (setStepStatus as React.Dispatch<React.SetStateAction<StepStatus>>)((prev: StepStatus) => ({ ...prev, scenarioGenerated: true }));
+        
+        addNotification({
+          type: 'success',
+          title: '시나리오 생성 완료',
+          message: `${sceneCutSettings.sceneCount}개 씬, ${sceneCutSettings.sceneCount * sceneCutSettings.cutCount}개 컷으로 구성된 영상 시나리오가 생성되었습니다.`,
+        });
+      }
+    } catch (error) {
+      console.error('시나리오 생성 오류:', error);
+      
+      let errorMessage = '시나리오 생성에 실패했습니다.';
+      
+      if (error instanceof Error) {
+        if (error.message.includes('API 키가 설정되지 않았습니다')) {
+          errorMessage = 'Google AI API 키가 설정되지 않았습니다. 설정에서 API 키를 입력해주세요.';
+        } else if (error.message.includes('프롬프트가 비어있습니다')) {
+          errorMessage = '입력된 프롬프트가 비어있습니다. 다시 확인해주세요.';
+        } else if (error.message.includes('503') || error.message.includes('UNAVAILABLE')) {
+          errorMessage = 'Google AI 서비스가 일시적으로 사용할 수 없습니다. 잠시 후 다시 시도해주세요.';
+        } else if (error.message.includes('429')) {
+          errorMessage = 'API 사용량 한도를 초과했습니다. 잠시 후 다시 시도해주세요.';
+        } else if (error.message.includes('401')) {
+          errorMessage = 'API 키가 유효하지 않습니다. 설정에서 API 키를 확인해주세요.';
+        }
+      }
+      
+      addNotification({
+        type: 'error',
+        title: '생성 실패',
+        message: errorMessage,
+      });
+    } finally {
+      setIsGeneratingAll(false);
+    }
+  };
+
+  // 2단계: JSON 카드 생성 (한글)
+  const handleGenerateJsonCards = async () => {
+    if (!finalScenario) {
+      addNotification({
+        type: 'error',
+        title: '오류',
+        message: '먼저 시나리오를 생성해주세요.',
+      });
+      return;
+    }
+
+    setIsGeneratingAll(true);
+    try {
+      // 1단계: 한글 프롬프트 카드 생성
       const koreanCards = {
         '스토리': story,
-        '영상 설정': generatedProjectData?.aiReviewResult?.videoPrompt || scenarioPrompt,
+        '영상 설정': scenarioPrompt,
         '캐릭터 설정': characterList.map(c => `${c.name}: ${c.description}`).join(', '),
+        '씬/컷 구성': `${sceneCutSettings.sceneCount}개 씬, 씬당 ${sceneCutSettings.cutCount}개 컷 (총 ${sceneCutSettings.sceneCount * sceneCutSettings.cutCount}개 컷)`,
         '시나리오 추가 설정': additionalScenarioSettings || '없음',
         '영상 시나리오': finalScenario,
-        '씬별 컷별 프롬프트': generatedProjectData?.aiReviewResult?.scenarioReview || '없음'
+        '씬별 컷별 프롬프트': '씬별 상세 프롬프트는 프로젝트 참조에서 생성 가능'
       };
 
-      // 영문 프롬프트 카드 생성 (길이 제한 적용)
-      const englishCards = {
-        'Story': await translateToEnglish(story, promptLengthSettings.scenario),
-        'Visual Settings': await translateToEnglish(generatedProjectData?.aiReviewResult?.videoPrompt || scenarioPrompt, promptLengthSettings.video),
-        'Character Settings': await translateToEnglish(characterList.map(c => `${c.name}: ${c.description}`).join(', '), promptLengthSettings.scenario),
-        'Additional Scenario Settings': await translateToEnglish(additionalScenarioSettings || 'None', promptLengthSettings.scenario),
-        'Video Scenario': await translateToEnglish(finalScenario, promptLengthSettings.scenario),
-        'Scene Cut Prompts': await translateToEnglish(generatedProjectData?.aiReviewResult?.scenarioReview || 'None', promptLengthSettings.scenario)
-      };
-
-      // JSON 데이터 형태로 저장
+      // 한글 카드만 먼저 저장 (사용자가 확인/수정할 수 있도록)
       const jsonData = {
         projectInfo: {
           title: 'Generated Project',
@@ -219,88 +192,143 @@ export const ProjectOverviewStep: React.FC<ProjectOverviewStepProps> = ({
           version: '1.0'
         },
         koreanCards,
-        englishCards,
+        englishCards: null, // 아직 생성되지 않음
         settings: {
           promptLength: promptLengthSettings,
           sceneCuts: sceneCutSettings
-        },
-        aiReviewResult: generatedProjectData?.aiReviewResult
+        }
       };
 
-      // MainLayout으로 전달할 데이터 설정
-      setGeneratedProjectData((prev: any) => ({
+      (setGeneratedProjectData as React.Dispatch<React.SetStateAction<GeneratedProjectData | null>>)((prev: GeneratedProjectData | null) => ({
         ...prev,
         ...jsonData
       }));
 
-      // 3단계 완료 상태 업데이트
-      setStepStatus((prev: any) => ({ ...prev, jsonCardsGenerated: true }));
+      (setStepStatus as React.Dispatch<React.SetStateAction<StepStatus>>)((prev: StepStatus) => ({ ...prev, jsonCardsGenerated: true }));
 
       addNotification({
         type: 'success',
-        title: '3단계 완료',
-        message: 'JSON 카드 생성이 완료되었습니다. 프로젝트 개요 저장을 진행하세요.',
+        title: '한글 프롬프트 카드 생성 완료',
+        message: '한글 프롬프트 카드가 생성되었습니다. 확인 후 영어 번역을 진행하세요.',
       });
     } catch (error) {
       addNotification({
         type: 'error',
         title: '생성 실패',
-        message: 'JSON 카드 생성에 실패했습니다.',
+        message: '한글 프롬프트 카드 생성에 실패했습니다.',
       });
     } finally {
       setIsGeneratingAll(false);
     }
   };
 
-  // 4단계: 프로젝트 개요 저장 - 국문/영문 카드 생성
-  const handleGenerateFinalPromptCards = async () => {
-    if (!story || !finalScenario || !scenarioPrompt) {
+  // 3단계: 영어 카드 생성
+  const handleGenerateEnglishCards = async () => {
+    if (!generatedProjectData?.koreanCards) {
       addNotification({
         type: 'error',
-        title: '입력 오류',
-        message: '스토리, 영상 설정 프롬프트, 최종 시나리오를 모두 입력해주세요.',
+        title: '오류',
+        message: '먼저 한글 프롬프트 카드를 생성해주세요.',
+      });
+      return;
+    }
+
+    // API 키 상태 확인
+    if (!apiKeyStatus.hasApiKey) {
+      addNotification({
+        type: 'error',
+        title: 'API 키 오류',
+        message: 'Google AI API 키가 설정되지 않았습니다. 설정에서 API 키를 입력해주세요.',
       });
       return;
     }
 
     setIsGeneratingAll(true);
     try {
-      // 국문 프롬프트 카드 생성
-      const koreanCards = {
-        '스토리': story,
-        '영상 설정': scenarioPrompt,
-        '캐릭터 설정': characterList.map(c => `${c.name}: ${c.description}`).join(', '),
-        '시나리오 추가 설정': additionalScenarioSettings || '없음',
-        '영상 시나리오': finalScenario
-      };
-
-      // 영문 프롬프트 카드 생성 (AI 서비스 사용, 길이 제한 적용)
+      const koreanCards = generatedProjectData.koreanCards;
+      
+      // 영어 프롬프트 카드 생성 (AI 서비스 사용, 길이 제한 적용)
       const englishCards = {
-        'Story': await translateToEnglish(story, promptLengthSettings.scenario),
-        'Visual Settings': await translateToEnglish(scenarioPrompt, promptLengthSettings.video),
-        'Character Settings': await translateToEnglish(characterList.map(c => `${c.name}: ${c.description}`).join(', '), promptLengthSettings.scenario),
-        'Additional Scenario Settings': await translateToEnglish(additionalScenarioSettings || 'None', promptLengthSettings.scenario),
-        'Video Scenario': await translateToEnglish(finalScenario, promptLengthSettings.scenario)
+        'Story': await translateToEnglish(koreanCards['스토리'], promptLengthSettings.scenario),
+        'Visual Settings': await translateToEnglish(koreanCards['영상 설정'], promptLengthSettings.video),
+        'Character Settings': await translateToEnglish(koreanCards['캐릭터 설정'], promptLengthSettings.scenario),
+        'Scene Cut Structure': await translateToEnglish(koreanCards['씬/컷 구성'], promptLengthSettings.scenario),
+        'Additional Scenario Settings': await translateToEnglish(koreanCards['시나리오 추가 설정'], promptLengthSettings.scenario),
+        'Video Scenario': await translateToEnglish(koreanCards['영상 시나리오'], promptLengthSettings.scenario),
+        'Scene Cut Prompts': await translateToEnglish(koreanCards['씬별 컷별 프롬프트'], promptLengthSettings.scenario)
       };
 
-      // MainLayout으로 전달할 데이터 설정
-      setGeneratedProjectData({
-        koreanCards,
-        englishCards,
-        reviewResult: {
-          korean: koreanCards,
-          english: englishCards
-        }
+      // 영어 카드 추가
+      (setGeneratedProjectData as any)((prev: any) => ({
+        ...prev,
+        englishCards
+      }));
+      
+      addNotification({
+        type: 'success',
+        title: '영어 프롬프트 카드 생성 완료',
+        message: '영어 프롬프트 카드가 생성되었습니다. 이제 프로젝트를 저장할 수 있습니다.',
       });
+    } catch (error) {
+      console.error('영어 카드 생성 오류:', error);
+      
+      let errorMessage = '영어 프롬프트 카드 생성에 실패했습니다.';
+      
+      if (error instanceof Error) {
+        if (error.message.includes('API 키가 설정되지 않았습니다')) {
+          errorMessage = 'Google AI API 키가 설정되지 않았습니다. 설정에서 API 키를 입력해주세요.';
+        } else if (error.message.includes('프롬프트가 비어있습니다')) {
+          errorMessage = '한글 카드가 비어있습니다. 3단계를 먼저 완료해주세요.';
+        } else if (error.message.includes('503') || error.message.includes('UNAVAILABLE')) {
+          errorMessage = 'Google AI 서비스가 일시적으로 사용할 수 없습니다. 잠시 후 다시 시도해주세요.';
+        } else if (error.message.includes('429')) {
+          errorMessage = 'API 사용량 한도를 초과했습니다. 잠시 후 다시 시도해주세요.';
+        } else if (error.message.includes('401')) {
+          errorMessage = 'API 키가 유효하지 않습니다. 설정에서 API 키를 확인해주세요.';
+        }
+      }
+      
+      addNotification({
+        type: 'error',
+        title: '생성 실패',
+        message: errorMessage,
+      });
+    } finally {
+      setIsGeneratingAll(false);
+    }
+  };
 
-      // 4단계 완료 상태 업데이트
-      setStepStatus((prev: any) => ({ ...prev, projectOverviewSaved: true }));
+  // 4단계: 최종 저장
+  const handleGenerateFinalPromptCards = async () => {
+    if (!generatedProjectData?.englishCards) {
+      addNotification({
+        type: 'error',
+        title: '오류',
+        message: '먼저 영어 프롬프트 카드를 생성해주세요.',
+      });
+      return;
+    }
+
+    setIsGeneratingAll(true);
+    try {
+      // MainLayout으로 전달할 데이터 설정
+      (setGeneratedProjectData as any)((prev: any) => ({
+        ...prev,
+        projectOverviewSaved: true,
+        // Ensure koreanCards and englishCards are present from previous steps
+        koreanCards: prev?.koreanCards,
+        englishCards: prev?.englishCards,
+        reviewResult: prev?.aiReviewResult // Assuming aiReviewResult is already set
+      }));
+
+      (setStepStatus as React.Dispatch<React.SetStateAction<StepStatus>>)((prev: StepStatus) => ({ ...prev, projectOverviewSaved: true }));
 
       addNotification({
         type: 'success',
         title: '프로젝트 개요 저장 완료',
-        message: '국문/영문 카드가 생성되었습니다. 오른쪽 본문에서 확인하세요.',
+        message: '프로젝트 개요가 성공적으로 저장되었습니다. 다음 단계로 진행하세요.',
       });
+      onNext();
     } catch (error) {
       addNotification({
         type: 'error',
@@ -312,538 +340,415 @@ export const ProjectOverviewStep: React.FC<ProjectOverviewStepProps> = ({
     }
   };
 
-  // AI 시나리오 생성 (4번 대사 + 5번 시나리오 추가 설정 + 영상 설정 프롬프트 기반)
-  const handleGenerateScenario = async () => {
-    if (!dialogue || !additionalScenarioSettings || !scenarioPrompt) {
-      addNotification({
-        type: 'error',
-        title: '입력 오류',
-        message: '대사(4번), 시나리오 추가 설정(5번), 영상 설정 프롬프트를 모두 입력해주세요.',
-      });
-      return;
-    }
-
-    setIsGeneratingAll(true);
-    try {
-      const prompt = `다음 정보를 바탕으로 영상 제작용 시나리오를 생성해주세요:
-
-=== 기본 정보 ===
-스토리: ${story}
-캐릭터: ${characterList.map(c => `${c.name}: ${c.description}`).join(', ')}
-
-=== 핵심 입력 ===
-대사: ${dialogue}
-시나리오 추가 설정: ${additionalScenarioSettings}
-영상 설정 프롬프트: ${scenarioPrompt}
-
-=== 요청사항 ===
-위의 대사, 시나리오 추가 설정, 영상 설정 프롬프트를 모두 통합하여 영상 제작에 적합한 완성된 시나리오를 생성해주세요. 
-- 대사의 흐름과 타이밍을 고려한 장면 구성
-- 시나리오 추가 설정의 특별한 요구사항 반영
-- 영상 설정 프롬프트의 시각적 요소를 반영한 촬영 지시사항
-- 캐릭터의 특성을 살린 연기 지도
-- 영상 제작팀이 이해하기 쉬운 형태로 정리
-
-=== 🚨 절대적 제한사항 🚨 ===
-⚠️ 생성된 시나리오는 반드시 ${promptLengthSettings.scenario}자 이내로 작성해주세요.
-⚠️ 이 제한을 초과하면 안 됩니다. ${promptLengthSettings.scenario}자를 넘으면 생성이 실패합니다.
-⚠️ 핵심 내용만 간결하게 정리하여 작성하세요.
-⚠️ 불필요한 설명이나 반복은 절대 포함하지 마세요.
-⚠️ 각 문장을 짧고 명확하게 작성하세요.
-
-시나리오 생성:`;
-
-      const result = await googleAIService.generateText(prompt);
-      setFinalScenario(result);
-      
-      // 1단계 완료 상태 업데이트
-      setStepStatus((prev: any) => ({ ...prev, scenarioGenerated: true }));
-      
-      addNotification({
-        type: 'success',
-        title: '1단계 완료',
-        message: 'AI 시나리오가 생성되었습니다. 다음 단계를 진행하세요.',
-      });
-    } catch (error) {
-      addNotification({
-        type: 'error',
-        title: '생성 실패',
-        message: 'AI 시나리오 생성에 실패했습니다.',
-      });
-    } finally {
-      setIsGeneratingAll(false);
-    }
-  };
-
-  // 2단계: 통합 AI 검토 및 프롬프트 생성
-  const handleAICheckAndPromptGeneration = async () => {
-    if (!stepStatus.scenarioGenerated) {
-      addNotification({
-        type: 'error',
-        title: '순서 오류',
-        message: '먼저 1단계 AI 시나리오 생성을 완료해주세요.',
-      });
-      return;
-    }
-
-    setIsGeneratingAll(true);
-    try {
-      // 영상 설정 프롬프트 검토 및 정리
-      const videoPromptReview = await googleAIService.generateText(
-        `다음 영상 설정 프롬프트를 검토하고 ${promptLengthSettings.video}자 이내로 정리해주세요:
-
-원본 프롬프트:
-${scenarioPrompt}
-
-=== 🚨 절대적 제한사항 🚨 ===
-⚠️ 정리된 프롬프트는 반드시 ${promptLengthSettings.video}자 이내로 작성해주세요.
-⚠️ 이 제한을 초과하면 안 됩니다. ${promptLengthSettings.video}자를 넘으면 생성이 실패합니다.
-⚠️ 핵심 내용만 간결하게 정리하세요.
-⚠️ 영상 제작에 필요한 핵심 정보만 포함하세요.
-⚠️ 불필요한 설명은 제거하고 액션과 시각적 요소에 집중하세요.
-⚠️ 각 문장을 짧고 명확하게 작성하세요.
-
-정리된 프롬프트:`
-      );
-
-      // 시나리오 검토 및 씬별 컷별 프롬프트 생성
-      const scenarioReview = await googleAIService.generateText(
-        `다음 시나리오를 검토하고 씬별, 컷별로 나누어 각각 ${promptLengthSettings.scenario}자 이내의 프롬프트를 생성해주세요:
-
-시나리오: ${finalScenario}
-
-씬/컷 설정:
-- 총 씬 수: ${sceneCutSettings.sceneCount}개
-- 각 씬당 컷 수: ${sceneCutSettings.cutCount}개
-- 총 컷 수: ${sceneCutSettings.sceneCount * sceneCutSettings.cutCount}개
-
-=== 🚨 절대적 제한사항 🚨 ===
-⚠️ 각 컷별 프롬프트는 반드시 ${promptLengthSettings.scenario}자 이내로 작성해주세요.
-⚠️ 이 제한을 초과하면 안 됩니다. ${promptLengthSettings.scenario}자를 넘으면 생성이 실패합니다.
-⚠️ 핵심 액션과 시각적 요소에만 집중하세요.
-⚠️ 불필요한 설명은 제거하고 간결하게 작성하세요.
-⚠️ 각 문장을 짧고 명확하게 작성하세요.
-
-요구사항:
-1. 시나리오를 ${sceneCutSettings.sceneCount}개의 씬으로 나누기
-2. 각 씬을 ${sceneCutSettings.cutCount}개의 컷으로 세분화
-3. 씬별, 컷별로 명확하게 구분하여 출력
-4. 각 프롬프트는 핵심 액션과 시각적 요소에 집중
-5. 불필요한 설명은 제거하고 간결하게 작성
-
-출력 형식:
-씬 1:
-  컷 1: [프롬프트 - ${promptLengthSettings.scenario}자 이내]
-  컷 2: [프롬프트 - ${promptLengthSettings.scenario}자 이내]
-  ...
-씬 2:
-  컷 1: [프롬프트 - ${promptLengthSettings.scenario}자 이내]
-  컷 2: [프롬프트 - ${promptLengthSettings.scenario}자 이내]
-  ...
-
-씬별 컷별 프롬프트:`
-      );
-
-      // 검토 결과를 generatedProjectData에 저장
-      setGeneratedProjectData((prev: any) => ({
-        ...prev,
-        aiReviewResult: {
-          videoPrompt: videoPromptReview,
-          scenarioReview: scenarioReview,
-          sceneCutSettings: sceneCutSettings,
-          promptLengthSettings: promptLengthSettings
-        }
-      }));
-
-      // 2단계 완료 상태 업데이트
-      setStepStatus((prev: any) => ({ ...prev, aiReviewCompleted: true }));
-
-      addNotification({
-        type: 'success',
-        title: '2단계 완료',
-        message: 'AI 검토 및 프롬프트 생성이 완료되었습니다. 다음 단계를 진행하세요.',
-      });
-    } catch (error) {
-      addNotification({
-        type: 'error',
-        title: '검토 실패',
-        message: 'AI 검토 및 프롬프트 생성에 실패했습니다.',
-      });
-    } finally {
-      setIsGeneratingAll(false);
-    }
-  };
-
-
-
-
-  // 통합된 영문 번역 함수 (길이 제한 옵션 포함)
-  const translateToEnglish = async (text: string, maxLength?: number): Promise<string> => {
-    if (!text.trim()) return '';
-    
-    try {
-      const lengthLimitText = maxLength ? `번역된 결과는 ${maxLength}자 이내로 작성해주세요.` : '';
-      const requirements = maxLength ? [
-        `- ${maxLength}자 이내로 작성`,
-        '- 핵심 내용만 간결하게 번역',
-        '- 불필요한 설명은 제거'
-      ] : [
-        '- 정확한 영어 번역',
-        '- 영상 제작에 적합한 형태로 정리'
-      ];
-
-      const prompt = `다음 한국어 텍스트를 영어로 번역해주세요. ${lengthLimitText}
-
-원본 텍스트:
-${text}
-
-요구사항:
-${requirements.join('\n')}
-
-${maxLength ? `=== 🚨 절대적 제한사항 🚨 ===
-⚠️ 번역된 결과는 반드시 ${maxLength}자 이내로 작성해주세요.
-⚠️ 이 제한을 초과하면 안 됩니다. ${maxLength}자를 넘으면 생성이 실패합니다.
-⚠️ 핵심 내용만 간결하게 번역하세요.
-⚠️ 불필요한 설명은 제거하세요.
-⚠️ 각 문장을 짧고 명확하게 작성하세요.` : ''}
-
-번역 결과:`;
-      
-      const result = await googleAIService.generateText(prompt);
-      return result;
-    } catch (error) {
-      console.error('영문 번역 오류:', error);
-      return `[English] ${text}`;
-    }
-  };
-
-
-
-
   return (
-    <div className="space-y-4">
-      {/* 프롬프트 출력 길이 설정 */}
-      <div className="bg-blue-50 p-4 rounded-lg border">
-        <h3 className="text-lg font-semibold mb-3 text-blue-800">📏 프롬프트 출력 길이 설정</h3>
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              영상 설정 프롬프트 길이 (자)
-            </label>
-            <input
-              type="number"
-              value={promptLengthSettings.video}
-              onChange={(e) => setPromptLengthSettings(prev => ({
-                ...prev,
-                video: parseInt(e.target.value) || 1000
-              }))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              min="100"
-              max="2000"
-            />
-            <div className="text-xs text-gray-500 mt-1">
-              현재 설정: {promptLengthSettings.video}자 (AI 생성 시 적용됨)
-            </div>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              시나리오 프롬프트 길이 (자)
-            </label>
-            <input
-              type="number"
-              value={promptLengthSettings.scenario}
-              onChange={(e) => setPromptLengthSettings(prev => ({
-                ...prev,
-                scenario: parseInt(e.target.value) || 2000
-              }))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              min="100"
-              max="5000"
-            />
-            <div className="text-xs text-gray-500 mt-1">
-              현재 설정: {promptLengthSettings.scenario}자 (AI 생성 시 적용됨)
-            </div>
-          </div>
-        </div>
-      </div>
+    <div className="space-y-6">
+      {/* 에피소드/씬 구조 관리 (공통 입력 항목 포함) */}
+      <EpisodeStructureManager
+        episodes={episodes}
+        setEpisodes={setEpisodes}
+        showEpisodeStructure={showStepInputs.episodeStructure || false}
+        setShowEpisodeStructure={(show) => setShowStepInputs(prev => ({ ...prev, episodeStructure: show }))}
+        story={story}
+        characterList={characterList}
+        storySummary={storySummary}
+        onCommonInputsComplete={handleProjectCommonInputsComplete}
+        onCommonInputsReset={handleProjectCommonInputsReset}
+        onStoryChange={setStory}
+        onCharacterListChange={setCharacterList}
+        onStorySummaryChange={setStorySummary}
+      />
 
-      {/* 씬/컷 설정 */}
-      <div className="bg-green-50 p-4 rounded-lg border">
-        <h3 className="text-lg font-semibold mb-3 text-green-800">🎬 씬/컷 설정</h3>
+      {/* 단계별 버튼 및 입력 항목 */}
+      <div className="bg-white border rounded-lg p-4">
         <div className="space-y-3">
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              <label className="text-sm font-medium text-gray-700">
-                씬 숫자
-              </label>
-              <input
-                type="number"
-                value={sceneCutSettings.sceneCount}
-                onChange={(e) => setSceneCutSettings(prev => ({
-                  ...prev,
-                  sceneCount: parseInt(e.target.value) || 3
-                }))}
-                className="w-12 px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-                min="1"
-                max="10"
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <label className="text-sm font-medium text-gray-700">
-                컷 숫자
-              </label>
-              <input
-                type="number"
-                value={sceneCutSettings.cutCount}
-                onChange={(e) => setSceneCutSettings(prev => ({
-                  ...prev,
-                  cutCount: parseInt(e.target.value) || 3
-                }))}
-                className="w-12 px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-                min="1"
-                max="10"
-              />
-            </div>
-          </div>
-          <div className="text-xs text-gray-500">
-            현재 설정: {sceneCutSettings.sceneCount}개 씬 × {sceneCutSettings.cutCount}개 컷 = 총 {sceneCutSettings.sceneCount * sceneCutSettings.cutCount}개 컷 (AI 생성 시 적용됨)
-          </div>
-        </div>
-      </div>
-      {/* 1. 스토리 */}
-      <div className="bg-white border border-gray-200 rounded-lg p-4">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-lg font-medium text-gray-800 flex items-center gap-2">
-            <span className="w-6 h-6 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-sm font-bold">1</span>
-            스토리
-            {story && (
-              <span className="text-xs bg-green-100 text-green-600 px-2 py-1 rounded-full">완료</span>
-            )}
-          </h3>
-        </div>
-        <textarea
-          value={story}
-          onChange={(e) => setStory(e.target.value)}
-          placeholder="주요 스토리 라인을 입력하세요"
-          rows={4}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
-      </div>
-
-      {/* 2. 캐릭터 */}
-      <div className="bg-white border border-gray-200 rounded-lg p-4">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-lg font-medium text-gray-800 flex items-center gap-2">
-            <span className="w-6 h-6 bg-green-100 text-green-600 rounded-full flex items-center justify-center text-sm font-bold">2</span>
-            캐릭터
-            {characterList.length > 0 && (
-              <span className="text-xs bg-green-100 text-green-600 px-2 py-1 rounded-full">{characterList.length}개</span>
-            )}
-          </h3>
-        </div>
-        <div className="space-y-3">
-          <div className="flex space-x-2">
-            <input
-              type="text"
-              value={characterInput}
-              onChange={(e) => setCharacterInput(e.target.value)}
-              placeholder="캐릭터 설명을 입력하세요"
-              className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-            />
-            <Button 
-              onClick={handleAddCharacter}
-              size="sm"
-              variant="primary"
-              className="text-xs"
-            >
-              추가
-            </Button>
-          </div>
+          <div className="text-sm font-medium text-gray-700 mb-3">프로젝트 생성 단계</div>
           
-          {/* 캐릭터 목록 */}
-          {characterList.length > 0 && (
-            <div className="space-y-2 max-h-32 overflow-y-auto">
-              {characterList.map((character) => (
-                <div key={character.id} className="flex items-center justify-between bg-gray-50 p-2 rounded">
-                  <span className="text-sm">{character.name}: {character.description}</span>
-                  <button
-                    onClick={() => handleDeleteCharacter(character.id)}
-                    className="text-red-500 text-xs px-2 py-1 hover:bg-red-100 rounded"
-                  >
-                    삭제
-                  </button>
-                </div>
-              ))}
+          {/* 관리자 계정 정보 표시 */}
+          {apiKeyStatus.isAdmin && (
+            <div className="p-3 rounded-lg border bg-blue-50 border-blue-200 text-blue-800 text-sm">
+              <div className="flex items-center gap-2">
+                <span className="font-medium">👤 관리자 계정:</span>
+                <span>star612.net@gmail.com (환경변수 API 키 사용)</span>
+              </div>
             </div>
           )}
-        </div>
-      </div>
-
-      {/* 3. 시각 및 설정 */}
-      <div className="bg-white border border-gray-200 rounded-lg p-4">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-lg font-medium text-gray-800 flex items-center gap-2">
-            <span className="w-6 h-6 bg-yellow-100 text-yellow-600 rounded-full flex items-center justify-center text-sm font-bold">3</span>
-            시각 및 설정
-            {storyText && (
-              <span className="text-xs bg-green-100 text-green-600 px-2 py-1 rounded-full">완료</span>
-            )}
-          </h3>
-        </div>
-        <textarea
-          value={storyText}
-          onChange={(e) => setStoryText(e.target.value)}
-          placeholder="시각적 요소, 배경, 분위기, 색감 등 영상 제작을 위한 시각적 설정을 입력하세요"
-          rows={3}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500"
-        />
-        <Button 
-          className="w-full mt-2" 
-          onClick={handleGenerateVisualSettingsPrompt}
-          size="sm"
-          variant="primary"
-          disabled={!story.trim() || characterList.length === 0 || !storyText.trim()}
-        >
-          영상 설정 AI 생성
-        </Button>
-        {/* 시각 및 설정 결과는 오른쪽에 표시됨 */}
-      </div>
-
-      {/* 4. 대사 */}
-      <div className="bg-white border border-gray-200 rounded-lg p-4">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-lg font-medium text-gray-800 flex items-center gap-2">
-            <span className="w-6 h-6 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center text-sm font-bold">4</span>
-            대사
-            {dialogue && (
-              <span className="text-xs bg-green-100 text-green-600 px-2 py-1 rounded-full">완료</span>
-            )}
-          </h3>
-        </div>
-        <textarea
-          value={dialogue}
-          onChange={(e) => setDialogue(e.target.value)}
-          placeholder="주요 대사를 입력하세요"
-          rows={4}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-        />
-      </div>
-
-      {/* 5. 시나리오 추가 설정 */}
-      <div className="bg-white border border-gray-200 rounded-lg p-4">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-lg font-medium text-gray-800 flex items-center gap-2">
-            <span className="w-6 h-6 bg-orange-100 text-orange-600 rounded-full flex items-center justify-center text-sm font-bold">5</span>
-            시나리오 추가 설정
-            {additionalScenarioSettings && (
-              <span className="text-xs bg-green-100 text-green-600 px-2 py-1 rounded-full">완료</span>
-            )}
-          </h3>
-        </div>
-        <textarea
-          value={additionalScenarioSettings}
-          onChange={(e) => setAdditionalScenarioSettings(e.target.value)}
-          placeholder="시나리오에 추가할 특별한 설정, 장면 전환, 특수 효과, 감정 표현 등을 입력하세요"
-          rows={4}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
-        />
-      </div>
-
-      {/* 1단계: AI 시나리오 생성 버튼 */}
-      <div className="space-y-3">
-        <div className="text-xs text-gray-500 mb-2">
-          {stepStatus.scenarioGenerated ? '✅ 1단계 완료' : '⏳ 1단계 대기'}
-        </div>
-        <Button 
-          className={`w-full ${
-            dialogue && additionalScenarioSettings && scenarioPrompt && !stepStatus.scenarioGenerated
-              ? 'bg-blue-600 hover:bg-blue-700'
-              : 'bg-gray-400 cursor-not-allowed'
-          }`}
-          onClick={handleGenerateScenario}
-          disabled={!dialogue || !additionalScenarioSettings || !scenarioPrompt || stepStatus.scenarioGenerated || isGeneratingAll}
-        >
-          {isGeneratingAll ? 'AI 시나리오 생성 중...' : '1단계: AI 시나리오 생성'}
-        </Button>
-      </div>
-
-
-
-      {/* 2단계: AI 검토 및 프롬프트 생성 버튼 */}
-      <div className="space-y-3">
-        <div className="text-xs text-gray-500 mb-2">
-          {stepStatus.aiReviewCompleted ? '✅ 2단계 완료' : 
-           stepStatus.scenarioGenerated ? '⏳ 2단계 준비됨' : '🔴 1단계 완료 필요'}
-        </div>
-        <Button 
-          className={`w-full ${
-            stepStatus.scenarioGenerated && !stepStatus.aiReviewCompleted
-              ? 'bg-purple-600 hover:bg-purple-700'
-              : 'bg-gray-400 cursor-not-allowed'
-          }`}
-          onClick={handleAICheckAndPromptGeneration}
-          disabled={!stepStatus.scenarioGenerated || stepStatus.aiReviewCompleted || isGeneratingAll}
-        >
-          {isGeneratingAll ? 'AI 검토 중...' : '2단계: AI 검토 및 프롬프트 생성'}
-        </Button>
-      </div>
-
-      {/* 3단계: JSON 카드 생성 버튼 */}
-      <div className="space-y-3">
-        <div className="text-xs text-gray-500 mb-2">
-          {stepStatus.jsonCardsGenerated ? '✅ 3단계 완료' : 
-           stepStatus.aiReviewCompleted ? '⏳ 3단계 준비됨' : '🔴 2단계 완료 필요'}
-        </div>
-        <Button 
-          className={`w-full ${
-            stepStatus.aiReviewCompleted && !stepStatus.jsonCardsGenerated
-              ? 'bg-indigo-600 hover:bg-indigo-700'
-              : 'bg-gray-400 cursor-not-allowed'
-          }`}
-          onClick={handleGenerateJsonCards}
-          disabled={!stepStatus.aiReviewCompleted || stepStatus.jsonCardsGenerated || isGeneratingAll}
-        >
-          {isGeneratingAll ? 'JSON (영문)카드 생성 중...' : '3단계: JSON (영문)카드 완성'}
-        </Button>
-      </div>
-
-
-      {/* 4단계: 프로젝트 개요 저장 및 다음 버튼 */}
-      <div className="space-y-3">
-        <div className="text-xs text-gray-500 mb-2">
-          {stepStatus.jsonCardsGenerated ? '✅ 4단계 준비됨' : '🔴 3단계 완료 필요'}
-        </div>
-        <Button 
-          className={`w-full ${
-            stepStatus.jsonCardsGenerated
-              ? 'bg-green-600 hover:bg-green-700'
-              : 'bg-gray-400 cursor-not-allowed'
-          }`}
-          onClick={handleGenerateFinalPromptCards}
-          disabled={!stepStatus.jsonCardsGenerated || isGeneratingAll}
-        >
-          {isGeneratingAll ? '프로젝트 저장 중...' : '4단계: 프로젝트 개요 저장'}
-        </Button>
-        
-        {/* 프로젝트 개요 저장 완료 메시지 */}
-        {stepStatus.projectOverviewSaved && (
-          <div className="text-center py-2 px-4 bg-green-100 text-green-800 rounded-lg border border-green-200">
-            <span className="text-sm font-medium">✅ 프로젝트 개요 저장됨</span>
+          <div className={`p-3 rounded-lg border text-sm ${
+            apiKeyStatus.hasApiKey 
+              ? 'bg-green-50 border-green-200 text-green-800' 
+              : 'bg-red-50 border-red-200 text-red-800'
+          }`}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="font-medium">
+                  {apiKeyStatus.hasApiKey ? '✅' : '⚠️'} Google AI API 키 상태:
+                </span>
+                <span>
+                  {apiKeyStatus.hasApiKey 
+                    ? `설정됨 (${apiKeyStatus.isAdmin ? '관리자 환경변수' : '사용자 설정'})` 
+                    : '설정되지 않음'
+                  }
+                </span>
+              </div>
+              {!apiKeyStatus.hasApiKey && (
+                <button
+                  onClick={() => {
+                    addNotification({
+                      type: 'info',
+                      title: 'API 키 설정 안내',
+                      message: '우측 상단의 설정 버튼을 클릭하여 Google AI API 키를 입력해주세요.',
+                    });
+                  }}
+                  className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                >
+                  설정 안내
+                </button>
+              )}
+            </div>
           </div>
-        )}
-        
-        <Button 
-          className={`w-full ${
-            stepStatus.jsonCardsGenerated && (!canProceedToNext || canProceedToNext())
-              ? 'bg-orange-600 hover:bg-orange-700'
-              : 'bg-gray-400 cursor-not-allowed'
-          }`}
-          onClick={onNext}
-          disabled={!stepStatus.jsonCardsGenerated || (canProceedToNext && !canProceedToNext())}
-        >
-          다음
-        </Button>
+          
+          {/* 1단계: 기본 입력 */}
+          <div className="space-y-3">
+            <div className="flex items-center gap-3">
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
+                !stepStatus.scenarioGenerated ? 'bg-blue-600 text-white' : 'bg-green-600 text-white'
+              }`}>
+                {stepStatus.scenarioGenerated ? '✓' : '1'}
+              </div>
+              <div className="flex-1">
+                <div className="text-sm font-medium">기본 입력 및 시나리오 생성</div>
+                <div className="text-xs text-gray-500">대화, 추가 설정, 시나리오 프롬프트 입력</div>
+              </div>
+              <div className="flex items-center gap-2">
+                {/* 1단계는 항상 표시 */}
+                <button
+                  onClick={() => toggleStepInputs('step1')}
+                  className="px-3 py-1 text-xs rounded border hover:bg-gray-50 transition-colors"
+                >
+                  {showStepInputs.step1 ? '입력 숨기기' : '입력 보기/수정'}
+                </button>
+                <Button
+                  className={`px-4 py-2 ${
+                    dialogue && additionalScenarioSettings && scenarioPrompt && !stepStatus.scenarioGenerated
+                      ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                      : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  }`}
+                  onClick={handleGenerateScenario}
+                  disabled={!dialogue || !additionalScenarioSettings || !scenarioPrompt || stepStatus.scenarioGenerated || isGeneratingAll}
+                >
+                  {isGeneratingAll ? '생성 중...' : stepStatus.scenarioGenerated ? '완료' : '시나리오 생성'}
+                </Button>
+              </div>
+            </div>
+
+            {/* 1단계 입력 항목 */}
+            {showStepInputs.step1 && (
+              <div className="bg-blue-50 p-4 rounded-lg border border-blue-200 ml-11">
+                <h4 className="text-sm font-semibold text-blue-800 mb-3">📝 기본 입력</h4>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      대화 내용 <span className="text-red-500">*</span>
+                    </label>
+                    <textarea
+                      value={dialogue}
+                      onChange={(e) => setDialogue(e.target.value)}
+                      className={`w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 ${
+                        dialogue ? 'border-green-300 focus:ring-green-500' : 'border-gray-300 focus:ring-blue-500'
+                      }`}
+                      rows={3}
+                      placeholder="주요 대화나 상황을 입력하세요"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      추가 시나리오 설정 <span className="text-red-500">*</span>
+                    </label>
+                    <textarea
+                      value={additionalScenarioSettings}
+                      onChange={(e) => setAdditionalScenarioSettings(e.target.value)}
+                      className={`w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 ${
+                        additionalScenarioSettings ? 'border-green-300 focus:ring-green-500' : 'border-gray-300 focus:ring-blue-500'
+                      }`}
+                      rows={2}
+                      placeholder="추가적인 시나리오 설정이나 요구사항을 입력하세요"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      시나리오 프롬프트 <span className="text-red-500">*</span>
+                    </label>
+                    <textarea
+                      value={scenarioPrompt}
+                      onChange={(e) => setScenarioPrompt(e.target.value)}
+                      className={`w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 ${
+                        scenarioPrompt ? 'border-green-300 focus:ring-green-500' : 'border-gray-300 focus:ring-blue-500'
+                      }`}
+                      rows={2}
+                      placeholder="시나리오 생성에 사용할 프롬프트를 입력하세요"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* 2단계: JSON 카드 생성 (한글) */}
+          <div className="space-y-3">
+            <div className="flex items-center gap-3">
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
+                stepStatus.scenarioGenerated && !stepStatus.jsonCardsGenerated ? 'bg-indigo-600 text-white' : 
+                stepStatus.jsonCardsGenerated ? 'bg-green-600 text-white' : 'bg-gray-300 text-gray-500'
+              }`}>
+                {stepStatus.jsonCardsGenerated ? '✓' : '2'}
+              </div>
+              <div className="flex-1">
+                <div className="text-sm font-medium">JSON 카드 생성</div>
+                <div className="text-xs text-gray-500">한글 프롬프트 카드 생성</div>
+              </div>
+              <div className="flex items-center gap-2">
+                {/* 2단계는 1단계 완료 후에만 표시 */}
+                {stepStatus.scenarioGenerated && (
+                  <button
+                    onClick={() => toggleStepInputs('step2')}
+                    className="px-3 py-1 text-xs rounded border hover:bg-gray-50 transition-colors"
+                  >
+                    {showStepInputs.step2 ? '입력 숨기기' : '입력 보기/수정'}
+                  </button>
+                )}
+                <Button
+                  className={`px-4 py-2 ${
+                    stepStatus.scenarioGenerated && !stepStatus.jsonCardsGenerated
+                      ? 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                      : stepStatus.jsonCardsGenerated ? 'bg-green-600 text-white' : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  }`}
+                  onClick={handleGenerateJsonCards}
+                  disabled={!stepStatus.scenarioGenerated || stepStatus.jsonCardsGenerated || isGeneratingAll}
+                >
+                  {isGeneratingAll ? '카드 생성 중...' : stepStatus.jsonCardsGenerated ? '완료' : '한글 카드 생성'}
+                </Button>
+              </div>
+            </div>
+
+            {/* 2단계 입력 항목 */}
+            {showStepInputs.step2 && (
+              <div className="bg-purple-50 p-4 rounded-lg border border-purple-200 ml-11">
+                <h4 className="text-sm font-semibold text-purple-800 mb-3">📋 한글 카드 생성</h4>
+                <div className="space-y-4">
+                  <div className="bg-white p-3 rounded border">
+                    <h5 className="text-sm font-medium text-gray-700 mb-2">생성된 시나리오</h5>
+                    <div className="text-sm text-gray-600 bg-gray-50 p-2 rounded">
+                      {finalScenario || '시나리오가 생성되지 않았습니다. 1단계를 먼저 완료해주세요.'}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* 3단계: JSON 카드 생성 (한글) */}
+          <div className="space-y-3">
+            <div className="flex items-center gap-3">
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
+                stepStatus.scenarioGenerated && !stepStatus.jsonCardsGenerated ? 'bg-indigo-600 text-white' : 
+                stepStatus.jsonCardsGenerated ? 'bg-green-600 text-white' : 'bg-gray-300 text-gray-500'
+              }`}>
+                {stepStatus.jsonCardsGenerated ? '✓' : '3'}
+              </div>
+              <div className="flex-1">
+                <div className="text-sm font-medium">JSON 카드 생성</div>
+                <div className="text-xs text-gray-500">한글 프롬프트 카드 생성</div>
+              </div>
+              <div className="flex items-center gap-2">
+                {/* 3단계는 1단계 완료 후에만 표시 */}
+                {stepStatus.scenarioGenerated && (
+                  <button
+                    onClick={() => toggleStepInputs('step3')}
+                    className="px-3 py-1 text-xs rounded border hover:bg-gray-50 transition-colors"
+                  >
+                    {showStepInputs.step3 ? '입력 숨기기' : '입력 보기/수정'}
+                  </button>
+                )}
+                <Button
+                  className={`px-4 py-2 ${
+                    stepStatus.scenarioGenerated && !stepStatus.jsonCardsGenerated
+                      ? 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                      : stepStatus.jsonCardsGenerated ? 'bg-green-600 text-white' : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  }`}
+                  onClick={handleGenerateJsonCards}
+                  disabled={!stepStatus.scenarioGenerated || stepStatus.jsonCardsGenerated || isGeneratingAll}
+                >
+                  {isGeneratingAll ? '카드 생성 중...' : stepStatus.jsonCardsGenerated ? '완료' : '한글 카드 생성'}
+                </Button>
+              </div>
+            </div>
+
+            {/* 3단계 입력 항목 */}
+            {showStepInputs.step3 && (
+              <div className="bg-indigo-50 p-4 rounded-lg border border-indigo-200 ml-11">
+                <h4 className="text-sm font-semibold text-indigo-800 mb-3">📋 한글 카드 설정</h4>
+                <div className="space-y-4">
+                  <div className="bg-white p-3 rounded border">
+                    <h5 className="text-sm font-medium text-gray-700 mb-2">생성된 한글 카드</h5>
+                    <div className="text-sm text-gray-600 bg-gray-50 p-2 rounded max-h-32 overflow-y-auto">
+                      {generatedProjectData?.koreanCards ? 
+                        Object.entries(generatedProjectData.koreanCards).map(([key, value]) => (
+                          <div key={key} className="mb-2">
+                            <strong>{key}:</strong> {String(value)}
+                          </div>
+                        )) : 
+                        '한글 카드가 생성되지 않았습니다.'
+                      }
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* 3.5단계: 영어 카드 생성 */}
+          <div className="space-y-3">
+            <div className="flex items-center gap-3">
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
+                stepStatus.jsonCardsGenerated && !generatedProjectData?.englishCards ? 'bg-purple-600 text-white' : 
+                generatedProjectData?.englishCards ? 'bg-green-600 text-white' : 'bg-gray-300 text-gray-500'
+              }`}>
+                {generatedProjectData?.englishCards ? '✓' : '3.5'}
+              </div>
+              <div className="flex-1">
+                <div className="text-sm font-medium">영어 카드 생성</div>
+                <div className="text-xs text-gray-500">한글 카드 확인 후 영어 번역</div>
+              </div>
+              <div className="flex items-center gap-2">
+                {/* 3.5단계는 3단계 완료 후에만 표시 */}
+                {stepStatus.jsonCardsGenerated && (
+                  <button
+                    onClick={() => toggleStepInputs('step4')}
+                    className="px-3 py-1 text-xs rounded border hover:bg-gray-50 transition-colors"
+                  >
+                    {showStepInputs.step4 ? '입력 숨기기' : '입력 보기/수정'}
+                  </button>
+                )}
+                <Button
+                  className={`px-4 py-2 ${
+                    stepStatus.jsonCardsGenerated && !generatedProjectData?.englishCards
+                      ? 'bg-purple-600 hover:bg-purple-700 text-white'
+                      : generatedProjectData?.englishCards ? 'bg-green-600 text-white' : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  }`}
+                  onClick={handleGenerateEnglishCards}
+                  disabled={!stepStatus.jsonCardsGenerated || !!generatedProjectData?.englishCards || isGeneratingAll}
+                >
+                  {isGeneratingAll ? '영어 번역 중...' : generatedProjectData?.englishCards ? '완료' : '영어 카드 생성'}
+                </Button>
+              </div>
+            </div>
+
+            {/* 3.5단계 입력 항목 */}
+            {showStepInputs.step4 && (
+              <div className="bg-purple-50 p-4 rounded-lg border border-purple-200 ml-11">
+                <h4 className="text-sm font-semibold text-purple-800 mb-3">🌐 영어 카드 설정</h4>
+                <div className="space-y-4">
+                  <div className="bg-white p-3 rounded border">
+                    <h5 className="text-sm font-medium text-gray-700 mb-2">생성된 영어 카드</h5>
+                    <div className="text-sm text-gray-600 bg-gray-50 p-2 rounded max-h-32 overflow-y-auto">
+                      {generatedProjectData?.englishCards ? 
+                        Object.entries(generatedProjectData.englishCards).map(([key, value]) => (
+                          <div key={key} className="mb-2">
+                            <strong>{key}:</strong> {String(value)}
+                          </div>
+                        )) : 
+                        '영어 카드가 생성되지 않았습니다.'
+                      }
+                    </div>
+                  </div>
+                  
+                  <div className="bg-white p-3 rounded border">
+                    <h5 className="text-sm font-medium text-gray-700 mb-2">프로젝트 설정</h5>
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-2">
+                          <label className="text-sm font-medium text-gray-700">씬 숫자</label>
+                          <input
+                            type="number"
+                            value={sceneCutSettings.sceneCount}
+                            onChange={(e) => setSceneCutSettings((prev: SceneCutSettings) => ({
+                              ...prev,
+                              sceneCount: parseInt(e.target.value) || 3
+                            }))}
+                            className="w-12 px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                            min="1"
+                            max="10"
+                          />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <label className="text-sm font-medium text-gray-700">컷 숫자</label>
+                          <input
+                            type="number"
+                            value={sceneCutSettings.cutCount}
+                            onChange={(e) => setSceneCutSettings((prev: SceneCutSettings) => ({
+                              ...prev,
+                              cutCount: parseInt(e.target.value) || 3
+                            }))}
+                            className="w-12 px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                            min="1"
+                            max="10"
+                          />
+                        </div>
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        현재 설정: {sceneCutSettings.sceneCount}개 씬 × {sceneCutSettings.cutCount}개 컷 = 총 {sceneCutSettings.sceneCount * sceneCutSettings.cutCount}개 컷
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* 4단계: 최종 저장 */}
+          <div className="flex items-center gap-3">
+            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
+              generatedProjectData?.englishCards ? 'bg-green-600 text-white' : 'bg-gray-300 text-gray-500'
+            }`}>
+              {stepStatus.projectOverviewSaved ? '✓' : '4'}
+            </div>
+            <div className="flex-1">
+              <div className="text-sm font-medium">프로젝트 개요 저장</div>
+              <div className="text-xs text-gray-500">최종 프로젝트 데이터 저장 및 다음 단계 진행</div>
+            </div>
+            <Button
+              className={`px-4 py-2 ${
+                generatedProjectData?.englishCards
+                  ? 'bg-green-600 hover:bg-green-700 text-white'
+                  : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+              }`}
+              onClick={handleGenerateFinalPromptCards}
+              disabled={!generatedProjectData?.englishCards || isGeneratingAll}
+            >
+              {isGeneratingAll ? '저장 중...' : stepStatus.projectOverviewSaved ? '완료' : '프로젝트 저장'}
+            </Button>
+          </div>
+        </div>
       </div>
+
+      {/* 다음 단계 진행 버튼 */}
+      {stepStatus.projectOverviewSaved && (
+        <div className="bg-white border rounded-lg p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-800">🎉 프로젝트 개요 완료</h3>
+              <p className="text-sm text-gray-600 mt-1">모든 단계가 완료되었습니다. 다음 단계로 진행하세요.</p>
+            </div>
+            <Button
+              className="px-6 py-3 bg-orange-600 hover:bg-orange-700 text-white font-medium"
+              onClick={onNext}
+            >
+              다음 단계로 →
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

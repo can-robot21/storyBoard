@@ -1,5 +1,6 @@
 import { BaseAIService } from './BaseAIService';
 import { TextGenerationOptions, ImageGenerationOptions, VideoGenerationOptions, TextGenerationResponse, ImageGenerationResponse, VideoGenerationResponse } from '../../types/ai';
+import { apiUsageService } from '../apiUsageService';
 
 /**
  * Google AI 서비스 구현체
@@ -22,13 +23,27 @@ export class GoogleAIService extends BaseAIService {
 
   async generateText(options: TextGenerationOptions): Promise<TextGenerationResponse> {
     try {
+      const model = options.model || 'gemini-2.5-flash';
+      
       // 기존 googleAIService의 generateText 메서드 사용
-      const text = await this.ai.generateText(options.prompt, options.model || 'gemini-2.5-flash');
+      const text = await this.ai.generateText(options.prompt, model);
+
+      // 사용량 추적
+      const estimatedTokens = Math.ceil(options.prompt.length / 4) + Math.ceil(text.length / 4);
+      apiUsageService.recordUsage({
+        provider: 'Google',
+        model: model,
+        actionType: 'text',
+        tokensUsed: estimatedTokens,
+        cost: 0, // 무료 모델
+        userId: options.userId,
+        projectId: options.projectId,
+      });
 
       return this.formatTextResponse(
         text,
-        { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
-        options.model || 'gemini-2.5-flash'
+        { promptTokens: Math.ceil(options.prompt.length / 4), completionTokens: Math.ceil(text.length / 4), totalTokens: estimatedTokens },
+        model
       );
     } catch (error) {
       this.handleError(error, '텍스트 생성');
@@ -37,11 +52,14 @@ export class GoogleAIService extends BaseAIService {
 
   async generateImage(options: ImageGenerationOptions): Promise<ImageGenerationResponse> {
     try {
+      const model = options.model || 'imagen-4.0-ultra-generate-001';
+      const numberOfImages = options.numberOfImages || 1;
+      
       const response = await this.ai.models.generateImages({
-        model: options.model || 'imagen-4.0-ultra-generate-001',
+        model: model,
         prompt: options.prompt,
         config: {
-          numberOfImages: options.numberOfImages || 1,
+          numberOfImages: numberOfImages,
           outputMimeType: 'image/jpeg',
           aspectRatio: options.aspectRatio
         }
@@ -57,10 +75,22 @@ export class GoogleAIService extends BaseAIService {
         }
       }
 
+      // 사용량 추적
+      const estimatedTokens = Math.ceil(options.prompt.length / 4) + (numberOfImages * 100); // 이미지당 약 100 토큰
+      apiUsageService.recordUsage({
+        provider: 'Google',
+        model: model,
+        actionType: 'image',
+        tokensUsed: estimatedTokens,
+        cost: 0, // 무료 모델
+        userId: options.userId,
+        projectId: options.projectId,
+      });
+
       return this.formatImageResponse(
         images,
-        { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
-        options.model || 'imagen-4.0-ultra-generate-001'
+        { promptTokens: Math.ceil(options.prompt.length / 4), completionTokens: numberOfImages * 100, totalTokens: estimatedTokens },
+        model
       );
     } catch (error) {
       this.handleError(error, '이미지 생성');

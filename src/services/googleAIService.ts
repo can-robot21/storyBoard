@@ -1,29 +1,108 @@
-import { GoogleGenAI, HarmCategory, HarmBlockThreshold, Type } from '@google/genai';
+import { GoogleGenAI, HarmCategory, HarmBlockThreshold, Type, PersonGeneration } from '@google/genai';
+import TokenCalculator from '../utils/tokenCalculator';
 
 // Google AI 서비스 클래스
 export class GoogleAIService {
   private ai: GoogleGenAI;
+  private apiKeyInUse: string;
+  private tokenCalculator: TokenCalculator;
 
   constructor() {
+    this.tokenCalculator = TokenCalculator.getInstance();
+    const getCurrentUser = () => {
+      try {
+        if (typeof window === 'undefined') return null;
+        const raw = localStorage.getItem('storyboard_current_user');
+        return raw ? JSON.parse(raw) : null;
+      } catch {
+        return null;
+      }
+    };
+    const user = getCurrentUser();
+    const adminEmail = process.env.REACT_APP_ADMIN_EMAIL || 'star612.net@gmail.com';
+    const isAdmin = !!(user && user.email === adminEmail);
+
+    const getLocalApiKey = (): string => {
+      try {
+        if (typeof window === 'undefined') return '';
+        const localKeysRaw = localStorage.getItem('user_api_keys');
+        if (localKeysRaw) {
+          const localKeys = JSON.parse(localKeysRaw);
+          if (localKeys?.google) return localKeys.google as string;
+        }
+        if (user?.apiKeys?.google) return user.apiKeys.google as string;
+      } catch {}
+      return '';
+    };
+
+    this.apiKeyInUse = isAdmin
+      ? (process.env.REACT_APP_GEMINI_API_KEY || '')
+      : (getLocalApiKey() || '');
+
     this.ai = new GoogleGenAI({
-      apiKey: process.env.REACT_APP_GEMINI_API_KEY || 'your-gemini-api-key'
+      apiKey: this.apiKeyInUse || 'your-gemini-api-key'
     });
   }
 
   // 텍스트 생성 (프로젝트 개요용)
-  async generateText(prompt: string, model: string = 'gemini-2.5-flash'): Promise<string> {
+  async generateText(prompt: string, model: string = 'gemini-2.5-flash', retryCount: number = 0): Promise<string> {
+    const maxRetries = 3;
+    const retryDelay = 2000; // 2초
+
     try {
+      // API 키 검증
+      if (!this.apiKeyInUse || this.apiKeyInUse === 'your-gemini-api-key') {
+        throw new Error('Google AI API 키가 설정되지 않았습니다. 환경 변수에 REACT_APP_GEMINI_API_KEY를 설정하거나 사용자 설정에서 API 키를 입력해주세요.');
+      }
+
+      // 프롬프트 검증
+      if (!prompt || prompt.trim().length === 0) {
+        throw new Error('프롬프트가 비어있습니다.');
+      }
+
       const response = await this.ai.models.generateContent({
         model,
-        contents: prompt,
+        contents: [{ parts: [{ text: prompt }] }], // 올바른 형식으로 수정
         config: {
           systemInstruction: "당신은 창의적인 스토리텔러이자 영상 제작 전문가입니다. 주어진 요청에 따라 매력적이고 구체적인 콘텐츠를 생성해주세요."
         }
       });
-      return response.text || '';
+
+      // 응답 검증
+      if (!response || !response.text) {
+        throw new Error('AI 응답이 비어있습니다.');
+      }
+
+      // 토큰 사용량 기록
+      this.tokenCalculator.recordAPICall(model, 'text', prompt, response.text);
+
+      return response.text;
     } catch (error) {
       console.error('Google AI 텍스트 생성 오류:', error);
-      throw new Error('텍스트 생성에 실패했습니다.');
+      
+      // 503 서비스 불가 에러 처리 및 재시도
+      if (error instanceof Error && error.message.includes('503') && retryCount < maxRetries) {
+        console.log(`서비스 불가 에러 감지. ${retryDelay}ms 후 재시도 (${retryCount + 1}/${maxRetries})`);
+        await new Promise(resolve => setTimeout(resolve, retryDelay * (retryCount + 1)));
+        return this.generateText(prompt, model, retryCount + 1);
+      }
+      
+      // 구체적인 에러 메시지 제공
+      if (error instanceof Error) {
+        if (error.message.includes('API key')) {
+          throw new Error('Google AI API 키가 유효하지 않습니다. API 키를 확인해주세요.');
+        } else if (error.message.includes('quota')) {
+          throw new Error('API 사용량 한도를 초과했습니다. 잠시 후 다시 시도해주세요.');
+        } else if (error.message.includes('safety')) {
+          throw new Error('안전 정책에 위배되는 내용이 감지되었습니다. 프롬프트를 수정해주세요.');
+        } else if (error.message.includes('network') || error.message.includes('fetch')) {
+          throw new Error('네트워크 연결에 문제가 있습니다. 인터넷 연결을 확인해주세요.');
+        } else if (error.message.includes('503') || error.message.includes('UNAVAILABLE')) {
+          throw new Error('Google AI 서비스가 일시적으로 사용할 수 없습니다. 잠시 후 다시 시도해주세요.');
+        }
+      }
+      
+      throw new Error(`텍스트 생성에 실패했습니다: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
@@ -92,13 +171,110 @@ export class GoogleAIService {
     return await this.generateText(prompt, 'gemini-2.5-pro');
   }
 
+  // 프롬프트 검증 및 강화 함수
+  private validateAndEnhancePrompt(prompt: string, type: 'character' | 'background' | 'setting'): string {
+    // 기본 검증
+    if (!prompt || prompt.trim().length === 0) {
+      throw new Error('프롬프트가 비어있습니다.');
+    }
+
+    // 캐릭터 프롬프트 강화
+    if (type === 'character') {
+      return this.enhanceCharacterPrompt(prompt);
+    }
+
+    return prompt;
+  }
+
+  // 캐릭터 프롬프트 강화
+  private enhanceCharacterPrompt(prompt: string): string {
+    // 한국어 프롬프트를 영어로 변환하고 강화
+    const enhancedPrompt = `Professional character portrait for video production:
+
+CHARACTER DESCRIPTION:
+${prompt}
+
+CRITICAL REQUIREMENTS:
+- MUST be a professional character portrait
+- High quality, detailed facial features
+- Clear character expression and personality
+- Professional lighting and composition
+- Suitable for video production use
+
+TECHNICAL SPECIFICATIONS:
+- High resolution and sharp details
+- Professional photography style
+- Clean background or appropriate setting
+- Character should be the main focus
+- Consistent with video production standards
+
+STYLE GUIDELINES:
+- Realistic and professional appearance
+- Clear visual hierarchy
+- Appropriate color palette
+- Character should be visually distinct and memorable`;
+
+    return enhancedPrompt;
+  }
+
+  // 이미지 생성 제한 및 검증
+  private validateImageGeneration(prompt: string, type: 'character' | 'background' | 'setting'): void {
+    // 프롬프트 길이 제한
+    if (prompt.length > 1000) {
+      throw new Error('프롬프트가 너무 깁니다. 1000자 이내로 작성해주세요.');
+    }
+
+    // 금지된 키워드 검사
+    const forbiddenKeywords = ['nude', 'naked', 'explicit', 'adult', 'nsfw'];
+    const lowerPrompt = prompt.toLowerCase();
+    
+    for (const keyword of forbiddenKeywords) {
+      if (lowerPrompt.includes(keyword)) {
+        throw new Error('부적절한 내용이 포함되어 있습니다. 다른 내용으로 시도해주세요.');
+      }
+    }
+
+    // 캐릭터 프롬프트 특별 검증
+    if (type === 'character') {
+      this.validateCharacterPrompt(prompt);
+    }
+  }
+
+  // 캐릭터 프롬프트 검증
+  private validateCharacterPrompt(prompt: string): void {
+    const lowerPrompt = prompt.toLowerCase();
+    
+    // 필수 요소 검사
+    const hasGender = lowerPrompt.includes('여성') || lowerPrompt.includes('남성') || 
+                     lowerPrompt.includes('female') || lowerPrompt.includes('male') ||
+                     lowerPrompt.includes('woman') || lowerPrompt.includes('man');
+    
+    if (!hasGender) {
+      console.warn('⚠️ 캐릭터 프롬프트에 성별이 명시되지 않았습니다. 결과가 예상과 다를 수 있습니다.');
+    }
+
+    // 한국어 프롬프트 강화 제안
+    if (lowerPrompt.includes('한국') || lowerPrompt.includes('korean')) {
+      console.log('💡 한국 캐릭터 생성 시 더 정확한 결과를 위해 다음을 추가해보세요:');
+      console.log('- "한국인 여성" 또는 "한국인 남성"');
+      console.log('- "아시아인 특징"');
+      console.log('- "한국 전통 의상" (해당하는 경우)');
+    }
+  }
+
   // 이미지 생성 (캐릭터용) - 실제 Imagen API 사용
   async generateCharacterImage(prompt: string, aspectRatio: string = '1:1'): Promise<string> {
     try {
+      // 이미지 생성 제한 및 검증
+      this.validateImageGeneration(prompt, 'character');
+      
+      // 프롬프트 검증 및 강화
+      const validatedPrompt = this.validateAndEnhancePrompt(prompt, 'character');
+      
       // 스토리보드 연계를 위한 상세한 프롬프트 생성
       const detailedPrompt = `Create a detailed character image for video production:
 
-${prompt}
+${validatedPrompt}
 
 Technical specifications:
 - High quality, professional character design
@@ -115,20 +291,27 @@ Style requirements:
 - Appropriate color palette for video integration`;
 
       const response = await this.ai.models.generateImages({
-        model: 'imagen-4.0-fast-generate-001',
+        model: 'models/imagen-4.0-generate-001',
         prompt: detailedPrompt,
         config: {
           numberOfImages: 1,
           outputMimeType: 'image/jpeg',
-          aspectRatio: '16:9' // 비디오 비율에 맞춤
+          personGeneration: PersonGeneration.ALLOW_ALL,
+          aspectRatio: aspectRatio || '1:1',
+          imageSize: '1K'
         }
       });
 
       console.log('Imagen API 응답:', response); // 디버깅용
 
+      // 빈 응답 처리
+      if (!response || !response.generatedImages || response.generatedImages.length === 0) {
+        console.warn('이미지 생성 API가 빈 응답을 반환했습니다. 프롬프트를 수정하거나 다른 모델을 시도해보세요.');
+        throw new Error('이미지 생성 결과가 없습니다. 프롬프트를 수정하거나 잠시 후 다시 시도해주세요.');
+      }
+
       // 다양한 응답 구조 확인
-      if (response.generatedImages && response.generatedImages.length > 0) {
-        const firstImage = response.generatedImages[0] as any;
+      const firstImage = response.generatedImages[0] as any;
         
         // 응답 구조 1: image.imageBytes
         if (firstImage?.image?.imageBytes) {
@@ -151,17 +334,21 @@ Style requirements:
         if (firstImage?.data) {
           return `data:image/jpeg;base64,${firstImage.data}`;
         }
-      }
       
       // 응답 구조 5: response.data
       if ((response as any).data && (response as any).data.generatedImages) {
-        const firstImage = (response as any).data.generatedImages[0];
-        if (firstImage?.image?.imageBytes) {
-          return `data:image/jpeg;base64,${firstImage.image.imageBytes}`;
+        const images = (response as any).data.generatedImages;
+        if (images.length > 0) {
+          const firstImage = images[0];
+          if (firstImage?.image?.imageBytes) {
+            return `data:image/jpeg;base64,${firstImage.image.imageBytes}`;
+          }
         }
       }
       
-      throw new Error('이미지 생성 결과가 없습니다.');
+      // 모든 구조에서 이미지를 찾지 못한 경우
+      console.error('이미지 데이터를 찾을 수 없습니다. 응답 구조:', JSON.stringify(response, null, 2));
+      throw new Error('이미지 데이터 형식을 인식할 수 없습니다. API 응답 구조가 변경되었을 수 있습니다.');
     } catch (error) {
       console.error('Google AI 이미지 생성 오류:', error);
       throw new Error('이미지 생성에 실패했습니다.');
@@ -172,12 +359,14 @@ Style requirements:
   async generateBackgroundImage(prompt: string, aspectRatio: string = '16:9'): Promise<string> {
     try {
       const response = await this.ai.models.generateImages({
-        model: 'imagen-4.0-generate-001',
+        model: 'models/imagen-4.0-generate-001',
         prompt: prompt,
         config: {
           numberOfImages: 1,
           outputMimeType: 'image/jpeg',
-          aspectRatio: '16:9'
+          personGeneration: PersonGeneration.ALLOW_ALL,
+          aspectRatio: aspectRatio,
+          imageSize: '1K'
         }
       });
 
@@ -217,12 +406,14 @@ Style requirements:
   async generateSettingCutImage(prompt: string, aspectRatio: string = '16:9'): Promise<string> {
     try {
       const response = await this.ai.models.generateImages({
-        model: 'imagen-4.0-ultra-generate-001',
+        model: 'models/imagen-4.0-generate-001',
         prompt: prompt,
         config: {
           numberOfImages: 1,
           outputMimeType: 'image/jpeg',
-          aspectRatio: '16:9'
+          personGeneration: PersonGeneration.ALLOW_ALL,
+          aspectRatio: aspectRatio,
+          imageSize: '1K'
         }
       });
 
@@ -259,29 +450,36 @@ Style requirements:
   }
 
   // 비디오 생성 - 실제 Veo API 사용
-  async generateVideo(prompt: string, videoRatio: string = '16:9'): Promise<string> {
+  async generateVideo(options: {
+    prompt: string;
+    ratio?: string;
+    model?: string;
+    referenceImages?: string[];
+    abortSignal?: AbortSignal;
+  }): Promise<{ videoUrl: string; thumbnail?: string; duration?: string }> {
     try {
       console.log('Veo API를 사용하여 실제 영상을 생성합니다.');
       
       // Veo API에 최적화된 프롬프트 생성
-      const veoOptimizedPrompt = await this.createVeoOptimizedPrompt(prompt, videoRatio);
+      const veoOptimizedPrompt = await this.createVeoOptimizedPrompt(options.prompt, options.ratio || '16:9');
       
-      // Veo API 호출 (오디오 생성 포함)
-      let operation = await this.ai.models.generateVideos({
-        model: 'veo-3.0-fast-generate-001', // Veo 3.0 사용
-        prompt: veoOptimizedPrompt,
-        config: {
-          numberOfVideos: 1,
-          aspectRatio: videoRatio,
-          durationSeconds: 8,
-          personGeneration: 'ALLOW_ALL',
-          generateAudio: true, // 오디오 생성 활성화
-          resolution: '720p', // 해상도 설정
-          fps: 24, // 프레임 레이트 설정
-        },
-      });
+  // Veo API 호출 (올바른 모델명 사용)
+  let operation = await this.ai.models.generateVideos({
+    model: options.model || 'veo-3.0-generate-001', // 올바른 Veo 3.0 모델명
+    prompt: veoOptimizedPrompt,
+    config: {
+      numberOfVideos: 1,
+      aspectRatio: options.ratio || '16:9',
+      durationSeconds: 8,
+      personGeneration: PersonGeneration.ALLOW_ALL,
+      // Veo API에서 지원되는 파라미터만 사용
+      // generateAudio: 제거됨 (지원되지 않음)
+      // resolution: 제거됨 (지원되지 않을 수 있음)
+    },
+  });
 
-      console.log(`Video generation started: ${operation.name}`);
+  console.log(`Video generation started: ${operation.name}`);
+  console.log(`Using model: ${options.model || 'veo-3.0-generate-001'}`);
 
       // 비디오 생성 완료까지 대기
       while (!operation.done) {
@@ -299,9 +497,20 @@ Style requirements:
         const videoUri = generatedVideo?.video?.uri;
         
         if (videoUri) {
+          // 토큰 사용량 기록 (영상 생성은 별도 비용이므로 프롬프트 토큰만 기록)
+          this.tokenCalculator.recordAPICall(
+            options.model || 'veo-3.0-generate-001', 
+            'video', 
+            veoOptimizedPrompt
+          );
+
           // API 키를 URI에 추가하여 반환
           const apiKey = process.env.REACT_APP_GEMINI_API_KEY;
-          return `${videoUri}&key=${apiKey}`;
+          return {
+            videoUrl: `${videoUri}&key=${apiKey}`,
+            thumbnail: (generatedVideo as any).thumbnail?.uri || '',
+            duration: '8:00' // 기본값
+          };
         }
       }
       
@@ -310,13 +519,24 @@ Style requirements:
     } catch (error) {
       console.error('Google AI 비디오 생성 오류:', error);
       
+      // Veo API 파라미터 오류인 경우 구체적인 메시지 제공
+      if (error instanceof Error && error.message.includes('parameter is not supported')) {
+        console.error('Veo API에서 지원되지 않는 파라미터가 사용되었습니다:', error.message);
+      }
+      
+      // 모델을 찾을 수 없는 경우
+      if (error instanceof Error && error.message.includes('not found')) {
+        console.error('Veo API 모델을 찾을 수 없습니다. 사용 가능한 모델을 확인해주세요.');
+        console.error('사용된 모델:', options.model || 'veo-3.0-generate-001');
+      }
+      
       // Veo API 실패 시 스토리보드로 폴백
       console.log('Veo API 실패. 스토리보드를 생성합니다.');
-      return await this.generateStoryboardFallback(prompt, videoRatio);
+      return await this.generateStoryboardFallback(options.prompt, options.ratio || '16:9');
     }
   }
 
-  // Veo API 최적화 프롬프트 생성 (오디오 포함)
+  // Veo API 최적화 프롬프트 생성
   private async createVeoOptimizedPrompt(originalPrompt: string, videoRatio: string): Promise<string> {
     const optimizationPrompt = `다음 프롬프트를 Veo API에 최적화된 영상 생성 프롬프트로 변환해주세요:
 
@@ -328,16 +548,9 @@ Style requirements:
 2. 카메라 워크와 액션을 구체적으로 설명
 3. 조명과 색감을 명확히 지정
 4. 영상의 흐름과 전환이 자연스럽도록 구성
-5. 오디오와 사운드 효과를 포함하여 설명
-6. 대사가 있다면 자연스러운 음성으로 표현
-7. 배경음악과 효과음을 적절히 배치
-8. Veo API가 이해하기 쉬운 명확한 영어로 작성
-
-오디오 지시사항:
-- 자연스러운 대사와 내레이션
-- 적절한 배경음악
-- 상황에 맞는 효과음
-- 음성의 톤과 감정 표현
+5. Veo API가 이해하기 쉬운 명확한 영어로 작성
+6. 구체적인 장면 묘사와 시각적 요소 강조
+7. 영상의 시작, 중간, 끝 부분이 명확히 구분되도록 구성
 
 최적화된 프롬프트만 반환해주세요 (추가 설명 없이):`;
 
@@ -345,7 +558,7 @@ Style requirements:
   }
 
   // Veo API 실패 시 스토리보드 폴백
-  private async generateStoryboardFallback(prompt: string, videoRatio: string): Promise<string> {
+  private async generateStoryboardFallback(prompt: string, videoRatio: string): Promise<{ videoUrl: string; thumbnail?: string; duration?: string }> {
     const storyboardPrompt = `다음 프롬프트를 바탕으로 상세한 영상 스토리보드를 생성해주세요:
 
 프롬프트: ${prompt}
@@ -399,8 +612,30 @@ Style requirements:
       note: 'Veo API 실패로 인해 스토리보드를 생성했습니다.'
     };
     
-    // Base64로 인코딩하여 반환
-    return `data:application/json;base64,${btoa(JSON.stringify(storyboardData))}`;
+    // Base64로 인코딩하여 반환 (한글 안전 처리)
+    const jsonString = JSON.stringify(storyboardData);
+    const base64String = this.safeBase64Encode(jsonString);
+    
+    return {
+      videoUrl: `data:application/json;base64,${base64String}`,
+      thumbnail: '',
+      duration: '8:00'
+    };
+  }
+
+  // 안전한 Base64 인코딩 (한글 지원)
+  private safeBase64Encode(str: string): string {
+    try {
+      // UTF-8로 인코딩 후 Base64로 변환
+      const utf8Bytes = new TextEncoder().encode(str);
+      const base64String = btoa(String.fromCharCode(...utf8Bytes));
+      return base64String;
+    } catch (error) {
+      console.error('Base64 인코딩 오류:', error);
+      // 폴백: 한글을 제거하고 인코딩
+      const asciiString = str.replace(/[^\u0000-\u007F]/g, '?');
+      return btoa(asciiString);
+    }
   }
 
   // 안전한 비디오 프롬프트 생성 (사람이 포함되지 않은 콘텐츠로 제한)
@@ -422,49 +657,304 @@ Style requirements:
     try {
       const imageData = await this.fileToBase64(imageFile);
       
-      // 이미지 기반 프롬프트 생성 - 영문, 적절한 길이로 제한
-      const imagePrompt = `Analyze this image and create a detailed English prompt for character image generation.
-
-User request: ${textPrompt}
-
-Requirements:
-- Generate a concise English prompt (50-100 words max)
-- Focus on visual elements: appearance, clothing, pose, expression, style
-- Include technical details: lighting, composition, quality
-- Avoid overly complex descriptions
-- Make it suitable for AI image generation
-
-Generate only the English prompt, no explanations.`;
+      console.log('🖼️ img2img 캐릭터 이미지 생성 시작:', textPrompt);
       
-      const response = await this.ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: [
-          {
-            inlineData: {
-              data: imageData,
-              mimeType: imageFile.type
-            }
-          },
-          imagePrompt
-        ]
+      // Gemini 2.5 Flash Image 모델을 사용한 이미지 생성
+      const config = {
+        responseModalities: ['IMAGE'],
+      };
+      
+      const model = 'gemini-2.5-flash-image';
+      
+      const contents = [
+        {
+          role: 'user',
+          parts: [
+            {
+              text: `Based on this reference image, generate a new character image with the following modifications: ${textPrompt}. 
+              
+              Maintain the overall style and composition of the reference image while incorporating the requested changes.`,
+            },
+            {
+              inlineData: {
+                mimeType: imageFile.type,
+                data: imageData,
+              },
+            },
+          ],
+        },
+      ];
+
+      const response = await this.ai.models.generateContentStream({
+        model,
+        config,
+        contents,
       });
-      
-      // 생성된 프롬프트 검증 및 최적화
-      let generatedPrompt = response.text?.trim() || textPrompt;
-      
-      // 프롬프트 길이 확인 및 조정
-      if (generatedPrompt.length > 200) {
-        generatedPrompt = generatedPrompt.substring(0, 200) + '...';
+
+      let generatedImage = '';
+      for await (const chunk of response) {
+        if (!chunk.candidates || !chunk.candidates[0].content || !chunk.candidates[0].content.parts) {
+          continue;
+        }
+        
+        if (chunk.candidates?.[0]?.content?.parts?.[0]?.inlineData) {
+          const inlineData = chunk.candidates[0].content.parts[0].inlineData;
+          generatedImage = `data:${inlineData.mimeType};base64,${inlineData.data}`;
+          console.log('✅ img2img 이미지 생성 완료');
+          break;
+        }
       }
-      
-      // 사용자 프롬프트와 결합
-      const finalPrompt = `${generatedPrompt}, ${textPrompt}`;
-      
-      return await this.generateCharacterImage(finalPrompt);
+
+      if (!generatedImage) {
+        console.warn('⚠️ 이미지 생성 실패, 텍스트만으로 생성 시도');
+        return await this.generateCharacterImage(textPrompt);
+      }
+
+      return generatedImage;
     } catch (error) {
       console.error('Google AI 멀티모달 생성 오류:', error);
       // 실패 시 텍스트만으로 이미지 생성
       return await this.generateCharacterImage(textPrompt);
+    }
+  }
+
+  // 멀티모달 입력 처리 (여러 이미지 + 텍스트) - 캐릭터 이미지 생성용
+  async generateWithMultipleImages(imageFiles: File[], textPrompt: string, aspectRatio: string = '1:1'): Promise<string> {
+    try {
+      console.log('🖼️ 멀티 이미지 캐릭터 생성 시작:', { textPrompt, imageCount: imageFiles.length });
+      
+      // Gemini 2.5 Flash Image 모델을 사용한 이미지 생성
+      const config = {
+        responseModalities: ['IMAGE'],
+      };
+      
+      const model = 'gemini-2.5-flash-image';
+      
+      // 여러 이미지를 parts 배열에 추가
+      const parts: any[] = [
+        {
+          text: `Based on these reference images, generate a new character image with the following modifications: ${textPrompt}. 
+          
+          Instructions:
+          - Combine elements from all reference images
+          - Maintain consistency in style and quality
+          - Incorporate the requested changes while preserving the best features from each image
+          - Create a cohesive final result that blends the reference images effectively`,
+        }
+      ];
+
+      // 각 이미지를 parts에 추가
+      for (const imageFile of imageFiles) {
+        const imageData = await this.fileToBase64(imageFile);
+        parts.push({
+          inlineData: {
+            mimeType: imageFile.type,
+            data: imageData,
+          },
+        });
+      }
+      
+      const contents = [
+        {
+          role: 'user',
+          parts: parts,
+        },
+      ];
+
+      const response = await this.ai.models.generateContentStream({
+        model,
+        config,
+        contents,
+      });
+
+      let generatedImage = '';
+      for await (const chunk of response) {
+        if (!chunk.candidates || !chunk.candidates[0].content || !chunk.candidates[0].content.parts) {
+          continue;
+        }
+        
+        if (chunk.candidates?.[0]?.content?.parts?.[0]?.inlineData) {
+          const inlineData = chunk.candidates[0].content.parts[0].inlineData;
+          generatedImage = `data:${inlineData.mimeType};base64,${inlineData.data}`;
+          console.log('✅ 멀티 이미지 캐릭터 생성 완료');
+          break;
+        }
+      }
+
+      if (!generatedImage) {
+        console.warn('⚠️ 멀티 이미지 생성 실패, 첫 번째 이미지로 단일 생성 시도');
+        return await this.generateWithImage(imageFiles[0], textPrompt, aspectRatio);
+      }
+
+      return generatedImage;
+    } catch (error) {
+      console.error('Google AI 멀티 이미지 생성 오류:', error);
+      // 실패 시 첫 번째 이미지로 단일 생성 시도
+      if (imageFiles.length > 0) {
+        return await this.generateWithImage(imageFiles[0], textPrompt, aspectRatio);
+      }
+      // 모든 실패 시 텍스트만으로 생성
+      return await this.generateCharacterImage(textPrompt);
+    }
+  }
+
+  // 멀티모달 입력 처리 (여러 이미지 + 텍스트) - 배경 이미지 생성용
+  async generateBackgroundWithMultipleImages(imageFiles: File[], textPrompt: string, aspectRatio: string = '16:9'): Promise<string> {
+    try {
+      console.log('🖼️ 멀티 이미지 배경 생성 시작:', { textPrompt, imageCount: imageFiles.length });
+      
+      // Gemini 2.5 Flash Image 모델을 사용한 이미지 생성
+      const config = {
+        responseModalities: ['IMAGE'],
+      };
+      
+      const model = 'gemini-2.5-flash-image';
+      
+      // 여러 이미지를 parts 배열에 추가
+      const parts: any[] = [
+        {
+          text: `Based on these reference images, generate a new background image with the following modifications: ${textPrompt}. 
+          
+          Instructions:
+          - Combine environmental elements from all reference images
+          - Maintain atmospheric consistency and mood
+          - Incorporate the requested changes while preserving the best features from each image
+          - Create a cohesive background that blends the reference images effectively`,
+        }
+      ];
+
+      // 각 이미지를 parts에 추가
+      for (const imageFile of imageFiles) {
+        const imageData = await this.fileToBase64(imageFile);
+        parts.push({
+          inlineData: {
+            mimeType: imageFile.type,
+            data: imageData,
+          },
+        });
+      }
+      
+      const contents = [
+        {
+          role: 'user',
+          parts: parts,
+        },
+      ];
+
+      const response = await this.ai.models.generateContentStream({
+        model,
+        config,
+        contents,
+      });
+
+      let generatedImage = '';
+      for await (const chunk of response) {
+        if (!chunk.candidates || !chunk.candidates[0].content || !chunk.candidates[0].content.parts) {
+          continue;
+        }
+        
+        if (chunk.candidates?.[0]?.content?.parts?.[0]?.inlineData) {
+          const inlineData = chunk.candidates[0].content.parts[0].inlineData;
+          generatedImage = `data:${inlineData.mimeType};base64,${inlineData.data}`;
+          console.log('✅ 멀티 이미지 배경 생성 완료');
+          break;
+        }
+      }
+
+      if (!generatedImage) {
+        console.warn('⚠️ 멀티 이미지 배경 생성 실패, 첫 번째 이미지로 단일 생성 시도');
+        return await this.generateBackgroundWithImage(imageFiles[0], textPrompt, aspectRatio);
+      }
+
+      return generatedImage;
+    } catch (error) {
+      console.error('Google AI 멀티 이미지 배경 생성 오류:', error);
+      // 실패 시 첫 번째 이미지로 단일 생성 시도
+      if (imageFiles.length > 0) {
+        return await this.generateBackgroundWithImage(imageFiles[0], textPrompt, aspectRatio);
+      }
+      // 모든 실패 시 텍스트만으로 생성
+      return await this.generateBackgroundImage(textPrompt);
+    }
+  }
+
+  // 멀티모달 입력 처리 (여러 이미지 + 텍스트) - 설정 컷 이미지 생성용
+  async generateSettingCutWithMultipleImages(imageFiles: File[], textPrompt: string, aspectRatio: string = '16:9'): Promise<string> {
+    try {
+      console.log('🖼️ 멀티 이미지 설정 컷 생성 시작:', { textPrompt, imageCount: imageFiles.length });
+      
+      // Gemini 2.5 Flash Image 모델을 사용한 이미지 생성
+      const config = {
+        responseModalities: ['IMAGE'],
+      };
+      
+      const model = 'gemini-2.5-flash-image';
+      
+      // 여러 이미지를 parts 배열에 추가
+      const parts: any[] = [
+        {
+          text: `Based on these reference images, generate a new setting cut image with the following modifications: ${textPrompt}. 
+          
+          Instructions:
+          - Combine scene elements from all reference images
+          - Maintain compositional consistency and visual flow
+          - Incorporate the requested changes while preserving the best features from each image
+          - Create a cohesive scene that blends the reference images effectively`,
+        }
+      ];
+
+      // 각 이미지를 parts에 추가
+      for (const imageFile of imageFiles) {
+        const imageData = await this.fileToBase64(imageFile);
+        parts.push({
+          inlineData: {
+            mimeType: imageFile.type,
+            data: imageData,
+          },
+        });
+      }
+      
+      const contents = [
+        {
+          role: 'user',
+          parts: parts,
+        },
+      ];
+
+      const response = await this.ai.models.generateContentStream({
+        model,
+        config,
+        contents,
+      });
+
+      let generatedImage = '';
+      for await (const chunk of response) {
+        if (!chunk.candidates || !chunk.candidates[0].content || !chunk.candidates[0].content.parts) {
+          continue;
+        }
+        
+        if (chunk.candidates?.[0]?.content?.parts?.[0]?.inlineData) {
+          const inlineData = chunk.candidates[0].content.parts[0].inlineData;
+          generatedImage = `data:${inlineData.mimeType};base64,${inlineData.data}`;
+          console.log('✅ 멀티 이미지 설정 컷 생성 완료');
+          break;
+        }
+      }
+
+      if (!generatedImage) {
+        console.warn('⚠️ 멀티 이미지 설정 컷 생성 실패, 첫 번째 이미지로 단일 생성 시도');
+        return await this.generateSettingCutWithImage(imageFiles[0], textPrompt, aspectRatio);
+      }
+
+      return generatedImage;
+    } catch (error) {
+      console.error('Google AI 멀티 이미지 설정 컷 생성 오류:', error);
+      // 실패 시 첫 번째 이미지로 단일 생성 시도
+      if (imageFiles.length > 0) {
+        return await this.generateSettingCutWithImage(imageFiles[0], textPrompt, aspectRatio);
+      }
+      // 모든 실패 시 텍스트만으로 생성
+      return await this.generateSettingCutImage(textPrompt);
     }
   }
 
@@ -473,45 +963,60 @@ Generate only the English prompt, no explanations.`;
     try {
       const imageData = await this.fileToBase64(imageFile);
       
-      // 이미지 기반 프롬프트 생성 - 영문, 적절한 길이로 제한
-      const imagePrompt = `Analyze this image and create a detailed English prompt for background image generation.
-
-User request: ${textPrompt}
-
-Requirements:
-- Generate a concise English prompt (50-100 words max)
-- Focus on environmental elements: setting, atmosphere, lighting, composition
-- Include technical details: perspective, depth, mood, style
-- Avoid overly complex descriptions
-- Make it suitable for AI image generation
-
-Generate only the English prompt, no explanations.`;
+      console.log('🖼️ img2img 배경 이미지 생성 시작:', textPrompt);
       
-      const response = await this.ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: [
-          {
-            inlineData: {
-              data: imageData,
-              mimeType: imageFile.type
-            }
-          },
-          imagePrompt
-        ]
+      // Gemini 2.5 Flash Image 모델을 사용한 이미지 생성
+      const config = {
+        responseModalities: ['IMAGE'],
+      };
+      
+      const model = 'gemini-2.5-flash-image';
+      
+      const contents = [
+        {
+          role: 'user',
+          parts: [
+            {
+              text: `Based on this reference image, generate a new background image with the following modifications: ${textPrompt}. 
+              
+              Maintain the overall atmosphere and style of the reference image while incorporating the requested changes.`,
+            },
+            {
+              inlineData: {
+                mimeType: imageFile.type,
+                data: imageData,
+              },
+            },
+          ],
+        },
+      ];
+
+      const response = await this.ai.models.generateContentStream({
+        model,
+        config,
+        contents,
       });
-      
-      // 생성된 프롬프트 검증 및 최적화
-      let generatedPrompt = response.text?.trim() || textPrompt;
-      
-      // 프롬프트 길이 확인 및 조정
-      if (generatedPrompt.length > 200) {
-        generatedPrompt = generatedPrompt.substring(0, 200) + '...';
+
+      let generatedImage = '';
+      for await (const chunk of response) {
+        if (!chunk.candidates || !chunk.candidates[0].content || !chunk.candidates[0].content.parts) {
+          continue;
+        }
+        
+        if (chunk.candidates?.[0]?.content?.parts?.[0]?.inlineData) {
+          const inlineData = chunk.candidates[0].content.parts[0].inlineData;
+          generatedImage = `data:${inlineData.mimeType};base64,${inlineData.data}`;
+          console.log('✅ img2img 배경 이미지 생성 완료');
+          break;
+        }
       }
-      
-      // 사용자 프롬프트와 결합
-      const finalPrompt = `${generatedPrompt}, ${textPrompt}`;
-      
-      return await this.generateBackgroundImage(finalPrompt);
+
+      if (!generatedImage) {
+        console.warn('⚠️ 이미지 생성 실패, 텍스트만으로 생성 시도');
+        return await this.generateBackgroundImage(textPrompt);
+      }
+
+      return generatedImage;
     } catch (error) {
       console.error('Google AI 멀티모달 배경 생성 오류:', error);
       // 실패 시 텍스트만으로 이미지 생성
@@ -524,45 +1029,60 @@ Generate only the English prompt, no explanations.`;
     try {
       const imageData = await this.fileToBase64(imageFile);
       
-      // 이미지 기반 프롬프트 생성 - 영문, 적절한 길이로 제한
-      const imagePrompt = `Analyze this image and create a detailed English prompt for setting cut image generation.
-
-User request: ${textPrompt}
-
-Requirements:
-- Generate a concise English prompt (50-100 words max)
-- Focus on scene elements: location, atmosphere, composition, mood
-- Include technical details: lighting, perspective, style, quality
-- Avoid overly complex descriptions
-- Make it suitable for AI image generation
-
-Generate only the English prompt, no explanations.`;
+      console.log('🖼️ img2img 설정 컷 이미지 생성 시작:', textPrompt);
       
-      const response = await this.ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: [
-          {
-            inlineData: {
-              data: imageData,
-              mimeType: imageFile.type
-            }
-          },
-          imagePrompt
-        ]
+      // Gemini 2.5 Flash Image 모델을 사용한 이미지 생성
+      const config = {
+        responseModalities: ['IMAGE'],
+      };
+      
+      const model = 'gemini-2.5-flash-image';
+      
+      const contents = [
+        {
+          role: 'user',
+          parts: [
+            {
+              text: `Based on this reference image, generate a new setting cut image with the following modifications: ${textPrompt}. 
+              
+              Maintain the overall scene composition and atmosphere of the reference image while incorporating the requested changes.`,
+            },
+            {
+              inlineData: {
+                mimeType: imageFile.type,
+                data: imageData,
+              },
+            },
+          ],
+        },
+      ];
+
+      const response = await this.ai.models.generateContentStream({
+        model,
+        config,
+        contents,
       });
-      
-      // 생성된 프롬프트 검증 및 최적화
-      let generatedPrompt = response.text?.trim() || textPrompt;
-      
-      // 프롬프트 길이 확인 및 조정
-      if (generatedPrompt.length > 200) {
-        generatedPrompt = generatedPrompt.substring(0, 200) + '...';
+
+      let generatedImage = '';
+      for await (const chunk of response) {
+        if (!chunk.candidates || !chunk.candidates[0].content || !chunk.candidates[0].content.parts) {
+          continue;
+        }
+        
+        if (chunk.candidates?.[0]?.content?.parts?.[0]?.inlineData) {
+          const inlineData = chunk.candidates[0].content.parts[0].inlineData;
+          generatedImage = `data:${inlineData.mimeType};base64,${inlineData.data}`;
+          console.log('✅ img2img 설정 컷 이미지 생성 완료');
+          break;
+        }
       }
-      
-      // 사용자 프롬프트와 결합
-      const finalPrompt = `${generatedPrompt}, ${textPrompt}`;
-      
-      return await this.generateSettingCutImage(finalPrompt);
+
+      if (!generatedImage) {
+        console.warn('⚠️ 이미지 생성 실패, 텍스트만으로 생성 시도');
+        return await this.generateSettingCutImage(textPrompt);
+      }
+
+      return generatedImage;
     } catch (error) {
       console.error('Google AI 멀티모달 설정 컷 생성 오류:', error);
       // 실패 시 텍스트만으로 이미지 생성
@@ -588,7 +1108,7 @@ Generate only the English prompt, no explanations.`;
     try {
       const responseStream = await this.ai.models.generateContentStream({
         model: 'gemini-2.5-flash',
-        contents: prompt
+        contents: [{ parts: [{ text: prompt }] }]
       });
 
       for await (const chunk of responseStream) {
@@ -607,7 +1127,7 @@ Generate only the English prompt, no explanations.`;
     try {
       const response = await this.ai.models.generateContent({
         model: 'gemini-2.5-flash',
-        contents: prompt,
+        contents: [{ parts: [{ text: prompt }] }],
         config: {
           responseMimeType: "application/json",
           responseSchema: schema
@@ -635,7 +1155,7 @@ Generate only the English prompt, no explanations.`;
     try {
       const response = await this.ai.models.generateContent({
         model: 'gemini-2.5-flash',
-        contents: prompt,
+        contents: [{ parts: [{ text: prompt }] }],
         config: {
           safetySettings: safetySettings || [
             {
@@ -841,3 +1361,57 @@ Generate only the English prompt, no explanations.`;
 
 // 싱글톤 인스턴스
 export const googleAIService = new GoogleAIService();
+
+// Runtime override to ensure non-admin users can use locally saved keys
+// and avoid strict .env dependency in text generation.
+// Admin users continue to use .env via constructor resolution.
+(googleAIService as any).generateText = async function(
+  prompt: string,
+  model: string = 'gemini-2.5-flash',
+  retryCount: number = 0
+): Promise<string> {
+  const maxRetries = 3;
+  const retryDelay = 2000;
+
+  try {
+    if (!this.apiKeyInUse || this.apiKeyInUse === 'your-gemini-api-key') {
+      throw new Error('Google AI API 키가 설정되어 있지 않습니다. 설정 또는 프로필에서 API 키를 저장해주세요.');
+    }
+
+    if (!prompt || prompt.trim().length === 0) {
+      throw new Error('프롬프트가 비어있습니다.');
+    }
+
+    const response = await this.ai.models.generateContent({
+      model,
+      contents: [{ parts: [{ text: prompt }] }],
+      config: {
+        systemInstruction:
+          '당신은 스토리보드/영상 제작을 돕는 조력자입니다. 주어진 요청을 간결하고 일관되게 정리하세요.'
+      }
+    });
+
+    if (!response || !response.text) {
+      throw new Error('AI 응답이 비어있습니다.');
+    }
+
+    return response.text;
+  } catch (error: any) {
+    if (error?.message?.includes('503') && retryCount < maxRetries) {
+      await new Promise((r) => setTimeout(r, retryDelay * (retryCount + 1)));
+      return (googleAIService as any).generateText(prompt, model, retryCount + 1);
+    }
+    if (error instanceof Error) {
+      if (error.message.includes('API key')) {
+        throw new Error('Google AI API 키가 유효하지 않습니다. 키를 확인해주세요.');
+      } else if (error.message.includes('quota')) {
+        throw new Error('API 쿼터를 초과했습니다. 잠시 후 다시 시도하세요.');
+      } else if (error.message.includes('safety')) {
+        throw new Error('안전 정책에 의해 거부되었습니다. 프롬프트를 수정하세요.');
+      } else if (error.message.includes('network') || error.message.includes('fetch')) {
+        throw new Error('네트워크 오류가 발생했습니다. 연결을 확인하세요.');
+      }
+    }
+    throw new Error(`텍스트 생성 중 오류: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+};

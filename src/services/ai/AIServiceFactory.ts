@@ -1,6 +1,7 @@
 import { IAIService, AIServiceFactory, AIProvider, AIServiceConfig } from '../../types/ai';
 import { GoogleAIService } from './GoogleAIService';
 import { OpenAIService } from './OpenAIService';
+import { ChatGPTService } from './ChatGPTService';
 import { NanoBananaService } from './NanoBananaService';
 
 /**
@@ -44,6 +45,12 @@ export class AIServiceFactoryImpl implements AIServiceFactory {
           baseUrl: config.baseUrl
         });
         break;
+      case 'chatgpt':
+        service = new ChatGPTService({
+          apiKey: config.apiKey,
+          baseUrl: config.baseUrl
+        });
+        break;
       case 'nano-banana':
         service = new NanoBananaService({
           apiKey: config.apiKey,
@@ -79,6 +86,8 @@ export class AIServiceFactoryImpl implements AIServiceFactory {
         case 'google':
           return !!(config.apiKey && config.apiKey.startsWith('AI'));
         case 'openai':
+          return !!(config.apiKey && config.apiKey.startsWith('sk-'));
+        case 'chatgpt':
           return !!(config.apiKey && config.apiKey.startsWith('sk-'));
         case 'nano-banana':
           return !!(config.apiKey && config.apiKey.startsWith('AI'));

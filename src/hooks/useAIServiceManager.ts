@@ -22,18 +22,39 @@ export const useAIServiceManager = () => {
 
   // 환경변수에서 API 키 로드
   const loadApiKeys = useCallback(() => {
-    const googleApiKey = process.env.REACT_APP_GEMINI_API_KEY;
-    const openaiApiKey = process.env.REACT_APP_OPENAI_API_KEY;
-    const anthropicApiKey = process.env.REACT_APP_ANTHROPIC_API_KEY;
-    const nanoBananaApiKey = process.env.REACT_APP_GEMINI_API_KEY; // 나노 바나나는 Google AI 키 사용
-    
-    return {
-      google: googleApiKey,
-      openai: openaiApiKey,
-      anthropic: anthropicApiKey,
-      'nano-banana': nanoBananaApiKey
-    };
-  }, []);
+  let googleApiKey = process.env.REACT_APP_GEMINI_API_KEY || '';
+  let openaiApiKey = process.env.REACT_APP_OPENAI_API_KEY || '';
+  let anthropicApiKey = process.env.REACT_APP_ANTHROPIC_API_KEY || '';
+  let nanoBananaApiKey = process.env.REACT_APP_GEMINI_API_KEY || '';
+
+  try {
+    if (typeof window !== 'undefined') {
+      const currentUserRaw = localStorage.getItem('storyboard_current_user');
+      const localKeysRaw = localStorage.getItem('user_api_keys');
+      const adminEmail = process.env.REACT_APP_ADMIN_EMAIL || 'star612.net@gmail.com';
+      const currentUser = currentUserRaw ? JSON.parse(currentUserRaw) : null;
+      const isAdmin = !!(currentUser && currentUser.email === adminEmail);
+      const localKeys = localKeysRaw ? JSON.parse(localKeysRaw) : {};
+
+      if (!isAdmin) {
+        googleApiKey = (localKeys.google || currentUser?.apiKeys?.google || googleApiKey || '').toString();
+        openaiApiKey = (localKeys.openai || currentUser?.apiKeys?.openai || openaiApiKey || '').toString();
+        anthropicApiKey = (localKeys.anthropic || currentUser?.apiKeys?.anthropic || anthropicApiKey || '').toString();
+        nanoBananaApiKey = googleApiKey;
+      } else {
+        nanoBananaApiKey = googleApiKey;
+      }
+    }
+  } catch {}
+
+  return {
+    google: googleApiKey,
+    openai: openaiApiKey,
+    chatgpt: openaiApiKey,
+    anthropic: anthropicApiKey,
+    'nano-banana': nanoBananaApiKey
+  };
+}, []);
 
   // AI 서비스 초기화
   const initializeAIService = useCallback(async (provider: AIProvider) => {
@@ -49,8 +70,8 @@ export const useAIServiceManager = () => {
 
       const config: AIServiceConfig = {
         apiKey,
-        baseUrl: provider === 'openai' 
-          ? 'https://api.openai.com/v1' 
+        baseUrl: (provider === 'openai' || provider === 'chatgpt')
+          ? 'https://api.openai.com/v1'
           : 'https://generativelanguage.googleapis.com/v1beta'
       };
 
@@ -108,22 +129,33 @@ export const useAIServiceManager = () => {
 
   // 현재 AI 서비스 인스턴스 가져오기
   const getCurrentAIService = useCallback(() => {
-    if (!state.isInitialized) return null;
-    
     const apiKeys = loadApiKeys();
     const apiKey = apiKeys[state.selectedProvider];
     
-    if (!apiKey) return null;
+    if (!apiKey) {
+      console.warn(`${state.selectedProvider} API 키가 설정되지 않았습니다.`);
+      return null;
+    }
 
     const config: AIServiceConfig = {
       apiKey,
-      baseUrl: state.selectedProvider === 'openai' 
-        ? 'https://api.openai.com/v1' 
+      baseUrl: (state.selectedProvider === 'openai' || state.selectedProvider === 'chatgpt')
+        ? 'https://api.openai.com/v1'
         : 'https://generativelanguage.googleapis.com/v1beta'
     };
 
-    return aiFactory.createService(state.selectedProvider, config);
-  }, [state, aiFactory, loadApiKeys]);
+    try {
+      const service = aiFactory.createService(state.selectedProvider, config);
+      if (!service.isAvailable()) {
+        console.warn(`${state.selectedProvider} 서비스를 사용할 수 없습니다.`);
+        return null;
+      }
+      return service;
+    } catch (error) {
+      console.error(`${state.selectedProvider} 서비스 생성 실패:`, error);
+      return null;
+    }
+  }, [state.selectedProvider, aiFactory, loadApiKeys]);
 
   // 컴포넌트 마운트 시 초기화
   useEffect(() => {
@@ -132,9 +164,11 @@ export const useAIServiceManager = () => {
       if (availableProviders.length > 0) {
         await initializeAIService(availableProviders[0]);
       } else {
+        // API 키가 없어도 기본적으로 Google 서비스 시도
+        console.warn('사용 가능한 API 키가 없습니다. Google 서비스를 기본으로 시도합니다.');
         setState(prev => ({
           ...prev,
-          error: '사용 가능한 AI 서비스가 없습니다. API 키를 확인해주세요.'
+          error: 'API 키가 설정되지 않았습니다. 설정에서 API 키를 입력해주세요.'
         }));
       }
     };
@@ -152,3 +186,5 @@ export const useAIServiceManager = () => {
     initializeAIService
   };
 };
+
+

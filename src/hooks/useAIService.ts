@@ -36,7 +36,7 @@ export const useAIService = () => {
       const result = await aiService.generateText({
         prompt: options.prompt,
         provider: selectedProvider,
-        model: (options.model as any) || 'gpt-4',
+        model: (options.model as any) || (selectedProvider === 'google' ? 'gemini-2.5-flash' : 'gpt-4'),
         maxTokens: options.maxTokens,
         temperature: options.temperature
       });

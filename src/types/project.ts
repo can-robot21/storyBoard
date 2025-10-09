@@ -55,6 +55,11 @@ export interface GeneratedTextCard {
   id: number;
   generatedText: string;
   timestamp: string;
+  sceneCommon?: string;
+  originalSceneCommon?: string;
+  story?: string;
+  originalStory?: string;
+  cutCount?: number;
 }
 
 // 영상 관련 타입
@@ -63,6 +68,8 @@ export interface GeneratedImage {
   input: string;
   image: string;
   timestamp: string;
+  description?: string;
+  source?: string;
 }
 
 export interface GeneratedVideo {
@@ -229,6 +236,7 @@ export interface APIResponse<T = any> {
 
 export interface ProjectSaveRequest {
   projectId?: string;
+  userId?: string;
   projectData: ProjectState;
 }
 
@@ -237,6 +245,69 @@ export interface ProjectLoadResponse {
   projectData: ProjectState;
   createdAt: string;
   updatedAt: string;
+  userName?: string;
+  isShared?: boolean;
+}
+
+// 데이터베이스 관련 타입들
+export interface User {
+  id: string;
+  email: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UserCreateRequest {
+  email: string;
+  name: string;
+  password: string;
+}
+
+export interface UserLoginRequest {
+  email: string;
+  password: string;
+}
+
+export interface UserApiKey {
+  provider: string;
+  apiKey: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PromptTemplate {
+  id: string;
+  userId: string;
+  name: string;
+  description?: string;
+  category: string;
+  templateData: any;
+  isPublic: boolean;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+  userName?: string;
+}
+
+export interface UsageStats {
+  id: number;
+  userId: string;
+  actionType: string;
+  aiProvider?: string;
+  tokenCount: number;
+  cost: number;
+  timestamp: string;
+  metadata?: any;
+}
+
+export interface ProjectHistory {
+  id: number;
+  projectId: string;
+  userId: string;
+  action: string;
+  data?: any;
+  timestamp: string;
 }
 
 // 유틸리티 타입들

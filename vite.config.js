@@ -4,5 +4,34 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
-  base: '/storyBoard/', // 이 부분을 추가하세요.
+  base: '/storyBoard/',
+  define: {
+    global: 'globalThis',
+  },
+  resolve: {
+    alias: {
+      fs: false,
+      path: false,
+      crypto: false,
+      stream: false,
+      buffer: false
+    }
+  },
+  optimizeDeps: {
+    include: ['sql.js']
+  },
+  build: {
+    rollupOptions: {
+      external: ['fs', 'path', 'crypto', 'stream', 'buffer'],
+      output: {
+        globals: {
+          fs: '{}',
+          path: '{}',
+          crypto: '{}',
+          stream: '{}',
+          buffer: '{}'
+        }
+      }
+    }
+  }
 });

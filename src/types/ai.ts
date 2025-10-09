@@ -1,7 +1,7 @@
 // AI 서비스 관련 타입들
 
 // AI 제공자 타입
-export type AIProvider = 'google' | 'openai' | 'anthropic' | 'nano-banana';
+export type AIProvider = 'google' | 'openai' | 'chatgpt' | 'anthropic' | 'nano-banana';
 
 // AI 모델 타입
 export type AIModel = 
@@ -24,13 +24,13 @@ export type ImageModel =
 
 // 영상 생성 모델 타입
 export type VideoModel = 
-  | 'veo-2.0-generate-001'
+  | 'veo-3.0-generate-001'
   | 'veo-3.0-fast-generate-001'
   | 'veo-3.0-generate-001'
   | 'sora';
 
 // 영상 생성 모델 버전 타입
-export type VideoModelVersion = 'veo-2.0' | 'veo-3.0-fast' | 'veo-3.0-standard';
+export type VideoModelVersion = 'veo-3.0-generate-001' | 'veo-3.0-fast' | 'veo-3.0-standard';
 
 // 영상 모델 설정 타입
 export interface VideoModelConfig {
@@ -42,10 +42,14 @@ export interface VideoModelConfig {
     maxDuration: number;
     maxResolution: string;
     aspectRatios: string[];
+    supportsPersonGeneration?: boolean;
+    supportsAudio?: boolean;
+    maxTokens?: number;
   };
   pricing: {
     tier: 'free' | 'paid';
     costPerSecond?: number;
+    costPerToken?: number;
     freeQuota?: number;
   };
   performance: {
@@ -63,6 +67,8 @@ export interface BaseAIOptions {
   temperature?: number;
   topP?: number;
   topK?: number;
+  userId?: string;
+  projectId?: string;
 }
 
 // 텍스트 생성 옵션
