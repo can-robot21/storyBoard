@@ -21,7 +21,7 @@ export const useVideoHandlers = (
       addNotification({
         type: 'error',
         title: '입력 필요',
-        message: '스토리/장면을 입력해주세요.',
+        message: '스토리-장면을 입력해주세요.',
       });
       return;
     }
@@ -105,7 +105,7 @@ ${storySceneInput}
       addNotification({
         type: 'error',
         title: '입력 필요',
-        message: '캐릭터/의상을 입력하거나 이미지를 첨부해주세요.',
+        message: '캐릭터-의상을 입력하거나 이미지를 첨부해주세요.',
       });
       return;
     }

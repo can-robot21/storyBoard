@@ -50,7 +50,7 @@ const stepGuides: Record<string, StepGuide> = {
         ]
       },
       {
-        title: "4. AI 검토 및 JSON 카드 생성",
+        title: "4. AI 검토 및 카드 초안 작성",
         description: "시나리오를 AI가 검토하고 구조화된 카드로 변환합니다."
       }
     ],

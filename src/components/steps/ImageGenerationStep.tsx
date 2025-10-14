@@ -76,13 +76,10 @@ export const ImageGenerationStep: React.FC<ImageGenerationStepProps> = ({
   // 이미지 비율 선택 상태
   const [aspectRatio, setAspectRatio] = useState<string>('16:9');
 
-  // 나노바나나 옵션 설정 상태
-  const [showNanoBananaOptions, setShowNanoBananaOptions] = useState(false);
-  const [nanoBananaOptionsCompleted, setNanoBananaOptionsCompleted] = useState(false);
+  // 이미지 생성 옵션 설정 상태
   const [imageStyle, setImageStyle] = useState('realistic');
   const [imageQuality, setImageQuality] = useState('high');
-  const [customSize, setCustomSize] = useState({ width: 1024, height: 1024 });
-  const [additionalPrompt, setAdditionalPrompt] = useState('');
+  const [numberOfImages, setNumberOfImages] = useState(1);
 
   // 이미지 분석 모달 상태
   const [showImageAnalysisModal, setShowImageAnalysisModal] = useState(false);
@@ -106,12 +103,12 @@ export const ImageGenerationStep: React.FC<ImageGenerationStepProps> = ({
     generatedProjectData,
     imageGenerationAPI,
     aspectRatio,
-    nanoBananaOptionsCompleted ? {
+    {
       imageStyle,
       imageQuality,
-      customSize,
-      additionalPrompt
-    } : undefined
+      numberOfImages
+    },
+    'current-project' // currentProjectId
   );
 
   // 캐릭터 생성
@@ -126,15 +123,24 @@ export const ImageGenerationStep: React.FC<ImageGenerationStepProps> = ({
     }
 
     try {
-      const result = await imageHandlers.handleGenerateCharacter(characterInput, attachedCharacterImages);
-      if (result) {
-        // 피드백 모달 표시
-        setFeedbackImageData({
-          imageUrl: result.image,
-          prompt: characterInput,
-          type: 'character'
-        });
-        setShowImageFeedbackModal(true);
+      const results = await imageHandlers.handleGenerateCharacter(characterInput, attachedCharacterImages);
+      if (results && results.length > 0) {
+        // 여러 이미지가 생성된 경우 피드백 모달을 표시하지 않고 바로 추가
+        if (results.length > 1) {
+          addNotification({
+            type: 'success',
+            title: '생성 완료',
+            message: `${results.length}개의 캐릭터가 생성되어 바로 추가되었습니다.`,
+          });
+        } else {
+          // 단일 이미지인 경우에만 피드백 모달 표시
+          setFeedbackImageData({
+            imageUrl: results[0].image,
+            prompt: characterInput,
+            type: 'character'
+          });
+          setShowImageFeedbackModal(true);
+        }
         setCharacterInput('');
         setAttachedCharacterImages([]);
       }
@@ -160,15 +166,24 @@ export const ImageGenerationStep: React.FC<ImageGenerationStepProps> = ({
     }
 
     try {
-      const result = await imageHandlers.handleGenerateBackground(backgroundInput, attachedBackgroundImages);
-      if (result) {
-        // 피드백 모달 표시
-        setFeedbackImageData({
-          imageUrl: result.image,
-          prompt: backgroundInput,
-          type: 'background'
-        });
-        setShowImageFeedbackModal(true);
+      const results = await imageHandlers.handleGenerateBackground(backgroundInput, attachedBackgroundImages);
+      if (results && results.length > 0) {
+        // 여러 이미지가 생성된 경우 피드백 모달을 표시하지 않고 바로 추가
+        if (results.length > 1) {
+          addNotification({
+            type: 'success',
+            title: '생성 완료',
+            message: `${results.length}개의 배경이 생성되어 바로 추가되었습니다.`,
+          });
+        } else {
+          // 단일 이미지인 경우에만 피드백 모달 표시
+          setFeedbackImageData({
+            imageUrl: results[0].image,
+            prompt: backgroundInput,
+            type: 'background'
+          });
+          setShowImageFeedbackModal(true);
+        }
         setBackgroundInput('');
         setAttachedBackgroundImages([]);
       }
@@ -194,15 +209,24 @@ export const ImageGenerationStep: React.FC<ImageGenerationStepProps> = ({
     }
 
     try {
-      const result = await imageHandlers.handleGenerateSettingCut(settingCut, attachedSettingImages);
-      if (result) {
-        // 피드백 모달 표시
-        setFeedbackImageData({
-          imageUrl: result.image,
-          prompt: settingCut,
-          type: 'settingCut'
-        });
-        setShowImageFeedbackModal(true);
+      const results = await imageHandlers.handleGenerateSettingCut(settingCut, attachedSettingImages);
+      if (results && results.length > 0) {
+        // 여러 이미지가 생성된 경우 피드백 모달을 표시하지 않고 바로 추가
+        if (results.length > 1) {
+          addNotification({
+            type: 'success',
+            title: '생성 완료',
+            message: `${results.length}개의 설정 컷이 생성되어 바로 추가되었습니다.`,
+          });
+        } else {
+          // 단일 이미지인 경우에만 피드백 모달 표시
+          setFeedbackImageData({
+            imageUrl: results[0].image,
+            prompt: settingCut,
+            type: 'settingCut'
+          });
+          setShowImageFeedbackModal(true);
+        }
         setSettingCut('');
         setAttachedSettingImages([]);
       }
@@ -216,31 +240,6 @@ export const ImageGenerationStep: React.FC<ImageGenerationStepProps> = ({
     }
   };
 
-  // 나노바나나 옵션 완료 처리
-  const handleNanoBananaOptionsComplete = () => {
-    setNanoBananaOptionsCompleted(true);
-    setShowNanoBananaOptions(false);
-    addNotification({
-      type: 'success',
-      title: '옵션 설정 완료',
-      message: '나노바나나 옵션이 설정되었습니다.',
-    });
-  };
-
-  // 나노바나나 옵션 초기화 처리
-  const handleNanoBananaOptionsReset = () => {
-    setNanoBananaOptionsCompleted(false);
-    setShowNanoBananaOptions(true);
-    setImageStyle('realistic');
-    setImageQuality('high');
-    setCustomSize({ width: 1024, height: 1024 });
-    setAdditionalPrompt('');
-    addNotification({
-      type: 'info',
-      title: '옵션 초기화',
-      message: '나노바나나 옵션이 초기화되었습니다.',
-    });
-  };
 
   // 공통 입력 완료 처리
   const handleCommonInputsComplete = () => {
@@ -394,7 +393,7 @@ export const ImageGenerationStep: React.FC<ImageGenerationStepProps> = ({
                   onClick={() => setShowCommonInputs(prev => !prev)}
                   className="px-3 py-1 text-xs rounded border hover:bg-gray-50 transition-colors"
                 >
-                  {showCommonInputs ? '입력 숨기기' : '입력 보기/수정'}
+                  {showCommonInputs ? '입력 숨기기' : '입력 보기-수정'}
                 </button>
                 {showCommonInputs && (
                   <button
@@ -420,7 +419,7 @@ export const ImageGenerationStep: React.FC<ImageGenerationStepProps> = ({
                   }}
                   className="px-3 py-1 text-xs bg-orange-600 text-white rounded hover:bg-orange-700 transition-colors"
                 >
-                  수정/초기화
+                  수정-초기화
                 </button>
               </div>
             )}
@@ -493,204 +492,90 @@ export const ImageGenerationStep: React.FC<ImageGenerationStepProps> = ({
         )}
       </div>
 
-      {/* 나노바나나 옵션 설정 */}
+      {/* 이미지 생성 옵션 설정 */}
       <div className="bg-white border rounded-lg p-4">
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-lg font-semibold text-gray-800">🍌 나노바나나 옵션 설정</h3>
-          <div className="flex items-center gap-2">
-            <div className="text-xs text-gray-500">
-              {nanoBananaOptionsCompleted ? 
-                '✅ 옵션 설정 완료' : 
-                '⏳ 나노바나나 옵션을 설정해주세요'
-              }
-            </div>
-            {!nanoBananaOptionsCompleted ? (
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setShowNanoBananaOptions(prev => !prev)}
-                  className="px-3 py-1 text-xs rounded border hover:bg-gray-50 transition-colors"
-                >
-                  {showNanoBananaOptions ? '입력 숨기기' : '입력 보기/수정'}
-                </button>
-                {showNanoBananaOptions && (
-                  <button
-                    onClick={handleNanoBananaOptionsComplete}
-                    className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
-                  >
-                    입력 완료
-                  </button>
-                )}
-              </div>
-            ) : (
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setShowNanoBananaOptions(prev => !prev)}
-                  className="px-3 py-1 text-xs rounded border hover:bg-gray-50 transition-colors"
-                >
-                  {showNanoBananaOptions ? '감추기' : '보이기'}
-                </button>
-                <button
-                  onClick={() => {
-                    setShowNanoBananaOptions(true);
-                    handleNanoBananaOptionsReset();
-                  }}
-                  className="px-3 py-1 text-xs bg-orange-600 text-white rounded hover:bg-orange-700 transition-colors"
-                >
-                  수정/초기화
-                </button>
-              </div>
-            )}
-          </div>
+          <h3 className="text-lg font-semibold text-gray-800">🎨 이미지 생성 옵션</h3>
         </div>
         
-        {showNanoBananaOptions && (
-          <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
-            <h4 className="text-sm font-semibold text-gray-800 mb-3">🎨 이미지 생성 옵션</h4>
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">이미지 스타일</label>
-                  <select
-                    value={imageStyle}
-                    onChange={(e) => setImageStyle(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="realistic">Realistic</option>
-                    <option value="cartoon">Cartoon</option>
-                    <option value="anime">Anime</option>
-                    <option value="3d">3D</option>
-                    <option value="watercolor">Watercolor</option>
-                    <option value="oil_painting">Oil Painting</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">이미지 품질</label>
-                  <select
-                    value={imageQuality}
-                    onChange={(e) => setImageQuality(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="high">High</option>
-                    <option value="standard">Standard</option>
-                    <option value="ultra">Ultra</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">커스텀 너비</label>
-                  <input
-                    type="number"
-                    value={customSize.width}
-                    onChange={(e) => setCustomSize(prev => ({ ...prev, width: parseInt(e.target.value) || 1024 }))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    min="256"
-                    max="2048"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">커스텀 높이</label>
-                  <input
-                    type="number"
-                    value={customSize.height}
-                    onChange={(e) => setCustomSize(prev => ({ ...prev, height: parseInt(e.target.value) || 1024 }))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    min="256"
-                    max="2048"
-                  />
-                </div>
+        <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+          <h4 className="text-sm font-semibold text-gray-800 mb-3">생성 설정</h4>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">이미지 스타일</label>
+                <select
+                  value={imageStyle}
+                  onChange={(e) => setImageStyle(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="realistic">Realistic</option>
+                  <option value="cartoon">Cartoon</option>
+                  <option value="anime">Anime</option>
+                  <option value="3d">3D</option>
+                  <option value="watercolor">Watercolor</option>
+                  <option value="oil_painting">Oil Painting</option>
+                </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">추가 프롬프트</label>
-                <textarea
-                  value={additionalPrompt}
-                  onChange={(e) => setAdditionalPrompt(e.target.value)}
+                <label className="block text-sm font-medium text-gray-700 mb-1">이미지 품질</label>
+                <select
+                  value={imageQuality}
+                  onChange={(e) => setImageQuality(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  rows={2}
-                  placeholder="추가적인 이미지 생성 요구사항을 입력하세요"
-                />
+                >
+                  <option value="high">High</option>
+                  <option value="standard">Standard</option>
+                  <option value="ultra">Ultra</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">생성 이미지 개수</label>
+                <select
+                  value={numberOfImages}
+                  onChange={(e) => setNumberOfImages(parseInt(e.target.value))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value={1}>1개</option>
+                  <option value={2}>2개</option>
+                  <option value={3}>3개</option>
+                  <option value={4}>4개</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">화면 비율</label>
+                <select
+                  value={aspectRatio}
+                  onChange={(e) => setAspectRatio(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="16:9">16:9 (가로)</option>
+                  <option value="9:16">9:16 (세로)</option>
+                  <option value="1:1">1:1 (정사각형)</option>
+                  <option value="4:3">4:3 (표준)</option>
+                  <option value="3:4">3:4 (세로 표준)</option>
+                </select>
               </div>
             </div>
           </div>
-        )}
+        </div>
       </div>
 
-      {/* 이미지 생성 설정 */}
+      {/* 이미지 분석 도구 */}
       <div className="bg-white rounded-lg border p-4">
         <div className="flex items-center justify-between mb-3">
-          <h3 className="font-medium text-gray-800">이미지 생성 설정</h3>
+          <h3 className="font-medium text-gray-800">🔍 이미지 분석 도구</h3>
+          <Button
+            onClick={() => setShowImageAnalysisModal(true)}
+            variant="outline"
+            className="text-sm"
+          >
+            분석 도구 열기
+          </Button>
         </div>
-        <div className="space-y-4">
-          {/* API 선택 */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">생성 API</label>
-            <div className="flex items-center p-3 bg-blue-50 rounded-md border border-blue-200">
-              <span className="text-sm font-medium text-blue-800">Google AI (Imagen)</span>
-            </div>
-          </div>
-
-          {/* 이미지 분석 섹션 */}
-          <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
-            <div className="flex items-center justify-between mb-3">
-              <h4 className="font-medium text-purple-800">🔍 이미지 분석 [분석툴]</h4>
-              <Button
-                onClick={() => setShowImageAnalysisModal(true)}
-                variant="outline"
-                className="text-sm"
-              >
-                분석 도구 열기
-              </Button>
-            </div>
-            <p className="text-sm text-purple-600">
-              AI를 사용하여 이미지를 분석하고 텍스트로 변환합니다. 분석 결과를 복사하여 프롬프트에 활용할 수 있습니다.
-            </p>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">이미지 비율</label>
-            <div className="space-y-2">
-              <label className="flex items-center p-3 border rounded-md cursor-pointer hover:bg-gray-50 transition-colors">
-                <input
-                  type="radio"
-                  name="aspectRatio"
-                  value="16:9"
-                  checked={aspectRatio === '16:9'}
-                  onChange={(e) => setAspectRatio(e.target.value)}
-                  className="mr-3"
-                />
-                <div className="flex-1">
-                  <div className="text-sm font-medium text-gray-800">16:9 (가로)</div>
-                  <div className="text-xs text-gray-500">일반적인 영상 비율</div>
-                </div>
-              </label>
-              <label className="flex items-center p-3 border rounded-md cursor-pointer hover:bg-gray-50 transition-colors">
-                <input
-                  type="radio"
-                  name="aspectRatio"
-                  value="9:16"
-                  checked={aspectRatio === '9:16'}
-                  onChange={(e) => setAspectRatio(e.target.value)}
-                  className="mr-3"
-                />
-                <div className="flex-1">
-                  <div className="text-sm font-medium text-gray-800">9:16 (세로)</div>
-                  <div className="text-xs text-gray-500">모바일/소셜미디어용</div>
-                </div>
-              </label>
-              <label className="flex items-center p-3 border rounded-md cursor-pointer hover:bg-gray-50 transition-colors">
-                <input
-                  type="radio"
-                  name="aspectRatio"
-                  value="1:1"
-                  checked={aspectRatio === '1:1'}
-                  onChange={(e) => setAspectRatio(e.target.value)}
-                  className="mr-3"
-                />
-                <div className="flex-1">
-                  <div className="text-sm font-medium text-gray-800">1:1 (정사각형)</div>
-                  <div className="text-xs text-gray-500">SNS용 정사각형</div>
-                </div>
-              </label>
-            </div>
-          </div>
-        </div>
+        <p className="text-sm text-gray-600">
+          AI를 사용하여 이미지를 분석하고 텍스트로 변환합니다. 분석 결과를 복사하여 프롬프트에 활용할 수 있습니다.
+        </p>
       </div>
 
       {/* 캐릭터 생성 */}

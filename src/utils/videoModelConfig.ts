@@ -28,7 +28,7 @@ export const VIDEO_MODEL_CONFIGS: Record<VideoModelVersion, VideoModelConfig> = 
     version: 'veo-3.0-fast',
     model: 'veo-3.0-fast-generate-001',
     displayName: 'Veo 3.0 Fast (빠른 생성)',
-    description: '고품질 영상을 빠르게 생성 (오디오 포함, 720p/1080p, personGeneration 미지원)',
+    description: '고품질 영상을 빠르게 생성 (오디오 포함, 720p-1080p, personGeneration 미지원)',
     features: {
       maxDuration: 8,
       maxResolution: '1080p', // Google AI API 문서에 따르면 720p 또는 1080p 지원
@@ -52,7 +52,7 @@ export const VIDEO_MODEL_CONFIGS: Record<VideoModelVersion, VideoModelConfig> = 
     version: 'veo-3.0-standard',
     model: 'veo-3.0-generate-001',
     displayName: 'Veo 3.0 Standard (고품질)',
-    description: '최고 품질의 영상 생성 (오디오 포함, 720p/1080p)',
+    description: '최고 품질의 영상 생성 (오디오 포함, 720p-1080p)',
     features: {
       maxDuration: 8,
       maxResolution: '1080p', // Google AI API 문서에 따르면 720p 또는 1080p 지원

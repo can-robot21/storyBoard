@@ -262,8 +262,8 @@ STYLE GUIDELINES:
     }
   }
 
-  // 이미지 생성 (캐릭터용) - 실제 Imagen API 사용
-  async generateCharacterImage(prompt: string, aspectRatio: string = '1:1'): Promise<string> {
+  // 이미지 생성 (캐릭터용) - 여러 이미지 반환
+  async generateMultipleCharacterImages(prompt: string, aspectRatio: string = '1:1', numberOfImages: number = 1): Promise<string[]> {
     try {
       // 이미지 생성 제한 및 검증
       this.validateImageGeneration(prompt, 'character');
@@ -294,7 +294,7 @@ Style requirements:
         model: 'models/imagen-4.0-generate-001',
         prompt: detailedPrompt,
         config: {
-          numberOfImages: 1,
+          numberOfImages: numberOfImages,
           outputMimeType: 'image/jpeg',
           personGeneration: PersonGeneration.ALLOW_ALL,
           aspectRatio: aspectRatio || '1:1',
@@ -310,28 +310,113 @@ Style requirements:
         throw new Error('이미지 생성 결과가 없습니다. 프롬프트를 수정하거나 잠시 후 다시 시도해주세요.');
       }
 
-      // 다양한 응답 구조 확인
+      // 모든 생성된 이미지 반환
+      const images: string[] = [];
+      for (const generatedImage of response.generatedImages) {
+        const imageData = generatedImage as any;
+        
+        // 응답 구조 1: image.imageBytes
+        if (imageData?.image?.imageBytes) {
+          const base64ImageBytes = imageData.image.imageBytes;
+          images.push(`data:image/jpeg;base64,${base64ImageBytes}`);
+        }
+        // 응답 구조 2: imageBytes 직접
+        else if (imageData?.imageBytes) {
+          const base64ImageBytes = imageData.imageBytes;
+          images.push(`data:image/jpeg;base64,${base64ImageBytes}`);
+        }
+        // 응답 구조 3: base64Data
+        else if (imageData?.base64Data) {
+          images.push(`data:image/jpeg;base64,${imageData.base64Data}`);
+        }
+        // 응답 구조 4: data 직접
+        else if (imageData?.data) {
+          images.push(`data:image/jpeg;base64,${imageData.data}`);
+        }
+      }
+
+      console.log(`✅ 캐릭터 이미지 ${images.length}개 생성 성공`);
+      return images;
+    } catch (error) {
+      console.error('Google AI 이미지 생성 오류:', error);
+      throw new Error('이미지 생성에 실패했습니다.');
+    }
+  }
+
+  // 이미지 생성 (캐릭터용) - 단일 이미지 반환
+  async generateCharacterImage(prompt: string, aspectRatio: string = '1:1', numberOfImages: number = 1): Promise<string> {
+    try {
+      // 이미지 생성 제한 및 검증
+      this.validateImageGeneration(prompt, 'character');
+      
+      // 프롬프트 검증 및 강화
+      const validatedPrompt = this.validateAndEnhancePrompt(prompt, 'character');
+      
+      // 스토리보드 연계를 위한 상세한 프롬프트 생성
+      const detailedPrompt = `Create a detailed character image for video production:
+
+${validatedPrompt}
+
+Technical specifications:
+- High quality, professional character design
+- Suitable for video production and storyboarding
+- Clear character features and expressions
+- Appropriate lighting and composition
+- Character should be visually distinct and memorable
+- Consider camera angles and framing for video use
+
+Style requirements:
+- Realistic or stylized as appropriate for the character
+- Consistent with video production standards
+- Clear visual hierarchy and focal points
+- Appropriate color palette for video integration`;
+
+      const response = await this.ai.models.generateImages({
+        model: 'models/imagen-4.0-generate-001',
+        prompt: detailedPrompt,
+        config: {
+          numberOfImages: numberOfImages,
+          outputMimeType: 'image/jpeg',
+          personGeneration: PersonGeneration.ALLOW_ALL,
+          aspectRatio: aspectRatio || '1:1',
+          imageSize: '1K'
+        }
+      });
+
+      console.log('Imagen API 응답:', response); // 디버깅용
+
+      // 빈 응답 처리
+      if (!response || !response.generatedImages || response.generatedImages.length === 0) {
+        console.warn('이미지 생성 API가 빈 응답을 반환했습니다. 프롬프트를 수정하거나 다른 모델을 시도해보세요.');
+        throw new Error('이미지 생성 결과가 없습니다. 프롬프트를 수정하거나 잠시 후 다시 시도해주세요.');
+      }
+
+      // 여러 이미지 중 첫 번째 이미지 반환
       const firstImage = response.generatedImages[0] as any;
         
         // 응답 구조 1: image.imageBytes
         if (firstImage?.image?.imageBytes) {
           const base64ImageBytes = firstImage.image.imageBytes;
+          console.log(`✅ 캐릭터 이미지 생성 성공 (${numberOfImages}개 중 1개 반환)`);
           return `data:image/jpeg;base64,${base64ImageBytes}`;
         }
         
         // 응답 구조 2: imageBytes 직접
         if (firstImage?.imageBytes) {
           const base64ImageBytes = firstImage.imageBytes;
+          console.log(`✅ 캐릭터 이미지 생성 성공 (대체 구조, ${numberOfImages}개 중 1개 반환)`);
           return `data:image/jpeg;base64,${base64ImageBytes}`;
         }
         
         // 응답 구조 3: base64Data
         if (firstImage?.base64Data) {
+          console.log(`✅ 캐릭터 이미지 생성 성공 (base64Data 구조, ${numberOfImages}개 중 1개 반환)`);
           return `data:image/jpeg;base64,${firstImage.base64Data}`;
         }
         
         // 응답 구조 4: data 직접
         if (firstImage?.data) {
+          console.log(`✅ 캐릭터 이미지 생성 성공 (data 구조, ${numberOfImages}개 중 1개 반환)`);
           return `data:image/jpeg;base64,${firstImage.data}`;
         }
       
@@ -355,14 +440,55 @@ Style requirements:
     }
   }
 
-  // 배경 이미지 생성 - 실제 Imagen API 사용
-  async generateBackgroundImage(prompt: string, aspectRatio: string = '16:9'): Promise<string> {
+  // 배경 이미지 생성 - 여러 이미지 반환
+  async generateMultipleBackgroundImages(prompt: string, aspectRatio: string = '16:9', numberOfImages: number = 1): Promise<string[]> {
     try {
       const response = await this.ai.models.generateImages({
         model: 'models/imagen-4.0-generate-001',
         prompt: prompt,
         config: {
-          numberOfImages: 1,
+          numberOfImages: numberOfImages,
+          outputMimeType: 'image/jpeg',
+          personGeneration: PersonGeneration.ALLOW_ALL,
+          aspectRatio: aspectRatio,
+          imageSize: '1K'
+        }
+      });
+
+      // 모든 생성된 이미지 반환
+      const images: string[] = [];
+      if (response.generatedImages && response.generatedImages.length > 0) {
+        for (const generatedImage of response.generatedImages) {
+          const imageData = generatedImage as any;
+          
+          if (imageData?.image?.imageBytes) {
+            images.push(`data:image/jpeg;base64,${imageData.image.imageBytes}`);
+          } else if (imageData?.imageBytes) {
+            images.push(`data:image/jpeg;base64,${imageData.imageBytes}`);
+          } else if (imageData?.base64Data) {
+            images.push(`data:image/jpeg;base64,${imageData.base64Data}`);
+          } else if (imageData?.data) {
+            images.push(`data:image/jpeg;base64,${imageData.data}`);
+          }
+        }
+      }
+
+      console.log(`✅ 배경 이미지 ${images.length}개 생성 성공`);
+      return images;
+    } catch (error) {
+      console.error('Google AI 배경 이미지 생성 오류:', error);
+      throw new Error('배경 이미지 생성에 실패했습니다.');
+    }
+  }
+
+  // 배경 이미지 생성 - 단일 이미지 반환
+  async generateBackgroundImage(prompt: string, aspectRatio: string = '16:9', numberOfImages: number = 1): Promise<string> {
+    try {
+      const response = await this.ai.models.generateImages({
+        model: 'models/imagen-4.0-generate-001',
+        prompt: prompt,
+        config: {
+          numberOfImages: numberOfImages,
           outputMimeType: 'image/jpeg',
           personGeneration: PersonGeneration.ALLOW_ALL,
           aspectRatio: aspectRatio,
@@ -375,9 +501,11 @@ Style requirements:
         const firstImage = response.generatedImages[0] as any;
         
         if (firstImage?.image?.imageBytes) {
+          console.log(`✅ 배경 이미지 생성 성공 (${numberOfImages}개 중 1개 반환)`);
           return `data:image/jpeg;base64,${firstImage.image.imageBytes}`;
         }
         if (firstImage?.imageBytes) {
+          console.log(`✅ 배경 이미지 생성 성공 (대체 구조, ${numberOfImages}개 중 1개 반환)`);
           return `data:image/jpeg;base64,${firstImage.imageBytes}`;
         }
         if (firstImage?.base64Data) {
@@ -402,14 +530,55 @@ Style requirements:
     }
   }
 
-  // 설정 컷 이미지 생성 - 실제 Imagen API 사용
-  async generateSettingCutImage(prompt: string, aspectRatio: string = '16:9'): Promise<string> {
+  // 설정 컷 이미지 생성 - 여러 이미지 반환
+  async generateMultipleSettingCutImages(prompt: string, aspectRatio: string = '16:9', numberOfImages: number = 1): Promise<string[]> {
     try {
       const response = await this.ai.models.generateImages({
         model: 'models/imagen-4.0-generate-001',
         prompt: prompt,
         config: {
-          numberOfImages: 1,
+          numberOfImages: numberOfImages,
+          outputMimeType: 'image/jpeg',
+          personGeneration: PersonGeneration.ALLOW_ALL,
+          aspectRatio: aspectRatio,
+          imageSize: '1K'
+        }
+      });
+
+      // 모든 생성된 이미지 반환
+      const images: string[] = [];
+      if (response.generatedImages && response.generatedImages.length > 0) {
+        for (const generatedImage of response.generatedImages) {
+          const imageData = generatedImage as any;
+          
+          if (imageData?.image?.imageBytes) {
+            images.push(`data:image/jpeg;base64,${imageData.image.imageBytes}`);
+          } else if (imageData?.imageBytes) {
+            images.push(`data:image/jpeg;base64,${imageData.imageBytes}`);
+          } else if (imageData?.base64Data) {
+            images.push(`data:image/jpeg;base64,${imageData.base64Data}`);
+          } else if (imageData?.data) {
+            images.push(`data:image/jpeg;base64,${imageData.data}`);
+          }
+        }
+      }
+
+      console.log(`✅ 설정 컷 이미지 ${images.length}개 생성 성공`);
+      return images;
+    } catch (error) {
+      console.error('Google AI 설정 컷 이미지 생성 오류:', error);
+      throw new Error('설정 컷 이미지 생성에 실패했습니다.');
+    }
+  }
+
+  // 설정 컷 이미지 생성 - 단일 이미지 반환
+  async generateSettingCutImage(prompt: string, aspectRatio: string = '16:9', numberOfImages: number = 1): Promise<string> {
+    try {
+      const response = await this.ai.models.generateImages({
+        model: 'models/imagen-4.0-generate-001',
+        prompt: prompt,
+        config: {
+          numberOfImages: numberOfImages,
           outputMimeType: 'image/jpeg',
           personGeneration: PersonGeneration.ALLOW_ALL,
           aspectRatio: aspectRatio,
@@ -422,9 +591,11 @@ Style requirements:
         const firstImage = response.generatedImages[0] as any;
         
         if (firstImage?.image?.imageBytes) {
+          console.log(`✅ 설정 컷 이미지 생성 성공 (${numberOfImages}개 중 1개 반환)`);
           return `data:image/jpeg;base64,${firstImage.image.imageBytes}`;
         }
         if (firstImage?.imageBytes) {
+          console.log(`✅ 설정 컷 이미지 생성 성공 (대체 구조, ${numberOfImages}개 중 1개 반환)`);
           return `data:image/jpeg;base64,${firstImage.imageBytes}`;
         }
         if (firstImage?.base64Data) {
@@ -454,43 +625,107 @@ Style requirements:
     prompt: string;
     ratio?: string;
     model?: string;
+    duration?: string;
     referenceImages?: string[];
     abortSignal?: AbortSignal;
   }): Promise<{ videoUrl: string; thumbnail?: string; duration?: string }> {
     try {
-      console.log('Veo API를 사용하여 실제 영상을 생성합니다.');
+      console.log('🎬 Veo API를 사용하여 실제 영상을 생성합니다.');
+      console.log('📝 프롬프트:', options.prompt.substring(0, 100) + '...');
+      console.log('🖼️ 참조 이미지 개수:', options.referenceImages?.length || 0);
+      console.log('⚙️ 모델:', options.model || 'veo-3.0-generate-001');
+      console.log('📐 비율:', options.ratio || '16:9');
       
-      // Veo API에 최적화된 프롬프트 생성
-      const veoOptimizedPrompt = await this.createVeoOptimizedPrompt(options.prompt, options.ratio || '16:9');
-      
-  // Veo API 호출 (올바른 모델명 사용)
-  let operation = await this.ai.models.generateVideos({
-    model: options.model || 'veo-3.0-generate-001', // 올바른 Veo 3.0 모델명
-    prompt: veoOptimizedPrompt,
-    config: {
-      numberOfVideos: 1,
-      aspectRatio: options.ratio || '16:9',
-      durationSeconds: 8,
-      personGeneration: PersonGeneration.ALLOW_ALL,
-      // Veo API에서 지원되는 파라미터만 사용
-      // generateAudio: 제거됨 (지원되지 않음)
-      // resolution: 제거됨 (지원되지 않을 수 있음)
-    },
-  });
-
-  console.log(`Video generation started: ${operation.name}`);
-  console.log(`Using model: ${options.model || 'veo-3.0-generate-001'}`);
-
-      // 비디오 생성 완료까지 대기
-      while (!operation.done) {
-        console.log(`Video ${operation.name} is still generating. Checking again in 10 seconds...`);
-        await new Promise((resolve) => setTimeout(resolve, 10000)); // 10초마다 체크
-        operation = await this.ai.operations.getVideosOperation({
-          operation: operation,
-        });
+      // API 키 확인
+      if (!this.apiKeyInUse || this.apiKeyInUse === 'your-gemini-api-key') {
+        throw new Error('Google AI API 키가 설정되지 않았습니다. 설정에서 API 키를 입력해주세요.');
       }
 
-      console.log(`Generated ${operation.response?.generatedVideos?.length ?? 0} video(s).`);
+      // Veo API에 최적화된 프롬프트 생성
+      const hasReferenceImage = !!(options.referenceImages && options.referenceImages.length > 0);
+      const duration = parseInt(options.duration || '8');
+      const veoOptimizedPrompt = await this.createVeoOptimizedPrompt(options.prompt, options.ratio || '16:9', hasReferenceImage, duration);
+      
+      console.log('✨ 최적화된 프롬프트:', veoOptimizedPrompt.substring(0, 200) + '...');
+      
+      // Veo API 호출 설정 (Veo API는 4-8초만 지원)
+      const requestedDuration = parseInt(options.duration || '8');
+      const veoDuration = Math.min(Math.max(requestedDuration, 4), 8); // 4-8초 범위로 제한
+      
+      const videoConfig: any = {
+        numberOfVideos: 1,
+        aspectRatio: options.ratio || '16:9',
+        durationSeconds: veoDuration, // Veo API 제한에 맞춤
+        personGeneration: PersonGeneration.ALLOW_ALL,
+      };
+
+      // 참조 이미지가 있는 경우 처리
+      if (options.referenceImages && options.referenceImages.length > 0) {
+        console.log('🖼️ 참조 이미지 처리 중...');
+        
+        // 첫 번째 이미지를 참조 이미지로 사용 (Veo API는 하나의 이미지만 지원)
+        const referenceImage = options.referenceImages[0];
+        
+        // Base64 이미지를 처리
+        if (referenceImage.startsWith('data:')) {
+          const [header, data] = referenceImage.split(',');
+          const mimeType = header.match(/data:([^;]+)/)?.[1] || 'image/jpeg';
+          
+          videoConfig.image = {
+            imageBytes: data,
+            mimeType: mimeType,
+          };
+          
+          console.log('✅ 참조 이미지가 Veo API에 추가되었습니다:', mimeType);
+        } else {
+          console.warn('⚠️ 지원되지 않는 이미지 형식:', referenceImage.substring(0, 50));
+        }
+      } else {
+        console.log('📝 참조 이미지 없음 - 텍스트 프롬프트만 사용');
+      }
+
+      // Veo API 호출
+      console.log('🚀 Veo API 호출 시작...');
+      let operation = await this.ai.models.generateVideos({
+        model: options.model || 'veo-3.0-generate-001',
+        prompt: veoOptimizedPrompt,
+        config: videoConfig,
+      });
+
+      console.log(`🎬 Video generation started: ${operation.name}`);
+      console.log(`⚙️ Using model: ${options.model || 'veo-3.0-generate-001'}`);
+
+      // 비디오 생성 완료까지 대기 (최대 5분)
+      let attempts = 0;
+      const maxAttempts = 30; // 5분 (30 * 10초)
+      
+      while (!operation.done && attempts < maxAttempts) {
+        attempts++;
+        console.log(`⏳ Video ${operation.name} is still generating... (${attempts}/${maxAttempts})`);
+        
+        // 취소 신호 확인
+        if (options.abortSignal?.aborted) {
+          console.log('❌ 영상 생성이 취소되었습니다.');
+          throw new Error('영상 생성이 취소되었습니다.');
+        }
+        
+        await new Promise((resolve) => setTimeout(resolve, 10000)); // 10초마다 체크
+        
+        try {
+          operation = await this.ai.operations.getVideosOperation({
+            operation: operation,
+          });
+        } catch (pollError) {
+          console.error('❌ 폴링 중 오류:', pollError);
+          throw new Error(`영상 생성 상태 확인 중 오류가 발생했습니다: ${pollError instanceof Error ? pollError.message : '알 수 없는 오류'}`);
+        }
+      }
+
+      if (attempts >= maxAttempts) {
+        throw new Error('영상 생성 시간이 초과되었습니다. 다시 시도해주세요.');
+      }
+
+      console.log(`✅ Generated ${operation.response?.generatedVideos?.length ?? 0} video(s).`);
 
       if (operation.response?.generatedVideos && operation.response.generatedVideos.length > 0) {
         const generatedVideo = operation.response.generatedVideos[0];
@@ -505,9 +740,12 @@ Style requirements:
           );
 
           // API 키를 URI에 추가하여 반환
-          const apiKey = process.env.REACT_APP_GEMINI_API_KEY;
+          const finalVideoUrl = `${videoUri}&key=${this.apiKeyInUse}`;
+          console.log('🎉 영상 생성 완료!');
+          console.log('🔗 영상 URL:', finalVideoUrl);
+          
           return {
-            videoUrl: `${videoUri}&key=${apiKey}`,
+            videoUrl: finalVideoUrl,
             thumbnail: (generatedVideo as any).thumbnail?.uri || '',
             duration: '8:00' // 기본값
           };
@@ -517,40 +755,69 @@ Style requirements:
       throw new Error('비디오 생성 결과가 없습니다.');
       
     } catch (error) {
-      console.error('Google AI 비디오 생성 오류:', error);
+      console.error('❌ Google AI 비디오 생성 오류:', error);
       
       // Veo API 파라미터 오류인 경우 구체적인 메시지 제공
       if (error instanceof Error && error.message.includes('parameter is not supported')) {
-        console.error('Veo API에서 지원되지 않는 파라미터가 사용되었습니다:', error.message);
+        console.error('❌ Veo API에서 지원되지 않는 파라미터가 사용되었습니다:', error.message);
+        throw new Error('Veo API에서 지원되지 않는 설정이 사용되었습니다. 설정을 확인해주세요.');
       }
       
       // 모델을 찾을 수 없는 경우
       if (error instanceof Error && error.message.includes('not found')) {
-        console.error('Veo API 모델을 찾을 수 없습니다. 사용 가능한 모델을 확인해주세요.');
+        console.error('❌ Veo API 모델을 찾을 수 없습니다. 사용 가능한 모델을 확인해주세요.');
         console.error('사용된 모델:', options.model || 'veo-3.0-generate-001');
+        throw new Error('Veo API 모델을 찾을 수 없습니다. 다른 모델을 시도해주세요.');
       }
       
-      // Veo API 실패 시 스토리보드로 폴백
-      console.log('Veo API 실패. 스토리보드를 생성합니다.');
-      return await this.generateStoryboardFallback(options.prompt, options.ratio || '16:9');
+      // API 키 관련 오류
+      if (error instanceof Error && (error.message.includes('API key') || error.message.includes('authentication'))) {
+        console.error('❌ API 키 인증 오류:', error.message);
+        throw new Error('Google AI API 키가 유효하지 않습니다. 설정에서 API 키를 확인해주세요.');
+      }
+      
+      // 권한 관련 오류
+      if (error instanceof Error && error.message.includes('permission')) {
+        console.error('❌ Veo API 권한 오류:', error.message);
+        throw new Error('Veo API 사용 권한이 없습니다. Google AI Studio에서 Veo API를 활성화해주세요.');
+      }
+      
+      // 일반적인 오류 처리
+      const errorMessage = error instanceof Error ? error.message : '알 수 없는 오류가 발생했습니다.';
+      console.error('❌ 영상 생성 실패:', errorMessage);
+      throw new Error(`영상 생성에 실패했습니다: ${errorMessage}`);
     }
   }
 
   // Veo API 최적화 프롬프트 생성
-  private async createVeoOptimizedPrompt(originalPrompt: string, videoRatio: string): Promise<string> {
+  private async createVeoOptimizedPrompt(originalPrompt: string, videoRatio: string, hasReferenceImage: boolean = false, duration: number = 8): Promise<string> {
+    const imageContext = hasReferenceImage 
+      ? "\n\n참조 이미지가 제공되었으므로, 이미지의 스타일, 색감, 구도를 영상에 반영하도록 프롬프트를 구성해주세요."
+      : "";
+
+    const durationContext = duration > 6 
+      ? `\n\n영상 길이가 ${duration}초이므로, 더 풍부한 내용과 장면 전환을 포함하여 구성해주세요.`
+      : duration < 6 
+      ? `\n\n영상 길이가 ${duration}초이므로, 핵심 내용만 간결하게 구성해주세요.`
+      : "";
+
     const optimizationPrompt = `다음 프롬프트를 Veo API에 최적화된 영상 생성 프롬프트로 변환해주세요:
 
 원본 프롬프트: ${originalPrompt}
 영상 비율: ${videoRatio}
+영상 길이: ${duration}초${imageContext}${durationContext}
 
-요구사항:
-1. 8초 길이의 영상에 적합한 내용으로 조정
-2. 카메라 워크와 액션을 구체적으로 설명
-3. 조명과 색감을 명확히 지정
+Veo API 최적화 요구사항:
+1. ${duration}초 길이의 영상에 적합한 내용으로 조정
+2. 카메라 워크와 액션을 구체적으로 설명 (pan, zoom, tilt, tracking 등)
+3. 조명과 색감을 명확히 지정 (warm, cool, dramatic, soft 등)
 4. 영상의 흐름과 전환이 자연스럽도록 구성
 5. Veo API가 이해하기 쉬운 명확한 영어로 작성
 6. 구체적인 장면 묘사와 시각적 요소 강조
-7. 영상의 시작, 중간, 끝 부분이 명확히 구분되도록 구성
+7. 영상의 시작과 끝 부분이 명확히 구분되도록 구성
+8. 참조 이미지가 있다면 그 스타일과 분위기를 영상에 반영
+9. 영상의 시작과 끝에 자연스러운 페이드 인/아웃 효과 고려
+10. 편집을 위한 여유 시간을 고려하여 내용을 구성
 
 최적화된 프롬프트만 반환해주세요 (추가 설명 없이):`;
 
@@ -1387,7 +1654,7 @@ export const googleAIService = new GoogleAIService();
       contents: [{ parts: [{ text: prompt }] }],
       config: {
         systemInstruction:
-          '당신은 스토리보드/영상 제작을 돕는 조력자입니다. 주어진 요청을 간결하고 일관되게 정리하세요.'
+          '당신은 스토리보드-영상 제작을 돕는 조력자입니다. 주어진 요청을 간결하고 일관되게 정리하세요.'
       }
     });
 

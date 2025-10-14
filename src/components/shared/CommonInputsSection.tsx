@@ -277,7 +277,7 @@ export const CommonInputsSection: React.FC<CommonInputsSectionProps> = ({
                           onClick={() => setShowCommonInputs(prev => !prev)}
                           className="px-3 py-1 text-xs rounded border hover:bg-gray-50 transition-colors"
                         >
-                          {showCommonInputs ? '입력 숨기기' : '입력 보기/수정'}
+                          {showCommonInputs ? '입력 숨기기' : '입력 보기-수정'}
                         </button>
                         {showCommonInputs && (
                           <>

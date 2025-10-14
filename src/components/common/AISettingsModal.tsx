@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
-import { Key, AlertCircle, CheckCircle } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Key, AlertCircle, CheckCircle, BarChart3, Eye, EyeOff } from 'lucide-react';
 import { AISelector } from './AISelector';
 import Modal from './Modal';
 import Button from './Button';
 import { AIProvider } from '../../types/ai';
+import TokenCalculator from '../../utils/tokenCalculator';
 
 interface AISettingsModalProps {
   isOpen: boolean;
@@ -29,6 +30,63 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({
   });
 
   const [showApiKeys, setShowApiKeys] = useState(false);
+  const [showApiUsage, setShowApiUsage] = useState(false);
+  const [sessionStats, setSessionStats] = useState({
+    totalCalls: 0,
+    totalTokens: 0,
+    totalCost: 0,
+    callsByType: {} as { [key: string]: number },
+    callsByModel: {} as { [key: string]: number }
+  });
+
+  const tokenCalculator = TokenCalculator.getInstance();
+
+  // API 사용량 통계 업데이트 (이벤트 기반으로 변경)
+  useEffect(() => {
+    const updateStats = () => {
+      setSessionStats(tokenCalculator.getCurrentSessionStats());
+    };
+
+    // 초기 로드
+    updateStats();
+
+    // 이벤트 기반 업데이트로 변경 (주기적 호출 제거)
+    const handleApiCall = () => {
+      updateStats();
+    };
+
+    // API 호출 시에만 업데이트
+    window.addEventListener('apiCallCompleted', handleApiCall);
+    window.addEventListener('apiCallFailed', handleApiCall);
+
+    return () => {
+      window.removeEventListener('apiCallCompleted', handleApiCall);
+      window.removeEventListener('apiCallFailed', handleApiCall);
+    };
+  }, [tokenCalculator]);
+
+  const formatCost = (cost: number): string => {
+    if (cost < 0.001) return '< $0.001';
+    return `$${cost.toFixed(4)}`;
+  };
+
+  const formatTokens = (tokens: number): string => {
+    if (tokens >= 1000) {
+      return `${(tokens / 1000).toFixed(1)}K`;
+    }
+    return tokens.toString();
+  };
+
+  const handleClearSession = () => {
+    tokenCalculator.clearSession();
+    setSessionStats({
+      totalCalls: 0,
+      totalTokens: 0,
+      totalCost: 0,
+      callsByType: {},
+      callsByModel: {}
+    });
+  };
   // Prefill from localStorage for non-admin users
   try {
     // lightweight guard to avoid SSR issues
@@ -94,6 +152,108 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({
             selectedProvider={selectedProvider}
             onProviderChange={onProviderChange}
           />
+        </div>
+
+        {/* API 사용량 통계 */}
+        <div className="border-t pt-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+              <BarChart3 className="w-5 h-5" />
+              API 사용량 통계
+            </h3>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowApiUsage(!showApiUsage)}
+            >
+              {showApiUsage ? (
+                <>
+                  <EyeOff className="w-4 h-4 mr-1" />
+                  감추기
+                </>
+              ) : (
+                <>
+                  <Eye className="w-4 h-4 mr-1" />
+                  보이기
+                </>
+              )}
+            </Button>
+          </div>
+
+          {showApiUsage && (
+            <div className="space-y-4">
+              {/* 요약 통계 */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-blue-50 p-4 rounded-lg">
+                  <div className="text-blue-600 font-medium text-sm">총 호출</div>
+                  <div className="text-blue-800 text-xl font-bold">{sessionStats.totalCalls}회</div>
+                </div>
+                <div className="bg-green-50 p-4 rounded-lg">
+                  <div className="text-green-600 font-medium text-sm">총 토큰</div>
+                  <div className="text-green-800 text-xl font-bold">{formatTokens(sessionStats.totalTokens)}</div>
+                </div>
+                <div className="bg-purple-50 p-4 rounded-lg">
+                  <div className="text-purple-600 font-medium text-sm">총 비용</div>
+                  <div className="text-purple-800 text-xl font-bold">{formatCost(sessionStats.totalCost)}</div>
+                </div>
+                <div className="bg-orange-50 p-4 rounded-lg">
+                  <div className="text-orange-600 font-medium text-sm">평균 토큰</div>
+                  <div className="text-orange-800 text-xl font-bold">
+                    {sessionStats.totalCalls > 0 
+                      ? formatTokens(Math.round(sessionStats.totalTokens / sessionStats.totalCalls))
+                      : '0'
+                    }
+                  </div>
+                </div>
+              </div>
+
+              {/* 타입별 통계 */}
+              {Object.keys(sessionStats.callsByType).length > 0 && (
+                <div>
+                  <h4 className="text-sm font-medium text-gray-700 mb-2">타입별 호출</h4>
+                  <div className="space-y-2">
+                    {Object.entries(sessionStats.callsByType).map(([type, count]) => (
+                      <div key={type} className="flex justify-between items-center p-2 bg-gray-50 rounded">
+                        <span className="text-sm text-gray-600">
+                          {type === 'text' ? '📝 텍스트' : 
+                           type === 'image' ? '🖼️ 이미지' : 
+                           type === 'video' ? '🎬 영상' : type}
+                        </span>
+                        <span className="text-sm font-medium text-gray-800">{count}회</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 모델별 통계 */}
+              {Object.keys(sessionStats.callsByModel).length > 0 && (
+                <div>
+                  <h4 className="text-sm font-medium text-gray-700 mb-2">모델별 호출</h4>
+                  <div className="space-y-2">
+                    {Object.entries(sessionStats.callsByModel).map(([model, count]) => (
+                      <div key={model} className="flex justify-between items-center p-2 bg-gray-50 rounded">
+                        <span className="text-sm text-gray-600 truncate">{model}</span>
+                        <span className="text-sm font-medium text-gray-800">{count}회</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 액션 버튼 */}
+              <div className="flex justify-end pt-2 border-t">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleClearSession}
+                  className="text-red-600 border-red-200 hover:bg-red-50"
+                >
+                  세션 초기화
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* API 키 설정 */}

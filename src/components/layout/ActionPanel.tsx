@@ -3,7 +3,8 @@ import {
   Settings,
   HelpCircle,
   FileText,
-  Download
+  Download,
+  Wrench
 } from 'lucide-react';
 import Button from '../common/Button';
 
@@ -13,6 +14,7 @@ interface ActionPanelProps {
   onProjectReferenceClick?: () => void;
   onExportClick?: () => void;
   onToggleSettings?: () => void;
+  onManagementToolsClick?: () => void;
   // 단계별 액션 핸들러들
   projectHandlers?: any;
   imageHandlers?: any;
@@ -28,6 +30,7 @@ export const ActionPanel: React.FC<ActionPanelProps> = ({
   onProjectReferenceClick,
   onExportClick,
   onToggleSettings,
+  onManagementToolsClick,
   projectHandlers,
   imageHandlers,
   videoHandlers,
@@ -39,7 +42,7 @@ export const ActionPanel: React.FC<ActionPanelProps> = ({
     <div className="bg-white border-t border-gray-200 shadow-lg">
       <div className="px-6 py-4">
         <div className="flex items-center justify-center">
-          {/* 도구 버튼들만 중앙에 배치 */}
+          {/* 핵심 도구 버튼들만 중앙에 배치 */}
           <div className="flex items-center gap-3">
             <Button
               onClick={onToggleSettings}
@@ -69,6 +72,16 @@ export const ActionPanel: React.FC<ActionPanelProps> = ({
             >
               <FileText className="w-5 h-5" />
               프로젝트 참조
+            </Button>
+
+            <Button
+              onClick={onManagementToolsClick}
+              variant="outline"
+              size="lg"
+              className="flex items-center gap-2 bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-700"
+            >
+              <Wrench className="w-5 h-5" />
+              관리 도구
             </Button>
 
             <Button

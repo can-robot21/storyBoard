@@ -96,11 +96,26 @@ export const useProjectOverview = () => {
 
   // 공통 입력 완료 처리
   const handleCommonInputsComplete = (story: string, characterList: any[]) => {
-    if (!story || characterList.length === 0 || sceneCutSettings.sceneCount === 0 || sceneCutSettings.cutCount === 0) {
+    // 에피소드 구조가 있는 경우 해당 구조를 우선 사용
+    const hasEpisodeStructure = episodes.length > 0 && episodes.some(episode => 
+      episode.scenes.length > 0 && episode.scenes.some(scene => scene.cuts > 0)
+    );
+
+    if (!story || characterList.length === 0) {
       addNotification({
         type: 'error',
         title: '입력 오류',
-        message: '모든 필수 항목을 입력해주세요.',
+        message: '스토리와 캐릭터 정보를 입력해주세요.',
+      });
+      return;
+    }
+
+    // 에피소드 구조가 없는 경우에만 전역 씬/컷 설정 검증
+    if (!hasEpisodeStructure && (sceneCutSettings.sceneCount === 0 || sceneCutSettings.cutCount === 0)) {
+      addNotification({
+        type: 'error',
+        title: '입력 오류',
+        message: '에피소드 구조가 없으므로 씬/컷 설정을 입력해주세요.',
       });
       return;
     }
@@ -111,7 +126,9 @@ export const useProjectOverview = () => {
     addNotification({
       type: 'success',
       title: '공통 입력 완료',
-      message: '기본 정보가 성공적으로 입력되었습니다.',
+      message: hasEpisodeStructure 
+        ? '에피소드 구조 기반으로 기본 정보가 입력되었습니다.'
+        : '기본 정보가 성공적으로 입력되었습니다.',
     });
   };
 
@@ -208,6 +225,30 @@ export const useProjectOverview = () => {
     }
   };
 
+  // 에피소드 구조 기반 씬/컷 설정 계산
+  const getEffectiveSceneCutSettings = () => {
+    const hasEpisodeStructure = episodes.length > 0 && episodes.some(episode => 
+      episode.scenes.length > 0 && episode.scenes.some(scene => scene.cuts > 0)
+    );
+
+    if (hasEpisodeStructure) {
+      // 에피소드 구조가 있는 경우 실제 구조를 반영
+      const totalScenes = episodes.reduce((sum, episode) => sum + episode.scenes.length, 0);
+      const totalCuts = episodes.reduce((sum, episode) => 
+        sum + episode.scenes.reduce((sceneSum, scene) => sceneSum + scene.cuts, 0), 0
+      );
+      const averageCutsPerScene = totalScenes > 0 ? Math.round(totalCuts / totalScenes) : 3;
+      
+      return {
+        sceneCount: totalScenes,
+        cutCount: averageCutsPerScene
+      };
+    }
+
+    // 에피소드 구조가 없는 경우 전역 설정 사용
+    return sceneCutSettings;
+  };
+
   return {
     // 상태
     dialogue,
@@ -239,6 +280,7 @@ export const useProjectOverview = () => {
     updateEpisode,
     updateScene,
     deleteScene,
-    translateToEnglish
+    translateToEnglish,
+    getEffectiveSceneCutSettings
   };
 };

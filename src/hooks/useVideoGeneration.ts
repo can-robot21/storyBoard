@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useUIStore } from '../stores/uiStore';
-import { Episode, ErrorModalState, ConfirmModalState } from '../types/videoGeneration';
+import { Episode } from '../types/projectOverview';
+import { ErrorModalState, ConfirmModalState } from '../types/videoGeneration';
 
 export const useVideoGeneration = () => {
   const { addNotification } = useUIStore();

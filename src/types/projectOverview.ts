@@ -22,6 +22,7 @@ export interface GeneratedProjectData {
     version: string;
   };
   koreanCards: Record<string, string> | null;
+  koreanCardDraft: Record<string, string> | null;
   englishCards: Record<string, string> | null;
   settings?: {
     promptLength: {
@@ -43,6 +44,7 @@ export interface StepStatus {
   scenarioGenerated: boolean;
   aiReviewCompleted: boolean;
   jsonCardsGenerated: boolean;
+  koreanCardDraftGenerated: boolean;
   projectOverviewSaved: boolean;
 }
 

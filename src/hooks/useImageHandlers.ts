@@ -3,6 +3,7 @@ import { useUIStore } from '../stores/uiStore';
 import { downloadBase64Image } from '../utils/downloadUtils';
 import { googleAIService } from '../services/googleAIService';
 import { AIProvider } from '../types/ai';
+import ImageStorageService from '../services/imageStorageService';
 
 export const useImageHandlers = (
   generatedCharacters: any[],
@@ -14,73 +15,110 @@ export const useImageHandlers = (
   generatedProjectData: any,
   imageGenerationAPI: AIProvider = 'google',
   aspectRatio: string = '16:9',
-  nanoBananaOptions?: {
+  imageOptions?: {
     imageStyle: string;
     imageQuality: string;
-    customSize: { width: number; height: number };
-    additionalPrompt: string;
-  }
+    numberOfImages: number;
+  },
+  currentProjectId?: string
 ) => {
   const { addNotification } = useUIStore();
+  const imageStorageService = ImageStorageService.getInstance();
   
   // 나노 바나나 서비스는 더 이상 사용하지 않음 (Google AI만 사용)
 
-  // 통합 이미지 생성 함수 (Google AI만 사용)
+  // 통합 이미지 생성 함수 (Google AI만 사용) - 단일 이미지 반환
   const generateImageWithAPI = async (prompt: string, attachedImages: File[], type: 'character' | 'background' | 'setting' | 'settingCut') => {
-    console.log('🚀 generateImageWithAPI 호출:', { prompt, attachedImages: attachedImages.length, type, imageGenerationAPI, aspectRatio, nanoBananaOptions });
+    console.log('🚀 generateImageWithAPI 호출:', { prompt, attachedImages: attachedImages.length, type, imageGenerationAPI, aspectRatio, imageOptions });
     
-    // 나노바나나 옵션이 있으면 프롬프트에 추가
+    // 이미지 옵션이 있으면 프롬프트에 추가
     let enhancedPrompt = prompt;
-    if (nanoBananaOptions) {
-      const stylePrompt = `Style: ${nanoBananaOptions.imageStyle}`;
-      const qualityPrompt = `Quality: ${nanoBananaOptions.imageQuality}`;
-      const sizePrompt = `Size: ${nanoBananaOptions.customSize.width}x${nanoBananaOptions.customSize.height}`;
-      const additionalPrompt = nanoBananaOptions.additionalPrompt ? `Additional requirements: ${nanoBananaOptions.additionalPrompt}` : '';
+    if (imageOptions) {
+      const stylePrompt = `Style: ${imageOptions.imageStyle}`;
+      const qualityPrompt = `Quality: ${imageOptions.imageQuality}`;
       
-      enhancedPrompt = `${prompt}\n\n${stylePrompt}\n${qualityPrompt}\n${sizePrompt}${additionalPrompt ? `\n${additionalPrompt}` : ''}`;
-      console.log('🍌 나노바나나 옵션 적용된 프롬프트:', enhancedPrompt);
+      enhancedPrompt = `${prompt}\n\n${stylePrompt}\n${qualityPrompt}`;
+      console.log('🎨 이미지 옵션 적용된 프롬프트:', enhancedPrompt);
     }
     
     // Google AI 서비스 사용
     console.log('🔍 Google AI 서비스 사용');
+    const numberOfImages = imageOptions?.numberOfImages || 1;
+    
     if (attachedImages.length > 0) {
-      console.log('📷 첨부 이미지와 함께 생성');
-      
-      // 여러 이미지가 있는 경우 멀티 이미지 함수 사용
-      if (attachedImages.length > 1) {
-        console.log('🖼️ 멀티 이미지 생성 모드:', attachedImages.length, '개 이미지');
-        switch (type) {
-          case 'character':
-            return await googleAIService.generateWithMultipleImages(attachedImages, enhancedPrompt, aspectRatio);
-          case 'background':
-            return await googleAIService.generateBackgroundWithMultipleImages(attachedImages, enhancedPrompt, aspectRatio);
-          case 'setting':
-          case 'settingCut':
-            return await googleAIService.generateSettingCutWithMultipleImages(attachedImages, enhancedPrompt, aspectRatio);
-        }
-      } else {
-        // 단일 이미지인 경우 기존 함수 사용
-        console.log('🖼️ 단일 이미지 생성 모드');
-        switch (type) {
-          case 'character':
-            return await googleAIService.generateWithImage(attachedImages[0], enhancedPrompt, aspectRatio);
-          case 'background':
-            return await googleAIService.generateBackgroundWithImage(attachedImages[0], enhancedPrompt, aspectRatio);
-          case 'setting':
-          case 'settingCut':
-            return await googleAIService.generateSettingCutWithImage(attachedImages[0], enhancedPrompt, aspectRatio);
-        }
+      console.log('📷 첨부 이미지와 함께 생성 (단일 이미지만 지원)');
+      // 첨부 이미지가 있는 경우 기존 단일 이미지 함수 사용
+      switch (type) {
+        case 'character':
+          return await googleAIService.generateWithImage(attachedImages[0], enhancedPrompt, aspectRatio);
+        case 'background':
+          return await googleAIService.generateBackgroundWithImage(attachedImages[0], enhancedPrompt, aspectRatio);
+        case 'setting':
+        case 'settingCut':
+          return await googleAIService.generateSettingCutWithImage(attachedImages[0], enhancedPrompt, aspectRatio);
+        default:
+          throw new Error(`지원되지 않는 이미지 타입: ${type}`);
       }
     } else {
       console.log('📝 텍스트만으로 생성');
+      // 텍스트만으로 생성
       switch (type) {
         case 'character':
-          return await googleAIService.generateCharacterImage(enhancedPrompt, aspectRatio);
+          return await googleAIService.generateCharacterImage(enhancedPrompt, aspectRatio, numberOfImages);
         case 'background':
-          return await googleAIService.generateBackgroundImage(enhancedPrompt, aspectRatio);
+          return await googleAIService.generateBackgroundImage(enhancedPrompt, aspectRatio, numberOfImages);
         case 'setting':
         case 'settingCut':
-          return await googleAIService.generateSettingCutImage(enhancedPrompt, aspectRatio);
+          return await googleAIService.generateSettingCutImage(enhancedPrompt, aspectRatio, numberOfImages);
+        default:
+          throw new Error(`지원되지 않는 이미지 타입: ${type}`);
+      }
+    }
+  };
+
+  // 통합 이미지 생성 함수 (Google AI만 사용) - 여러 이미지 반환
+  const generateMultipleImagesWithAPI = async (prompt: string, attachedImages: File[], type: 'character' | 'background' | 'setting' | 'settingCut') => {
+    console.log('🚀 generateMultipleImagesWithAPI 호출:', { prompt, attachedImages: attachedImages.length, type, imageGenerationAPI, aspectRatio, imageOptions });
+    
+    // 이미지 옵션이 있으면 프롬프트에 추가
+    let enhancedPrompt = prompt;
+    if (imageOptions) {
+      const stylePrompt = `Style: ${imageOptions.imageStyle}`;
+      const qualityPrompt = `Quality: ${imageOptions.imageQuality}`;
+      
+      enhancedPrompt = `${prompt}\n\n${stylePrompt}\n${qualityPrompt}`;
+      console.log('🎨 이미지 옵션 적용된 프롬프트:', enhancedPrompt);
+    }
+    
+    // Google AI 서비스 사용
+    console.log('🔍 Google AI 서비스 사용');
+    const numberOfImages = imageOptions?.numberOfImages || 1;
+    
+    if (attachedImages.length > 0) {
+      console.log('📷 첨부 이미지와 함께 생성 (단일 이미지만 지원)');
+      // 첨부 이미지가 있는 경우 기존 단일 이미지 함수 사용
+      switch (type) {
+        case 'character':
+          const singleImage = await googleAIService.generateWithImage(attachedImages[0], enhancedPrompt, aspectRatio);
+          return [singleImage];
+        case 'background':
+          const singleBgImage = await googleAIService.generateBackgroundWithImage(attachedImages[0], enhancedPrompt, aspectRatio);
+          return [singleBgImage];
+        case 'setting':
+        case 'settingCut':
+          const singleSettingImage = await googleAIService.generateSettingCutWithImage(attachedImages[0], enhancedPrompt, aspectRatio);
+          return [singleSettingImage];
+      }
+    } else {
+      console.log('📝 텍스트만으로 여러 이미지 생성');
+      switch (type) {
+        case 'character':
+          return await googleAIService.generateMultipleCharacterImages(enhancedPrompt, aspectRatio, numberOfImages);
+        case 'background':
+          return await googleAIService.generateMultipleBackgroundImages(enhancedPrompt, aspectRatio, numberOfImages);
+        case 'setting':
+        case 'settingCut':
+          return await googleAIService.generateMultipleSettingCutImages(enhancedPrompt, aspectRatio, numberOfImages);
       }
     }
   };
@@ -110,27 +148,45 @@ export const useImageHandlers = (
       }
       
       console.log('🔄 이미지 생성 API 호출 시작...');
-      const imageResult = await generateImageWithAPI(imagePrompt, attachedImages, 'character');
-      console.log('✅ 이미지 생성 완료:', imageResult ? '성공' : '실패');
+      const imageResults = await generateMultipleImagesWithAPI(imagePrompt, attachedImages, 'character');
+      console.log('✅ 이미지 생성 완료:', imageResults ? `${imageResults.length}개 이미지 생성` : '실패');
       
-      const newCharacter = {
-        id: Date.now(),
-        description: characterInput,
-        image: imageResult,
-        attachedImages: attachedImages,
-        timestamp: new Date().toISOString(),
-      };
+      // 여러 이미지를 각각 캐릭터로 추가 (이미지 저장 정책 적용)
+      const newCharacters = await Promise.all(imageResults.map(async (imageResult, index) => {
+        const characterId = Date.now() + index;
+        
+        // 이미지 저장 서비스에 저장
+        const storedImageId = await imageStorageService.storeImage(
+          currentProjectId || 'default',
+          'character',
+          imageResult,
+          {
+            description: characterInput,
+            attachedImages: attachedImages.length,
+            generatedAt: new Date().toISOString()
+          }
+        );
+        
+        return {
+          id: characterId,
+          description: characterInput,
+          image: imageResult,
+          imageStorageId: storedImageId,
+          attachedImages: attachedImages,
+          timestamp: new Date().toISOString(),
+        };
+      }));
       
-      console.log('💾 캐릭터 상태 업데이트:', newCharacter);
-      setGeneratedCharacters([...generatedCharacters, newCharacter]);
+      console.log('💾 캐릭터 상태 업데이트:', newCharacters);
+      setGeneratedCharacters([...generatedCharacters, ...newCharacters]);
       
       addNotification({
         type: 'success',
         title: '생성 완료',
-        message: '캐릭터가 생성되었습니다. 결과를 확인해보세요.',
+        message: `${newCharacters.length}개의 캐릭터가 생성되었습니다. 결과를 확인해보세요.`,
       });
 
-      return newCharacter;
+      return newCharacters;
     } catch (error) {
       console.error('❌ 캐릭터 생성 오류:', error);
       
@@ -178,7 +234,8 @@ export const useImageHandlers = (
         imagePrompt = generatedProjectData.imagePrompts.character;
       }
       
-      const imageResult = await googleAIService.generateCharacterImage(imagePrompt);
+      const numberOfImages = imageOptions?.numberOfImages || 1;
+      const imageResult = await googleAIService.generateCharacterImage(imagePrompt, aspectRatio, numberOfImages);
       
       setGeneratedCharacters((prev: any[]) =>
         prev.map((char: any) =>
@@ -204,7 +261,17 @@ export const useImageHandlers = (
   };
 
   const handleDeleteCharacter = (characterId: number) => {
-    setGeneratedCharacters((prev: any[]) => prev.filter((char: any) => char.id !== characterId));
+    setGeneratedCharacters((prev: any[]) => {
+      const characterToDelete = prev.find((char: any) => char.id === characterId);
+      if (characterToDelete?.imageStorageId) {
+        // 이미지 저장 서비스에서도 삭제
+        imageStorageService.deleteImage(characterToDelete.imageStorageId);
+      }
+      
+      const filtered = prev.filter((char: any) => char.id !== characterId);
+      console.log('캐릭터 삭제:', { 삭제ID: characterId, 원본수: prev.length, 삭제후수: filtered.length });
+      return filtered;
+    });
     addNotification({
       type: 'info',
       title: '삭제 완료',
@@ -230,25 +297,43 @@ export const useImageHandlers = (
         imagePrompt = generatedProjectData.scenarioPrompt;
       }
       
-      const imageResult = await generateImageWithAPI(imagePrompt, attachedImages, 'background');
+      const imageResults = await generateMultipleImagesWithAPI(imagePrompt, attachedImages, 'background');
       
-      const newBackground = {
-        id: Date.now(),
-        description: backgroundInput,
-        image: imageResult,
-        attachedImages: attachedImages,
-        timestamp: new Date().toISOString(),
-      };
+      // 여러 이미지를 각각 배경으로 추가 (이미지 저장 정책 적용)
+      const newBackgrounds = await Promise.all(imageResults.map(async (imageResult, index) => {
+        const backgroundId = Date.now() + index;
+        
+        // 이미지 저장 서비스에 저장
+        const storedImageId = await imageStorageService.storeImage(
+          currentProjectId || 'default',
+          'background',
+          imageResult,
+          {
+            description: backgroundInput,
+            attachedImages: attachedImages.length,
+            generatedAt: new Date().toISOString()
+          }
+        );
+        
+        return {
+          id: backgroundId,
+          description: backgroundInput,
+          image: imageResult,
+          imageStorageId: storedImageId,
+          attachedImages: attachedImages,
+          timestamp: new Date().toISOString(),
+        };
+      }));
       
-      setGeneratedBackgrounds([...generatedBackgrounds, newBackground]);
+      setGeneratedBackgrounds([...generatedBackgrounds, ...newBackgrounds]);
       
       addNotification({
         type: 'success',
         title: '생성 완료',
-        message: '배경이 생성되었습니다.',
+        message: `${newBackgrounds.length}개의 배경이 생성되었습니다.`,
       });
 
-      return newBackground;
+      return newBackgrounds;
     } catch (error) {
       console.error('배경 생성 오류:', error);
       addNotification({
@@ -270,7 +355,8 @@ export const useImageHandlers = (
         imagePrompt = generatedProjectData.imagePrompts.background;
       }
       
-      const imageResult = await googleAIService.generateBackgroundImage(imagePrompt);
+      const numberOfImages = imageOptions?.numberOfImages || 1;
+      const imageResult = await googleAIService.generateBackgroundImage(imagePrompt, aspectRatio, numberOfImages);
       
       setGeneratedBackgrounds((prev: any[]) =>
         prev.map((bg: any) =>
@@ -296,7 +382,17 @@ export const useImageHandlers = (
   };
 
   const handleDeleteBackground = (backgroundId: number) => {
-    setGeneratedBackgrounds((prev: any[]) => prev.filter((bg: any) => bg.id !== backgroundId));
+    setGeneratedBackgrounds((prev: any[]) => {
+      const backgroundToDelete = prev.find((bg: any) => bg.id === backgroundId);
+      if (backgroundToDelete?.imageStorageId) {
+        // 이미지 저장 서비스에서도 삭제
+        imageStorageService.deleteImage(backgroundToDelete.imageStorageId);
+      }
+      
+      const filtered = prev.filter((bg: any) => bg.id !== backgroundId);
+      console.log('배경 삭제:', { 삭제ID: backgroundId, 원본수: prev.length, 삭제후수: filtered.length });
+      return filtered;
+    });
     addNotification({
       type: 'info',
       title: '삭제 완료',
@@ -322,25 +418,43 @@ export const useImageHandlers = (
         imagePrompt = generatedProjectData.scenarioPrompt;
       }
       
-      const imageResult = await generateImageWithAPI(imagePrompt, attachedImages, 'setting');
+      const imageResults = await generateMultipleImagesWithAPI(imagePrompt, attachedImages, 'setting');
       
-      const newSettingCut = {
-        id: Date.now(),
-        description: settingCut,
-        image: imageResult,
-        attachedImages: attachedImages,
-        timestamp: new Date().toISOString(),
-      };
+      // 여러 이미지를 각각 설정 컷으로 추가 (이미지 저장 정책 적용)
+      const newSettingCuts = await Promise.all(imageResults.map(async (imageResult, index) => {
+        const settingCutId = Date.now() + index;
+        
+        // 이미지 저장 서비스에 저장
+        const storedImageId = await imageStorageService.storeImage(
+          currentProjectId || 'default',
+          'settingCut',
+          imageResult,
+          {
+            description: settingCut,
+            attachedImages: attachedImages.length,
+            generatedAt: new Date().toISOString()
+          }
+        );
+        
+        return {
+          id: settingCutId,
+          description: settingCut,
+          image: imageResult,
+          imageStorageId: storedImageId,
+          attachedImages: attachedImages,
+          timestamp: new Date().toISOString(),
+        };
+      }));
       
-      setGeneratedSettingCuts([...generatedSettingCuts, newSettingCut]);
+      setGeneratedSettingCuts([...generatedSettingCuts, ...newSettingCuts]);
       
       addNotification({
         type: 'success',
         title: '생성 완료',
-        message: '설정 컷이 생성되었습니다.',
+        message: `${newSettingCuts.length}개의 설정 컷이 생성되었습니다.`,
       });
 
-      return newSettingCut;
+      return newSettingCuts;
     } catch (error) {
       console.error('설정 컷 생성 오류:', error);
       addNotification({
@@ -362,7 +476,8 @@ export const useImageHandlers = (
         imagePrompt = generatedProjectData.imagePrompts.setting;
       }
       
-      const imageResult = await googleAIService.generateSettingCutImage(imagePrompt);
+      const numberOfImages = imageOptions?.numberOfImages || 1;
+      const imageResult = await googleAIService.generateSettingCutImage(imagePrompt, aspectRatio, numberOfImages);
       
       setGeneratedSettingCuts((prev: any[]) =>
         prev.map((cut: any) =>
@@ -388,7 +503,17 @@ export const useImageHandlers = (
   };
 
   const handleDeleteSettingCut = (settingId: number) => {
-    setGeneratedSettingCuts((prev: any[]) => prev.filter((cut: any) => cut.id !== settingId));
+    setGeneratedSettingCuts((prev: any[]) => {
+      const settingCutToDelete = prev.find((cut: any) => cut.id === settingId);
+      if (settingCutToDelete?.imageStorageId) {
+        // 이미지 저장 서비스에서도 삭제
+        imageStorageService.deleteImage(settingCutToDelete.imageStorageId);
+      }
+      
+      const filtered = prev.filter((cut: any) => cut.id !== settingId);
+      console.log('설정 컷 삭제:', { 삭제ID: settingId, 원본수: prev.length, 삭제후수: filtered.length });
+      return filtered;
+    });
     addNotification({
       type: 'info',
       title: '삭제 완료',
@@ -409,8 +534,9 @@ export const useImageHandlers = (
 
     try {
       const newCharacters = [];
+      const numberOfImages = imageOptions?.numberOfImages || 1;
       for (const character of generatedCharacters) {
-        const imageResult = await googleAIService.generateCharacterImage(character.description);
+        const imageResult = await googleAIService.generateCharacterImage(character.description, aspectRatio, numberOfImages);
         newCharacters.push({
           ...character,
           image: imageResult,
@@ -445,8 +571,9 @@ export const useImageHandlers = (
 
     try {
       const newBackgrounds = [];
+      const numberOfImages = imageOptions?.numberOfImages || 1;
       for (const background of generatedBackgrounds) {
-        const imageResult = await googleAIService.generateBackgroundImage(background.description);
+        const imageResult = await googleAIService.generateBackgroundImage(background.description, aspectRatio, numberOfImages);
         newBackgrounds.push({
           ...background,
           image: imageResult,
@@ -481,8 +608,9 @@ export const useImageHandlers = (
 
     try {
       const newSettingCuts = [];
+      const numberOfImages = imageOptions?.numberOfImages || 1;
       for (const cut of generatedSettingCuts) {
-        const imageResult = await googleAIService.generateSettingCutImage(cut.description);
+        const imageResult = await googleAIService.generateSettingCutImage(cut.description, aspectRatio, numberOfImages);
         newSettingCuts.push({
           ...cut,
           image: imageResult,

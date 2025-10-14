@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect } from 'react';
-import { Episode } from '../../types/videoGeneration';
+import { Episode } from '../../types/projectOverview';
 import { CommonInputsSection } from '../shared/CommonInputsSection';
-import { SmartInputHelper } from '../common/SmartInputHelper';
 import { useUIStore } from '../../stores/uiStore';
+import { storageOptimizationService } from '../../services/storageOptimizationService';
 
 interface EpisodeStructureManagerProps {
   episodes: Episode[];
@@ -23,6 +23,10 @@ interface EpisodeStructureManagerProps {
   videoNotes?: string;
   finalScenario?: string;
   generatedProjectData?: any;
+  // 비활성화 상태
+  isDisabled?: boolean;
+  // 초기화 경고 처리
+  onResetWithWarning?: (resetAction: () => void) => void;
 }
 
 export const EpisodeStructureManager: React.FC<EpisodeStructureManagerProps> = React.memo(({
@@ -43,7 +47,11 @@ export const EpisodeStructureManager: React.FC<EpisodeStructureManagerProps> = R
   videoDescription,
   videoNotes,
   finalScenario,
-  generatedProjectData
+  generatedProjectData,
+  // 비활성화 상태
+  isDisabled = false,
+  // 초기화 경고 처리
+  onResetWithWarning
 }) => {
   const { addNotification } = useUIStore();
 
@@ -158,7 +166,7 @@ ${videoDescription ? `영상 설명: ${videoDescription}` : ''}
 ${videoNotes ? `영상 노트: ${videoNotes}` : ''}
 
 === 씬 구성 ===
-${selectedEpisode.scenes.map((scene, index) => 
+        ${selectedEpisode.scenes.map((scene: any, index: number) =>
   `씬 ${index + 1}: ${scene.title}
 - 설명: ${scene.description}
 - 컷 수: ${scene.cuts || 3}개`
@@ -230,7 +238,7 @@ ${selectedEpisode.scenes.map((scene, index) =>
         const episodeTextCards: any[] = [];
         let cutId = 1;
 
-        selectedEpisode.scenes.forEach((scene, sceneIndex) => {
+        selectedEpisode.scenes.forEach((scene: any, sceneIndex: number) => {
           const cutCount = scene.cuts || 3;
           
           // AI 응답에서 해당 씬 정보 추출
@@ -269,7 +277,7 @@ ${selectedEpisode.scenes.map((scene, index) =>
             // 컷별 텍스트가 없으면 씬 설명 기반 기본 텍스트 생성
             if (!cutText) {
               const cameraAngles = ['와이드샷 (전체 배경과 캐릭터 포함)', '미디엄샷 (캐릭터 상반신 중심)', '클로즈업 (캐릭터 얼굴 또는 중요한 소품)'];
-              const techniques = ['정적 촬영 (안정적인 구도)', '동적 촬영 (팬/틸트)', '줌 촬영 (줌인/아웃)'];
+              const techniques = ['정적 촬영 (안정적인 구도)', '동적 촬영 (팬-틸트)', '줌 촬영 (줌인-아웃)'];
               const transitions = ['컷 전환', '페이드 전환', '디졸브 전환'];
               const durations = ['5-7초', '3-5초', '2-4초'];
               
@@ -370,7 +378,7 @@ ${selectedEpisode.scenes.map((scene, index) =>
         // 기존 에피소드 텍스트 카드 삭제 후 새로 저장
         const existingCards = JSON.parse(localStorage.getItem('generatedSceneTextCards') || '[]');
         const filteredCards = existingCards.filter((card: any) => 
-          !selectedEpisode.scenes.some(scene => scene.id === card.sceneId)
+          !selectedEpisode.scenes.some((scene: any) => scene.id === card.sceneId)
         );
         const updatedCards = [...filteredCards, ...episodeTextCards];
         localStorage.setItem('generatedSceneTextCards', JSON.stringify(updatedCards));
@@ -402,23 +410,45 @@ ${selectedEpisode.scenes.map((scene, index) =>
 
   // localStorage에서 에피소드 데이터 로드
   useEffect(() => {
-    const savedEpisodes = localStorage.getItem('episodeStructureData');
-    if (savedEpisodes) {
+    const loadEpisodes = async () => {
       try {
-        const parsedEpisodes = JSON.parse(savedEpisodes);
-        if (Array.isArray(parsedEpisodes) && parsedEpisodes.length > 0) {
-          setEpisodes(parsedEpisodes);
+        const savedEpisodes = storageOptimizationService.loadEpisodeStructure();
+        if (Array.isArray(savedEpisodes) && savedEpisodes.length > 0) {
+          setEpisodes(savedEpisodes);
+          console.log('✅ 에피소드 구조 데이터 로드 완료:', savedEpisodes.length, '개');
         }
       } catch (error) {
-        console.error('에피소드 데이터 로드 실패:', error);
+        console.error('❌ 에피소드 데이터 로드 실패:', error);
+        addNotification({
+          type: 'error',
+          title: '데이터 로드 실패',
+          message: '에피소드 구조 데이터를 불러오는데 실패했습니다.',
+        });
       }
-    }
-  }, [setEpisodes]);
+    };
+
+    loadEpisodes();
+  }, [setEpisodes, addNotification]);
 
   // 에피소드 데이터를 localStorage에 저장
-  const saveEpisodesToStorage = useCallback((newEpisodes: Episode[]) => {
-    localStorage.setItem('episodeStructureData', JSON.stringify(newEpisodes));
-  }, []);
+  const saveEpisodesToStorage = useCallback(async (newEpisodes: Episode[]) => {
+    try {
+      await storageOptimizationService.saveEpisodeStructure(newEpisodes);
+      console.log('✅ 에피소드 구조 데이터 저장 완료');
+      
+      // 커스텀 이벤트 발생하여 다른 컴포넌트에 알림
+      window.dispatchEvent(new CustomEvent('episodeStructureUpdated', {
+        detail: { episodes: newEpisodes }
+      }));
+    } catch (error) {
+      console.error('❌ 에피소드 데이터 저장 실패:', error);
+      addNotification({
+        type: 'error',
+        title: '데이터 저장 실패',
+        message: '에피소드 구조 데이터 저장에 실패했습니다. 스토리지 용량을 확인해주세요.',
+      });
+    }
+  }, [addNotification]);
 
   // 에피소드 추가 (하나의 에피소드만 유지)
   const addEpisode = useCallback(() => {
@@ -450,7 +480,7 @@ ${selectedEpisode.scenes.map((scene, index) =>
     // 해당 에피소드의 씬들과 관련된 텍스트 카드 삭제
     const existingCards = JSON.parse(localStorage.getItem('generatedSceneTextCards') || '[]');
     const filteredCards = existingCards.filter((card: any) => 
-      !episodeToDelete.scenes.some(scene => scene.id === card.sceneId)
+      !episodeToDelete.scenes.some((scene: any) => scene.id === card.sceneId)
     );
     localStorage.setItem('generatedSceneTextCards', JSON.stringify(filteredCards));
 
@@ -483,23 +513,29 @@ ${selectedEpisode.scenes.map((scene, index) =>
   }, [episodes, setEpisodes, saveEpisodesToStorage]);
 
   // 에피소드 업데이트
-  const updateEpisode = useCallback((index: number, field: string, value: string) => {
+  const updateEpisode = useCallback(async (index: number, field: string, value: string) => {
     const updatedEpisodes = episodes.map((episode, i) => 
       i === index 
         ? { ...episode, [field]: value }
         : episode
     );
     setEpisodes(updatedEpisodes);
-    saveEpisodesToStorage(updatedEpisodes);
+    
+    // 비동기 저장 (에러 처리 포함)
+    try {
+      await saveEpisodesToStorage(updatedEpisodes);
+    } catch (error) {
+      console.error('에피소드 업데이트 저장 실패:', error);
+    }
   }, [episodes, setEpisodes, saveEpisodesToStorage]);
 
   // 씬 업데이트
-  const updateScene = useCallback((episodeIndex: number, sceneIndex: number, field: string, value: string | number) => {
+  const updateScene = useCallback(async (episodeIndex: number, sceneIndex: number, field: string, value: string | number) => {
     const updatedEpisodes = episodes.map((episode, index) => 
       index === episodeIndex 
         ? {
             ...episode,
-            scenes: episode.scenes.map((scene, sIndex) => 
+            scenes: episode.scenes.map((scene: any, sIndex: number) => 
               sIndex === sceneIndex 
                 ? { ...scene, [field]: value }
                 : scene
@@ -508,7 +544,13 @@ ${selectedEpisode.scenes.map((scene, index) =>
         : episode
     );
     setEpisodes(updatedEpisodes);
-    saveEpisodesToStorage(updatedEpisodes);
+    
+    // 비동기 저장 (에러 처리 포함)
+    try {
+      await saveEpisodesToStorage(updatedEpisodes);
+    } catch (error) {
+      console.error('씬 업데이트 저장 실패:', error);
+    }
   }, [episodes, setEpisodes, saveEpisodesToStorage]);
 
   // 씬 삭제
@@ -517,7 +559,7 @@ ${selectedEpisode.scenes.map((scene, index) =>
       index === episodeIndex 
         ? {
             ...episode,
-            scenes: episode.scenes.filter((_, sIndex) => sIndex !== sceneIndex)
+            scenes: episode.scenes.filter((_: any, sIndex: number) => sIndex !== sceneIndex)
           }
         : episode
     );
@@ -528,40 +570,60 @@ ${selectedEpisode.scenes.map((scene, index) =>
   return (
     <div className="space-y-4">
       {/* 공통 입력 항목 */}
-      <CommonInputsSection
-        story={story}
-        characterList={characterList}
-        storySummary={storySummary}
-        onComplete={onCommonInputsComplete}
-        onReset={onCommonInputsReset}
-        showEditMode={true}
-        title="📋 공통 입력 항목"
-        editable={true}
-        onStoryChange={onStoryChange}
-        onCharacterListChange={onCharacterListChange}
-        onStorySummaryChange={onStorySummaryChange}
-      />
+      <div className={isDisabled ? 'opacity-60 pointer-events-none' : ''}>
+        <CommonInputsSection
+          story={story}
+          characterList={characterList}
+          storySummary={storySummary}
+          onComplete={onCommonInputsComplete}
+          onReset={onResetWithWarning ? () => onResetWithWarning(() => onCommonInputsReset?.()) : onCommonInputsReset}
+          showEditMode={!isDisabled}
+          title={`📋 공통 입력 항목${isDisabled ? ' (비활성화됨)' : ''}`}
+          editable={!isDisabled}
+          onStoryChange={onStoryChange}
+          onCharacterListChange={onCharacterListChange}
+          onStorySummaryChange={onStorySummaryChange}
+        />
+      </div>
 
       {/* 에피소드 구조 관리 */}
-      <div className="bg-green-50 p-4 rounded-lg border">
+      <div className={`p-4 rounded-lg border ${isDisabled ? 'bg-gray-100 opacity-60' : 'bg-green-50'}`}>
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-green-800">🎬 에피소드/씬 구조 관리</h3>
+          <h3 className={`text-lg font-semibold ${isDisabled ? 'text-gray-500' : 'text-green-800'}`}>
+            🎬 에피소드/씬 구조 관리
+            {isDisabled && <span className="ml-2 text-xs text-red-500">(비활성화됨)</span>}
+          </h3>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setShowEpisodeStructure(!showEpisodeStructure)}
-              className="px-3 py-1 text-xs rounded border hover:bg-gray-50 transition-colors"
+              onClick={() => !isDisabled && setShowEpisodeStructure(!showEpisodeStructure)}
+              disabled={isDisabled}
+              className={`px-3 py-1 text-xs rounded border transition-colors ${
+                isDisabled 
+                  ? 'bg-gray-200 text-gray-400 cursor-not-allowed' 
+                  : 'hover:bg-gray-50'
+              }`}
             >
-              {showEpisodeStructure ? '구조 숨기기' : '구조 보기/수정'}
+              {showEpisodeStructure ? '구조 숨기기' : '구조 보기-수정'}
             </button>
             <button
               onClick={addEpisode}
-              className="px-3 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700 transition-colors"
+              disabled={isDisabled}
+              className={`px-3 py-1 text-xs rounded transition-colors ${
+                isDisabled 
+                  ? 'bg-gray-200 text-gray-400 cursor-not-allowed' 
+                  : 'bg-green-600 text-white hover:bg-green-700'
+              }`}
             >
               + 에피소드 추가
             </button>
             <button
               onClick={handleUploadToReference}
-              className="px-3 py-1 text-xs bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors"
+              disabled={isDisabled}
+              className={`px-3 py-1 text-xs rounded transition-colors ${
+                isDisabled 
+                  ? 'bg-gray-200 text-gray-400 cursor-not-allowed' 
+                  : 'bg-purple-600 text-white hover:bg-purple-700'
+              }`}
             >
               📤 참조 업로드
             </button>
@@ -569,7 +631,7 @@ ${selectedEpisode.scenes.map((scene, index) =>
         </div>
 
         {showEpisodeStructure && (
-          <div className="space-y-4">
+          <div className={`space-y-4 ${isDisabled ? 'opacity-60 pointer-events-none' : ''}`}>
             {episodes.map((episode, episodeIndex) => (
               <div key={episode.id} className="bg-white p-4 rounded-lg border border-green-200">
                 <div className="flex items-center justify-between mb-3">
@@ -580,15 +642,25 @@ ${selectedEpisode.scenes.map((scene, index) =>
                     {/* 에피소드 텍스트 카드 생성 버튼 */}
                     {episode.title && episode.description && episode.scenes.length > 0 && (
                       <button
-                        onClick={() => handleGenerateEpisodeTextCards(episodeIndex)}
-                        className="px-2 py-1 text-xs bg-purple-500 text-white rounded hover:bg-purple-600 transition-colors"
+                        onClick={() => !isDisabled && handleGenerateEpisodeTextCards(episodeIndex)}
+                        disabled={isDisabled}
+                        className={`px-2 py-1 text-xs rounded transition-colors ${
+                          isDisabled 
+                            ? 'bg-gray-200 text-gray-400 cursor-not-allowed' 
+                            : 'bg-purple-500 text-white hover:bg-purple-600'
+                        }`}
                       >
                         📝 에피소드 텍스트 카드 생성
                       </button>
                     )}
                     <button
-                      onClick={() => addScene(episodeIndex)}
-                      className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                      onClick={() => !isDisabled && addScene(episodeIndex)}
+                      disabled={isDisabled}
+                      className={`px-2 py-1 text-xs rounded transition-colors ${
+                        isDisabled 
+                          ? 'bg-gray-200 text-gray-400 cursor-not-allowed' 
+                          : 'bg-blue-600 text-white hover:bg-blue-700'
+                      }`}
                     >
                       + 씬 추가
                     </button>
@@ -630,7 +702,7 @@ ${selectedEpisode.scenes.map((scene, index) =>
 
                   {/* 씬 목록 */}
                   <div className="space-y-2">
-                    {episode.scenes.map((scene, sceneIndex) => (
+                    {episode.scenes.map((scene: any, sceneIndex: number) => (
                       <div key={scene.id} className="bg-gray-50 p-3 rounded border">
                         <div className="flex items-center justify-between mb-2">
                           <span className="text-xs font-medium text-gray-700">
@@ -727,8 +799,34 @@ ${selectedEpisode.scenes.map((scene, index) =>
             ))}
             
             {episodes.length === 0 && (
-              <div className="text-center py-8 text-gray-500">
-                <p className="text-sm">에피소드를 추가하여 구조를 설정하세요.</p>
+              <div className="text-center py-8">
+                <div className="text-gray-500 mb-4">
+                  <div className="text-4xl mb-2">🎬</div>
+                  <div className="text-lg font-medium text-gray-700 mb-2">에피소드 구조가 설정되지 않았습니다</div>
+                  <div className="text-sm text-gray-600 mb-4">
+                    더 정확한 씬/컷 구성을 위해 에피소드 구조를 설정해보세요.
+                  </div>
+                </div>
+                <div className="bg-blue-50 p-4 rounded-lg border border-blue-200 mb-4">
+                  <div className="text-blue-800 font-medium mb-2">💡 에피소드 구조 설정의 장점</div>
+                  <div className="text-blue-700 text-sm space-y-1">
+                    <div>• 정확한 씬/컷 수 계산</div>
+                    <div>• 체계적인 영상 제작 계획</div>
+                    <div>• 에피소드별 텍스트 카드 생성</div>
+                    <div>• 프로젝트 참조에서 상세 정보 확인</div>
+                  </div>
+                </div>
+                <button
+                  onClick={addEpisode}
+                  disabled={isDisabled}
+                  className={`px-4 py-2 rounded-lg transition-colors ${
+                    isDisabled 
+                      ? 'bg-gray-200 text-gray-400 cursor-not-allowed' 
+                      : 'bg-green-600 text-white hover:bg-green-700'
+                  }`}
+                >
+                  🎬 에피소드 추가하기
+                </button>
               </div>
             )}
           </div>

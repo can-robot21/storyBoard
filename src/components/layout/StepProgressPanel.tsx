@@ -12,6 +12,7 @@ import {
   Image,
   Video,
   Download,
+  Trash2,
   Settings,
   Bot,
   TrendingUp,
@@ -59,6 +60,7 @@ interface StepProgressPanelProps {
   selectedCuts?: Set<string>;
   // 핸들러
   onShowReference: (type: string, data: any[], aiProvider?: string) => void;
+  onDeleteItem?: (type: string, index: number) => void;
   
   // AI 설정
   selectedAIProvider?: string;
@@ -86,6 +88,7 @@ export const StepProgressPanel: React.FC<StepProgressPanelProps> = ({
   cutTextCardSelections = {},
   selectedCuts = new Set(),
   onShowReference,
+  onDeleteItem,
   selectedAIProvider = 'google',
   onAISettingsClick,
   hasAPIKey = false
@@ -432,6 +435,20 @@ export const StepProgressPanel: React.FC<StepProgressPanelProps> = ({
                             >
                               <Download className="w-3 h-3" />
                             </button>
+                            {onDeleteItem && (
+                              <button
+                                onClick={() => {
+                                  if (window.confirm(`정말로 이 ${item.label} 이미지를 삭제하시겠습니까?`)) {
+                                    console.log('StepProgressPanel 삭제 요청:', { itemId: item.id, index, label: item.label });
+                                    onDeleteItem(item.id, index);
+                                  }
+                                }}
+                                className="absolute top-1 left-1 p-1 bg-red-600 bg-opacity-80 text-white rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                                title="삭제"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            )}
                           </div>
                         ))}
                         {item.data.length > 4 && (

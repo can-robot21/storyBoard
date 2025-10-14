@@ -88,7 +88,7 @@ class TokenCalculator {
     const cost = this.calculateCost(totalTokens, model);
 
     const apiCall: APICall = {
-      id: `call_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      id: `call_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
       timestamp: new Date().toISOString(),
       model,
       type,
@@ -105,6 +105,11 @@ class TokenCalculator {
     this.currentSessionCalls.push(apiCall);
     this.updateDailyUsage(apiCall);
     this.saveUsageToStorage();
+
+    // 이벤트 발생으로 다른 컴포넌트에 알림
+    window.dispatchEvent(new CustomEvent('apiCallCompleted', {
+      detail: { apiCall }
+    }));
 
     return apiCall;
   }

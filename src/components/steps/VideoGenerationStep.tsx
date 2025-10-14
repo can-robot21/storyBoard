@@ -4,6 +4,7 @@ import { EpisodeStructureManager } from '../videoGeneration/EpisodeStructureMana
 import { TextCardGenerator } from '../videoGeneration/TextCardGenerator';
 import { ImageGenerator } from '../videoGeneration/ImageGenerator';
 import { VideoGenerator } from '../videoGeneration/VideoGenerator';
+import ResetWarningModal from '../common/ResetWarningModal';
 import { useVideoGeneration } from '../../hooks/useVideoGeneration';
 import { VideoGenerationStepProps } from '../../types/videoGeneration';
 import { SceneTextCard } from '../../types/videoGeneration';
@@ -69,7 +70,14 @@ export const VideoGenerationStep: React.FC<VideoGenerationStepProps> = ({
   const [generatedSettingCutImages, setGeneratedSettingCutImages] = useState<any[]>([]);
   const [selectedSettingCutImages, setSelectedSettingCutImages] = useState<Set<number>>(new Set());
 
-  // 프로젝트 참조 데이터 로드
+  // JSON 영문 카드 생성 상태 추적
+  const [isEnglishJsonCardGenerated, setIsEnglishJsonCardGenerated] = useState(false);
+  
+  // 초기화 경고 모달 상태
+  const [showResetWarning, setShowResetWarning] = useState(false);
+  const [pendingResetAction, setPendingResetAction] = useState<(() => void) | null>(null);
+
+  // 프로젝트 참조 데이터 로드 및 JSON 영문 카드 생성 상태 확인
   useEffect(() => {
     const loadProjectReferenceData = () => {
       try {
@@ -84,8 +92,18 @@ export const VideoGenerationStep: React.FC<VideoGenerationStepProps> = ({
       }
     };
 
+    const checkEnglishJsonCardStatus = () => {
+      // generatedProjectData에서 영문 카드가 있는지 확인
+      if (generatedProjectData?.englishCards) {
+        const hasEnglishCards = Object.keys(generatedProjectData.englishCards).length > 0;
+        setIsEnglishJsonCardGenerated(hasEnglishCards);
+        console.log('JSON 영문 카드 생성 상태:', hasEnglishCards);
+      }
+    };
+
     loadProjectReferenceData();
-  }, []);
+    checkEnglishJsonCardStatus();
+  }, [generatedProjectData]);
 
   // 편집 핸들러 등록
   useEffect(() => {
@@ -102,6 +120,39 @@ export const VideoGenerationStep: React.FC<VideoGenerationStepProps> = ({
     return generatedVideos.length > 0 && commonInputsCompleted;
   }, [generatedVideos.length, commonInputsCompleted]);
 
+  // 초기화 경고 처리 함수들
+  const handleResetWithWarning = useCallback((resetAction: () => void) => {
+    if (isEnglishJsonCardGenerated) {
+      setPendingResetAction(() => resetAction);
+      setShowResetWarning(true);
+    } else {
+      resetAction();
+    }
+  }, [isEnglishJsonCardGenerated]);
+
+  const handleConfirmReset = useCallback(() => {
+    if (pendingResetAction) {
+      pendingResetAction();
+      // 모든 상태 초기화
+      setGeneratedTextCards([]);
+      setGeneratedCharacterImages([]);
+      setGeneratedVideoBackgrounds([]);
+      setGeneratedSettingCutImages([]);
+      setSelectedSettingCutImages(new Set());
+      setGeneratedSceneTextCards([]);
+      setStorySummary('');
+      setStory('');
+      setCharacterList([]);
+    }
+    setShowResetWarning(false);
+    setPendingResetAction(null);
+  }, [pendingResetAction, setGeneratedTextCards, setGeneratedCharacterImages, setGeneratedVideoBackgrounds, setStorySummary, setStory, setCharacterList]);
+
+  const handleCancelReset = useCallback(() => {
+    setShowResetWarning(false);
+    setPendingResetAction(null);
+  }, []);
+
   // 데이터 저장/로드 핸들러
   const handleExport = useCallback(() => {
     handleExportData();
@@ -112,8 +163,10 @@ export const VideoGenerationStep: React.FC<VideoGenerationStepProps> = ({
   }, [handleImportData]);
 
   const handleClear = useCallback(() => {
-    handleClearAllData();
-  }, [handleClearAllData]);
+    handleResetWithWarning(() => {
+      handleClearAllData();
+    });
+  }, [handleResetWithWarning, handleClearAllData]);
 
   return (
     <div className="space-y-6">
@@ -151,17 +204,25 @@ export const VideoGenerationStep: React.FC<VideoGenerationStepProps> = ({
       </div>
 
       {/* 헤딩 정보 입력 */}
-      <div className="bg-white border rounded-lg p-4">
+      <div className={`border rounded-lg p-4 ${isEnglishJsonCardGenerated ? 'bg-gray-100 opacity-60' : 'bg-white'}`}>
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-lg font-semibold text-gray-800">📝 헤딩 정보</h3>
+          <h3 className={`text-lg font-semibold ${isEnglishJsonCardGenerated ? 'text-gray-500' : 'text-gray-800'}`}>
+            📝 헤딩 정보
+            {isEnglishJsonCardGenerated && <span className="ml-2 text-xs text-red-500">(비활성화됨)</span>}
+          </h3>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setShowHeadingInput(!showHeadingInput)}
-              className="px-3 py-1 text-xs rounded border hover:bg-gray-50 transition-colors"
+              onClick={() => !isEnglishJsonCardGenerated && setShowHeadingInput(!showHeadingInput)}
+              disabled={isEnglishJsonCardGenerated}
+              className={`px-3 py-1 text-xs rounded border transition-colors ${
+                isEnglishJsonCardGenerated 
+                  ? 'bg-gray-200 text-gray-400 cursor-not-allowed' 
+                  : 'hover:bg-gray-50'
+              }`}
             >
-              {showHeadingInput ? '입력 숨기기' : '입력 보기/수정'}
+              {showHeadingInput ? '입력 숨기기' : '입력 보기-수정'}
             </button>
-            {showHeadingInput && (
+            {showHeadingInput && !isEnglishJsonCardGenerated && (
               <button
                 onClick={handleSaveHeadingInfo}
                 className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
@@ -251,6 +312,10 @@ export const VideoGenerationStep: React.FC<VideoGenerationStepProps> = ({
         videoNotes={videoNotes}
         finalScenario={finalScenario}
         generatedProjectData={generatedProjectData}
+        // JSON 영문 카드 생성 상태 전달
+        isDisabled={isEnglishJsonCardGenerated}
+        // 초기화 경고 처리 전달
+        onResetWithWarning={handleResetWithWarning}
       />
 
       {/* 텍스트 카드 생성 */}
@@ -308,11 +373,14 @@ export const VideoGenerationStep: React.FC<VideoGenerationStepProps> = ({
         generatedVideos={generatedVideos}
         setGeneratedVideos={setGeneratedVideos}
         generatedTextCards={generatedTextCards}
+        setGeneratedTextCards={setGeneratedTextCards}
         generatedCharacterImages={generatedCharacterImages}
         generatedVideoBackgrounds={generatedVideoBackgrounds}
         selectedTextCards={selectedTextCards}
+        setSelectedTextCards={setSelectedTextCards}
         selectedCharacterImages={selectedCharacterImages}
         selectedVideoBackgrounds={selectedVideoBackgrounds}
+        setSelectedVideoBackgrounds={setSelectedVideoBackgrounds}
         selectedCuts={selectedCuts}
         story={story}
         characterList={characterList}
@@ -371,6 +439,17 @@ export const VideoGenerationStep: React.FC<VideoGenerationStepProps> = ({
           </div>
         </div>
       )}
+
+      {/* 초기화 경고 모달 */}
+      <ResetWarningModal
+        isOpen={showResetWarning}
+        onClose={handleCancelReset}
+        onConfirm={handleConfirmReset}
+        title="프로젝트 초기화 경고"
+        message="JSON 영문 카드가 생성된 상태에서 수정하면 모든 프로젝트 텍스트가 초기화됩니다."
+        confirmText="초기화하고 계속"
+        cancelText="취소"
+      />
     </div>
   );
 };

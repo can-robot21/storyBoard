@@ -5,16 +5,25 @@ import { StepProgressPanel } from './StepProgressPanel';
 import { StepHelpModal } from '../common/StepHelpModal';
 import { ProjectReferenceModal } from '../common/ProjectReferenceModal';
 import { UnifiedReferenceModal } from '../common/UnifiedReferenceModal';
-import { APIUsageIndicator } from '../common/APIUsageIndicator';
 import { ProjectOverviewStep } from '../steps/ProjectOverviewStep';
 import { ImageGenerationStep } from '../steps/ImageGenerationStep';
 import { NanoBananaImageStep } from '../steps/NanoBananaImageStep';
 import { VideoGenerationStep } from '../steps/VideoGenerationStep';
 import { useSettingsManager } from '../../hooks/useSettingsManager';
+import { useUIStore } from '../../stores/uiStore';
+import { storageOptimizationService } from '../../services/storageOptimizationService';
 
 interface ImprovedMainLayoutProps {
   currentStep: string;
   setCurrentStep: (step: string) => void;
+  onShowSecurityCheck?: () => void;
+  onShowBackupManager?: () => void;
+  onShowEnhancedApiKeyManager?: () => void;
+  onShowSessionManager?: () => void;
+  onShowDataSyncManager?: () => void;
+  onShowPermissionManager?: () => void;
+  onShowActivityLogManager?: () => void;
+  onShowManagementModal?: () => void;
   // 프로젝트 개요 상태
   story: string;
   setStory: (story: string) => void;
@@ -86,6 +95,14 @@ interface ImprovedMainLayoutProps {
 export const ImprovedMainLayout: React.FC<ImprovedMainLayoutProps> = ({
   currentStep,
   setCurrentStep,
+  onShowSecurityCheck,
+  onShowBackupManager,
+  onShowEnhancedApiKeyManager,
+  onShowSessionManager,
+  onShowDataSyncManager,
+  onShowPermissionManager,
+  onShowActivityLogManager,
+  onShowManagementModal,
   // 프로젝트 개요 상태
   story,
   setStory,
@@ -143,6 +160,8 @@ export const ImprovedMainLayout: React.FC<ImprovedMainLayoutProps> = ({
   currentUser,
   videoStepEditHandlerRef
 }) => {
+  const { addNotification } = useUIStore();
+  
   // API 키 상태 확인
   const getAPIKey = () => {
     if (currentUser?.apiKeys?.google) {
@@ -206,6 +225,69 @@ export const ImprovedMainLayout: React.FC<ImprovedMainLayoutProps> = ({
     }
   };
 
+  // 프로젝트 초기화 핸들러
+  const handleProjectReset = async () => {
+    try {
+      // 스토리지 상태 확인
+      const storageHealth = await storageOptimizationService.getStorageHealth();
+      if (storageHealth?.localStorage?.status === 'critical') {
+        addNotification({
+          type: 'warning',
+          title: '스토리지 용량 부족',
+          message: '스토리지 용량이 부족합니다. 초기화 후 정리가 필요할 수 있습니다.',
+        });
+      }
+
+      // 모든 프로젝트 데이터 초기화
+      setStory('');
+      setCharacterList([]);
+      setFinalScenario('');
+      setGeneratedProjectData(null);
+      setGeneratedCharacters([]);
+      setGeneratedBackgrounds([]);
+      setGeneratedSettingCuts([]);
+      setGeneratedTextCards([]);
+      setGeneratedVideos([]);
+      setGeneratedCharacterImages([]);
+      setGeneratedVideoBackgrounds([]);
+      setVideoSettings({
+        quality: '',
+        duration: '',
+        ratio: '',
+        englishPrompt: ''
+      });
+      
+      // 단계 상태 초기화
+      setStepStatus({
+        scenarioGenerated: false,
+        aiReviewCompleted: false,
+        jsonCardsGenerated: false,
+        koreanCardDraftGenerated: false,
+        projectOverviewSaved: false
+      });
+      
+      // 현재 단계를 첫 번째로 리셋
+      setCurrentStep('프로젝트 개요');
+      
+      // 로컬 스토리지 초기화 (최적화된 서비스 사용)
+      storageOptimizationService.clearAllStorage();
+      
+      // 알림 표시
+      addNotification({
+        type: 'success',
+        title: '프로젝트 초기화 완료',
+        message: '모든 프로젝트 데이터가 초기화되었습니다.',
+      });
+    } catch (error) {
+      console.error('프로젝트 초기화 실패:', error);
+      addNotification({
+        type: 'error',
+        title: '초기화 실패',
+        message: '프로젝트 초기화 중 오류가 발생했습니다.',
+      });
+    }
+  };
+
   // 참조 모달 열기 핸들러
   const handleShowReference = (type: string, data: any[], aiProvider?: string) => {
     const titleMap: { [key: string]: string } = {
@@ -235,7 +317,7 @@ export const ImprovedMainLayout: React.FC<ImprovedMainLayoutProps> = ({
       const newData = { ...prev };
       
       // 카드 타입에 따라 적절한 위치에 저장
-      if (['스토리', '영상 설정', '캐릭터 설정', '씬/컷 구성', '시나리오 추가 설정', '영상 시나리오', '씬별 컷별 프롬프트'].includes(cardType)) {
+      if (['스토리', '영상 설정', '캐릭터 설정', '씬-컷 구성', '시나리오 추가 설정', '영상 시나리오', '씬별 컷별 프롬프트'].includes(cardType)) {
         // 한국어 카드
         if (!newData.koreanCards) {
           newData.koreanCards = {};
@@ -253,32 +335,121 @@ export const ImprovedMainLayout: React.FC<ImprovedMainLayoutProps> = ({
     });
   };
 
-  // 상태에서 항목 삭제 핸들러
+  // 상태에서 항목 삭제 핸들러 (인덱스 기반)
   const handleDeleteFromState = (type: string, index: number) => {
+    console.log('삭제 요청:', { type, index }); // 디버깅용 로그 추가
+    
     switch (type) {
       case 'characterImages':
-        setGeneratedCharacterImages((prev: any[]) => prev.filter((_, i) => i !== index));
+        setGeneratedCharacterImages((prev: any[]) => {
+          const filtered = prev.filter((_, i) => i !== index);
+          console.log('캐릭터 이미지 삭제 후:', { 원본: prev.length, 삭제후: filtered.length, 삭제인덱스: index });
+          return filtered;
+        });
         break;
       case 'backgroundImages':
-        setGeneratedVideoBackgrounds((prev: any[]) => prev.filter((_, i) => i !== index));
+        setGeneratedVideoBackgrounds((prev: any[]) => {
+          const filtered = prev.filter((_, i) => i !== index);
+          console.log('배경 이미지 삭제 후:', { 원본: prev.length, 삭제후: filtered.length, 삭제인덱스: index });
+          return filtered;
+        });
         break;
       case 'settingCuts':
-        setGeneratedSettingCuts((prev: any[]) => prev.filter((_, i) => i !== index));
+        setGeneratedSettingCuts((prev: any[]) => {
+          const filtered = prev.filter((_, i) => i !== index);
+          console.log('설정 컷 삭제 후:', { 원본: prev.length, 삭제후: filtered.length, 삭제인덱스: index });
+          return filtered;
+        });
         break;
       case 'textCards':
-        setGeneratedTextCards((prev: any[]) => prev.filter((_, i) => i !== index));
+        setGeneratedTextCards((prev: any[]) => {
+          const filtered = prev.filter((_, i) => i !== index);
+          console.log('텍스트 카드 삭제 후:', { 원본: prev.length, 삭제후: filtered.length, 삭제인덱스: index });
+          return filtered;
+        });
         break;
       case 'videos':
-        setGeneratedVideos((prev: any[]) => prev.filter((_, i) => i !== index));
+        setGeneratedVideos((prev: any[]) => {
+          const filtered = prev.filter((_, i) => i !== index);
+          console.log('비디오 삭제 후:', { 원본: prev.length, 삭제후: filtered.length, 삭제인덱스: index });
+          return filtered;
+        });
         break;
       case 'characters':
-        setGeneratedCharacters((prev: any[]) => prev.filter((_, i) => i !== index));
+        setGeneratedCharacters((prev: any[]) => {
+          const filtered = prev.filter((_, i) => i !== index);
+          console.log('캐릭터 삭제 후:', { 원본: prev.length, 삭제후: filtered.length, 삭제인덱스: index });
+          return filtered;
+        });
         break;
       case 'backgrounds':
-        setGeneratedBackgrounds((prev: any[]) => prev.filter((_, i) => i !== index));
+        setGeneratedBackgrounds((prev: any[]) => {
+          const filtered = prev.filter((_, i) => i !== index);
+          console.log('배경 삭제 후:', { 원본: prev.length, 삭제후: filtered.length, 삭제인덱스: index });
+          return filtered;
+        });
         break;
       default:
         console.log('삭제할 수 없는 타입:', type);
+    }
+  };
+
+  // ID 기반 삭제 핸들러 (더 안전한 삭제 방식)
+  const handleDeleteById = (type: string, id: number) => {
+    console.log('ID 기반 삭제 요청:', { type, id });
+    
+    switch (type) {
+      case 'characters':
+        setGeneratedCharacters((prev: any[]) => {
+          const filtered = prev.filter((item: any) => item.id !== id);
+          console.log('캐릭터 ID 삭제 후:', { 삭제ID: id, 원본: prev.length, 삭제후: filtered.length });
+          return filtered;
+        });
+        break;
+      case 'backgrounds':
+        setGeneratedBackgrounds((prev: any[]) => {
+          const filtered = prev.filter((item: any) => item.id !== id);
+          console.log('배경 ID 삭제 후:', { 삭제ID: id, 원본: prev.length, 삭제후: filtered.length });
+          return filtered;
+        });
+        break;
+      case 'settingCuts':
+        setGeneratedSettingCuts((prev: any[]) => {
+          const filtered = prev.filter((item: any) => item.id !== id);
+          console.log('설정 컷 ID 삭제 후:', { 삭제ID: id, 원본: prev.length, 삭제후: filtered.length });
+          return filtered;
+        });
+        break;
+      case 'characterImages':
+        setGeneratedCharacterImages((prev: any[]) => {
+          const filtered = prev.filter((item: any) => item.id !== id);
+          console.log('캐릭터 이미지 ID 삭제 후:', { 삭제ID: id, 원본: prev.length, 삭제후: filtered.length });
+          return filtered;
+        });
+        break;
+      case 'backgroundImages':
+        setGeneratedVideoBackgrounds((prev: any[]) => {
+          const filtered = prev.filter((item: any) => item.id !== id);
+          console.log('배경 이미지 ID 삭제 후:', { 삭제ID: id, 원본: prev.length, 삭제후: filtered.length });
+          return filtered;
+        });
+        break;
+      case 'textCards':
+        setGeneratedTextCards((prev: any[]) => {
+          const filtered = prev.filter((item: any) => item.id !== id);
+          console.log('텍스트 카드 ID 삭제 후:', { 삭제ID: id, 원본: prev.length, 삭제후: filtered.length });
+          return filtered;
+        });
+        break;
+      case 'videos':
+        setGeneratedVideos((prev: any[]) => {
+          const filtered = prev.filter((item: any) => item.id !== id);
+          console.log('비디오 ID 삭제 후:', { 삭제ID: id, 원본: prev.length, 삭제후: filtered.length });
+          return filtered;
+        });
+        break;
+      default:
+        console.log('ID 기반 삭제할 수 없는 타입:', type);
     }
   };
 
@@ -450,6 +621,7 @@ export const ImprovedMainLayout: React.FC<ImprovedMainLayoutProps> = ({
           cutTextCardSelections={cutTextCardSelections}
           selectedCuts={selectedCuts}
           onShowReference={handleShowReference}
+          onDeleteItem={handleDeleteFromState}
           selectedAIProvider={selectedAIProvider}
           onAISettingsClick={onAISettingsClick}
           hasAPIKey={hasAPIKey}
@@ -462,6 +634,7 @@ export const ImprovedMainLayout: React.FC<ImprovedMainLayoutProps> = ({
         onProjectReferenceClick={() => setShowProjectReference(true)}
         onExportClick={() => {/* 내보내기 로직 */}}
         onToggleSettings={() => updateUISettings({ showStepSettings: !settings.ui.showStepSettings })}
+        onManagementToolsClick={onShowManagementModal}
         projectHandlers={projectHandlers}
         imageHandlers={imageHandlers}
         videoHandlers={videoHandlers}
@@ -492,10 +665,33 @@ export const ImprovedMainLayout: React.FC<ImprovedMainLayoutProps> = ({
         generatedVideoBackgrounds={generatedVideoBackgrounds}
         videoSettings={videoSettings}
         onDeleteItem={handleDeleteFromState}
+        onDeleteById={handleDeleteById}
         onGenerateJsonCard={handleGenerateJsonCard}
+        onEditItem={(type, index, data) => {
+          // 데이터 수정 처리
+          if (type === 'koreanCards') {
+            // 한글 카드 수정
+            setGeneratedProjectData((prev: any) => ({
+              ...prev,
+              koreanCards: data
+            }));
+          } else if (type === 'englishCards') {
+            // 영어 카드 수정
+            setGeneratedProjectData((prev: any) => ({
+              ...prev,
+              englishCards: data
+            }));
+          } else if (type === 'textCard') {
+            // 텍스트 카드 수정
+            const updatedCards = [...generatedTextCards];
+            updatedCards[index] = data;
+            setGeneratedTextCards(updatedCards);
+          }
+        }}
         episodes={[]}
         cutTextCardSelections={cutTextCardSelections}
         selectedCuts={selectedCuts}
+        onProjectReset={handleProjectReset}
       />
 
       {/* 통합 참조 모달 */}
@@ -540,8 +736,6 @@ export const ImprovedMainLayout: React.FC<ImprovedMainLayoutProps> = ({
         }}
       />
       
-      {/* API 사용량 표시기 */}
-      <APIUsageIndicator />
     </div>
   );
 };

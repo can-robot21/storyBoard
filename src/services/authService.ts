@@ -2,6 +2,7 @@ import { User, LoginCredentials, RegisterData } from '../types/auth';
 import { CryptoUtils } from '../utils/cryptoUtils';
 import { databaseService } from './database/DatabaseService';
 import { User as DBUser } from '../types/project';
+import { userMigrationService, MigrationResult } from './userMigrationService';
 
   // 관리자 계정 정보 (환경변수에서 가져옴)
   const getAdminUser = async (): Promise<User> => {
@@ -128,6 +129,63 @@ export class AuthService {
     }
   }
 
+  // 사용자 데이터 마이그레이션 실행
+  static async executeUserMigration(
+    fromUserId: string,
+    toUserId: string,
+    options?: any
+  ): Promise<MigrationResult> {
+    try {
+      console.log('🔄 사용자 데이터 마이그레이션 시작');
+      const result = await userMigrationService.migrateUserData(fromUserId, toUserId, options);
+      
+      if (result.success) {
+        console.log('✅ 사용자 데이터 마이그레이션 완료');
+      } else {
+        console.warn('⚠️ 사용자 데이터 마이그레이션 부분 완료:', result.errors);
+      }
+      
+      return result;
+    } catch (error) {
+      console.error('❌ 사용자 데이터 마이그레이션 실패:', error);
+      throw error;
+    }
+  }
+
+  // 사용자 변경시 데이터 정리
+  static async cleanupUserData(userId: string, preserveData: boolean = false): Promise<void> {
+    try {
+      console.log('🧹 사용자 데이터 정리 시작:', userId);
+      
+      if (!preserveData) {
+        // 프로젝트 데이터 삭제
+        const projects = await databaseService.listProjects(userId);
+        for (const project of projects) {
+          await databaseService.deleteProject(project.projectId);
+        }
+        
+        // 템플릿 데이터 삭제
+        const templates = await databaseService.listPromptTemplates(userId);
+        for (const template of templates) {
+          await databaseService.deletePromptTemplate(template.id);
+        }
+        
+        // API 키 삭제
+        const apiKeys = await databaseService.getUserApiKeys(userId);
+        for (const provider of Object.keys(apiKeys)) {
+          await databaseService.deleteUserApiKey(userId, provider);
+        }
+        
+        console.log('🗑️ 사용자 데이터 완전 삭제 완료');
+      } else {
+        console.log('💾 사용자 데이터 보존 모드');
+      }
+    } catch (error) {
+      console.error('❌ 사용자 데이터 정리 실패:', error);
+      throw error;
+    }
+  }
+
   // 기존 방식으로 초기화 (폴백)
   static async initializeUsersLegacy(): Promise<void> {
     const existingUsers = localStorage.getItem(STORAGE_KEY);
@@ -184,8 +242,10 @@ export class AuthService {
   }
 
   // 로그인
-  static async login(credentials: LoginCredentials): Promise<{ success: boolean; user?: User; message?: string }> {
+  static async login(credentials: LoginCredentials): Promise<{ success: boolean; user?: User; message?: string; needsMigration?: boolean }> {
     try {
+      const currentUser = this.getCurrentUser();
+      
       // DB에서 사용자 인증 시도
       try {
         const userId = await databaseService.authenticateUser(credentials.email, credentials.password);
@@ -206,6 +266,17 @@ export class AuthService {
             };
 
             const sanitizedUser = CryptoUtils.sanitizeUser(user);
+            
+            // 사용자 변경 감지
+            if (currentUser && currentUser.id !== sanitizedUser.id) {
+              console.log('🔄 사용자 변경 감지:', currentUser.id, '→', sanitizedUser.id);
+              return { 
+                success: true, 
+                user: sanitizedUser, 
+                needsMigration: true 
+              };
+            }
+            
             this.setCurrentUser(sanitizedUser);
             return { success: true, user: sanitizedUser };
           }
@@ -222,6 +293,17 @@ export class AuthService {
         const isValidPassword = await CryptoUtils.verifyPassword(credentials.password, user.password);
         if (isValidPassword) {
           const sanitizedUser = CryptoUtils.sanitizeUser(user);
+          
+          // 사용자 변경 감지
+          if (currentUser && currentUser.id !== sanitizedUser.id) {
+            console.log('🔄 사용자 변경 감지 (localStorage):', currentUser.id, '→', sanitizedUser.id);
+            return { 
+              success: true, 
+              user: sanitizedUser, 
+              needsMigration: true 
+            };
+          }
+          
           this.setCurrentUser(sanitizedUser);
           return { success: true, user: sanitizedUser };
         }

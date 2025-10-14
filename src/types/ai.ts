@@ -83,7 +83,7 @@ export interface TextGenerationOptions extends BaseAIOptions {
 export interface ImageGenerationOptions extends BaseAIOptions {
   provider: AIProvider;
   model: ImageModel;
-  aspectRatio: '1:1' | '16:9' | '9:16';
+  aspectRatio: '1:1' | '16:9' | '9:16' | '4:3' | '3:4';
   quality: 'standard' | 'high' | 'ultra';
   style?: 'photographic' | 'artistic' | 'cartoon' | 'anime';
   numberOfImages?: number;

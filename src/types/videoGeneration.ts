@@ -1,5 +1,10 @@
 // 영상 생성 관련 타입 정의
 
+import { Episode, Scene } from './projectOverview';
+
+// Episode와 Scene 타입을 다시 export
+export type { Episode, Scene };
+
 export interface SceneTextCard {
   id: number;
   sceneId: number;
@@ -57,20 +62,6 @@ export interface GeneratedVideo {
   duration?: string;
   type?: 'general' | 'episode';
   episodeId?: number;
-}
-
-export interface Episode {
-  id: number;
-  title: string;
-  description: string;
-  scenes: Scene[];
-}
-
-export interface Scene {
-  id: number;
-  title: string;
-  description: string;
-  cuts: number;
 }
 
 export interface VideoSettings {

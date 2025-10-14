@@ -7,8 +7,9 @@ interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
   mode: 'login' | 'register' | 'profile';
-  onSuccess: (user: User) => void;
+  onSuccess: (user: User, needsMigration?: boolean) => void;
   currentUser?: User | null;
+  onAccountDeletion?: () => void;
 }
 
 export const AuthModal: React.FC<AuthModalProps> = ({
@@ -16,7 +17,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   onClose,
   mode,
   onSuccess,
-  currentUser
+  currentUser,
+  onAccountDeletion
 }) => {
   const [formData, setFormData] = useState<RegisterData>({
     name: '',
@@ -139,7 +141,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   mode === 'register' ? '회원가입이 완료되었습니다.' : 
                   '회원정보가 수정되었습니다.');
         setTimeout(() => {
-          onSuccess(result.user!);
+          onSuccess(result.user!, (result as any).needsMigration);
           onClose();
         }, 1000);
       } else {
@@ -379,6 +381,19 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 className="text-blue-600 hover:text-blue-800 font-medium"
               >
                 회원가입
+              </button>
+            </div>
+          )}
+
+          {/* 계정 삭제 버튼 (프로필 모드일 때만) */}
+          {mode === 'profile' && onAccountDeletion && (
+            <div className="mt-4 pt-4 border-t border-gray-200">
+              <button
+                type="button"
+                onClick={onAccountDeletion}
+                className="w-full bg-red-600 text-white py-2 px-4 rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 transition-colors"
+              >
+                계정 삭제
               </button>
             </div>
           )}

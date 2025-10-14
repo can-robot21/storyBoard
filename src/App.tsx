@@ -20,6 +20,22 @@ import {
 } from './types/project';
 import { AIProvider } from './types/ai';
 import { User } from './types/auth';
+import { UserMigrationModal } from './components/common/UserMigrationModal';
+import { MigrationResult } from './services/userMigrationService';
+import { SecurityCheckModal } from './components/common/SecurityCheckModal';
+import { LogoutConfirmationModal, LogoutOptions } from './components/common/LogoutConfirmationModal';
+import { logoutDataCleanupService } from './services/logoutDataCleanupService';
+import { AccountDeletionModal, AccountDeletionOptions } from './components/common/AccountDeletionModal';
+import { accountDeletionService } from './services/accountDeletionService';
+import { BackupManagerModal } from './components/common/BackupManagerModal';
+import { EnhancedApiKeyManagerModal } from './components/common/EnhancedApiKeyManagerModal';
+import { SessionManagerModal } from './components/common/SessionManagerModal';
+import { sessionManagementService } from './services/sessionManagementService';
+import { PermissionManagerModal } from './components/common/PermissionManagerModal';
+import { userPermissionService } from './services/userPermissionService';
+import { ActivityLogManagerModal } from './components/common/ActivityLogManagerModal';
+import { userActivityLogService } from './services/userActivityLogService';
+import { ManagementModal } from './components/common/ManagementModal';
 
 // const mainSteps = [
 //   "프로젝트 개요",
@@ -36,6 +52,17 @@ export default function App() {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<'login' | 'register' | 'profile'>('login');
   const [AuthModal, setAuthModal] = useState<React.ComponentType<any> | null>(null);
+  const [showMigrationModal, setShowMigrationModal] = useState(false);
+  const [pendingMigrationUser, setPendingMigrationUser] = useState<User | null>(null);
+  const [showSecurityCheck, setShowSecurityCheck] = useState(false);
+  const [showLogoutConfirmation, setShowLogoutConfirmation] = useState(false);
+  const [showAccountDeletion, setShowAccountDeletion] = useState(false);
+  const [showBackupManager, setShowBackupManager] = useState(false);
+  const [showEnhancedApiKeyManager, setShowEnhancedApiKeyManager] = useState(false);
+  const [showSessionManager, setShowSessionManager] = useState(false);
+  const [showPermissionManager, setShowPermissionManager] = useState(false);
+  const [showActivityLogManager, setShowActivityLogManager] = useState(false);
+  const [showManagementModal, setShowManagementModal] = useState(false);
 
   // 인증 서비스 초기화
   useEffect(() => {
@@ -46,6 +73,12 @@ export default function App() {
         if (user) {
           setCurrentUser(user);
           setIsLoggedIn(true);
+          
+          // 세션 복원
+          const session = sessionManagementService.loadSession();
+          if (session) {
+            console.log('세션 복원됨:', session.sessionId);
+          }
         }
       } catch (error) {
         console.error('Auth initialization error:', error);
@@ -141,7 +174,9 @@ export default function App() {
     generatedSettingCuts, setGeneratedSettingCuts,
     generatedProjectData,
     'google', // 기본값
-    '16:9' // aspectRatio 기본값
+    '16:9', // aspectRatio 기본값
+    undefined, // imageOptions
+    currentUser?.id || 'default' // currentProjectId
   );
 
   // VideoGenerationStep의 편집 핸들러 참조
@@ -176,10 +211,30 @@ export default function App() {
     setShowAuthModal(true);
   };
 
-  const handleLoginSuccess = async (user: User) => {
+  const handleLoginSuccess = async (user: User, needsMigration?: boolean) => {
+    if (needsMigration && currentUser) {
+      // 마이그레이션이 필요한 경우
+      setPendingMigrationUser(user);
+      setShowMigrationModal(true);
+      return;
+    }
+    
     setCurrentUser(user);
     setIsLoggedIn(true);
     setShowAuthModal(false);
+    
+    // 세션 시작
+    try {
+      sessionManagementService.startSession(user, {
+        ipAddress: 'localhost', // 실제로는 클라이언트 IP 사용
+        userAgent: navigator.userAgent
+      });
+    } catch (error) {
+      console.error('세션 시작 실패:', error);
+    }
+
+    // 로그인 시 자동 동기화 (비활성화됨)
+    // dataSyncService 관련 코드 제거됨
     
     // 관리자 계정인 경우 환경 변수 키값 자동 적용
     if (AuthService.isAdminUser(user.email)) {
@@ -194,14 +249,46 @@ export default function App() {
   };
 
   const handleLogout = () => {
-    AuthService.logout();
-    setCurrentUser(null);
-    setIsLoggedIn(false);
-    addNotification({
-      type: 'info',
-      title: '로그아웃',
-      message: '로그아웃되었습니다.'
-    });
+    setShowLogoutConfirmation(true);
+  };
+
+  const handleLogoutConfirm = async (options: LogoutOptions) => {
+    try {
+      if (currentUser) {
+        // 데이터 정리 실행
+        const result = await logoutDataCleanupService.executeLogoutCleanup(currentUser.id, options);
+        
+        if (result.success) {
+          addNotification({
+            type: 'success',
+            title: '로그아웃 완료',
+            message: `데이터 정리가 완료되었습니다. (프로젝트: ${result.clearedItems.projectData}개, 이미지: ${result.clearedItems.imageData}개)`
+          });
+        } else {
+          addNotification({
+            type: 'warning',
+            title: '로그아웃 완료',
+            message: '로그아웃되었지만 일부 데이터 정리 중 오류가 발생했습니다.'
+          });
+        }
+      }
+
+      // 세션 종료
+      sessionManagementService.endSession();
+      
+      // 로그아웃 처리
+      AuthService.logout();
+      setCurrentUser(null);
+      setIsLoggedIn(false);
+      setShowLogoutConfirmation(false);
+    } catch (error) {
+      console.error('로그아웃 처리 실패:', error);
+      addNotification({
+        type: 'error',
+        title: '로그아웃 실패',
+        message: '로그아웃 처리 중 오류가 발생했습니다.'
+      });
+    }
   };
 
   const handleAPIKeySave = async (apiKeys: any) => {
@@ -238,6 +325,74 @@ export default function App() {
                authModalMode === 'register' ? '회원가입이 완료되었습니다.' :
                '회원정보가 수정되었습니다.'
     });
+  };
+
+  const handleMigrationComplete = (result: MigrationResult) => {
+    if (pendingMigrationUser) {
+      setCurrentUser(pendingMigrationUser);
+      setIsLoggedIn(true);
+      setShowMigrationModal(false);
+      setPendingMigrationUser(null);
+      
+      addNotification({
+        type: 'success',
+        title: '사용자 변경 완료',
+        message: `데이터 마이그레이션이 완료되어 ${pendingMigrationUser.name}님으로 로그인되었습니다.`
+      });
+    }
+  };
+
+  const handleMigrationCancel = () => {
+    setShowMigrationModal(false);
+    setPendingMigrationUser(null);
+    addNotification({
+      type: 'info',
+      title: '마이그레이션 취소',
+      message: '사용자 변경이 취소되었습니다.'
+    });
+  };
+
+  const handleAccountDeletion = () => {
+    setShowAccountDeletion(true);
+  };
+
+  const handleAccountDeletionConfirm = async (options: AccountDeletionOptions) => {
+    try {
+      if (currentUser) {
+        // 계정 삭제 실행
+        const result = await accountDeletionService.executeAccountDeletion(currentUser.id, options);
+        
+        if (result.success) {
+          addNotification({
+            type: 'success',
+            title: '계정 삭제 완료',
+            message: `계정이 성공적으로 삭제되었습니다. (프로젝트: ${result.deletedItems.projects}개, 이미지: ${result.deletedItems.images}개)`
+          });
+
+          // 세션 종료
+          sessionManagementService.endSession();
+          
+          // 로그아웃 처리
+          AuthService.logout();
+          setCurrentUser(null);
+          setIsLoggedIn(false);
+          setShowAccountDeletion(false);
+        } else {
+          addNotification({
+            type: 'error',
+            title: '계정 삭제 실패',
+            message: '계정 삭제 중 오류가 발생했습니다.'
+          });
+        }
+      }
+    } catch (error) {
+      console.error('계정 삭제 처리 실패:', error);
+      addNotification({
+        type: 'error',
+        title: '계정 삭제 실패',
+        message: '계정 삭제 처리 중 오류가 발생했습니다.'
+      });
+    }
   };
 
   // 프로젝트 데이터 localStorage 저장
@@ -297,6 +452,13 @@ export default function App() {
       <ImprovedMainLayout
         currentStep={currentStep}
         setCurrentStep={setCurrentStep}
+        onShowSecurityCheck={() => setShowSecurityCheck(true)}
+        onShowBackupManager={() => setShowBackupManager(true)}
+        onShowEnhancedApiKeyManager={() => setShowEnhancedApiKeyManager(true)}
+        onShowSessionManager={() => setShowSessionManager(true)}
+        onShowPermissionManager={() => setShowPermissionManager(true)}
+        onShowActivityLogManager={() => setShowActivityLogManager(true)}
+        onShowManagementModal={() => setShowManagementModal(true)}
         // 프로젝트 개요 props
         story={story}
         setStory={setStory}
@@ -379,8 +541,127 @@ export default function App() {
           mode={authModalMode}
           onSuccess={handleLoginSuccess}
           currentUser={currentUser}
+          onAccountDeletion={handleAccountDeletion}
         />
       )}
+
+      {/* 사용자 마이그레이션 모달 */}
+      {showMigrationModal && currentUser && pendingMigrationUser && (
+        <UserMigrationModal
+          isOpen={showMigrationModal}
+          onClose={handleMigrationCancel}
+          currentUser={currentUser}
+          targetUser={pendingMigrationUser}
+          onMigrationComplete={handleMigrationComplete}
+        />
+      )}
+
+      {/* 보안 검사 모달 */}
+      <SecurityCheckModal
+        isOpen={showSecurityCheck}
+        onClose={() => setShowSecurityCheck(false)}
+        onGoBack={() => {
+          setShowSecurityCheck(false);
+          setShowManagementModal(true);
+        }}
+      />
+
+      {/* 로그아웃 확인 모달 */}
+      <LogoutConfirmationModal
+        isOpen={showLogoutConfirmation}
+        onClose={() => setShowLogoutConfirmation(false)}
+        onConfirm={handleLogoutConfirm}
+        currentUser={currentUser}
+      />
+
+      {/* 계정 삭제 모달 */}
+      <AccountDeletionModal
+        isOpen={showAccountDeletion}
+        onClose={() => setShowAccountDeletion(false)}
+        onConfirm={handleAccountDeletionConfirm}
+        currentUser={currentUser}
+      />
+
+      {/* 백업 관리 모달 */}
+      <BackupManagerModal
+        isOpen={showBackupManager}
+        onClose={() => setShowBackupManager(false)}
+        onGoBack={() => {
+          setShowBackupManager(false);
+          setShowManagementModal(true);
+        }}
+        currentUser={currentUser}
+      />
+
+      {/* 강화된 API 키 관리 모달 */}
+      <EnhancedApiKeyManagerModal
+        isOpen={showEnhancedApiKeyManager}
+        onClose={() => setShowEnhancedApiKeyManager(false)}
+        onGoBack={() => {
+          setShowEnhancedApiKeyManager(false);
+          setShowManagementModal(true);
+        }}
+        currentUser={currentUser}
+      />
+
+      {/* 세션 관리 모달 */}
+      <SessionManagerModal
+        isOpen={showSessionManager}
+        onClose={() => setShowSessionManager(false)}
+        onGoBack={() => {
+          setShowSessionManager(false);
+          setShowManagementModal(true);
+        }}
+        currentUser={currentUser}
+      />
+
+      {/* 데이터 동기화 관리 모달 (비활성화됨) */}
+      {/* DataSyncManagerModal 제거됨 */}
+
+      {/* 권한 관리 모달 */}
+      <PermissionManagerModal
+        isOpen={showPermissionManager}
+        onClose={() => setShowPermissionManager(false)}
+        onGoBack={() => {
+          setShowPermissionManager(false);
+          setShowManagementModal(true);
+        }}
+        currentUser={currentUser}
+      />
+
+      {/* 활동 로그 관리 모달 */}
+      <ActivityLogManagerModal
+        isOpen={showActivityLogManager}
+        onClose={() => setShowActivityLogManager(false)}
+        onGoBack={() => {
+          setShowActivityLogManager(false);
+          setShowManagementModal(true);
+        }}
+        currentUser={currentUser}
+      />
+
+      {/* 통합 관리 모달 */}
+      <ManagementModal
+        isOpen={showManagementModal}
+        onClose={() => setShowManagementModal(false)}
+        onGoBack={() => {
+          // 개별 관리 모달들을 모두 닫고 관리 도구 모달로 돌아가기
+          setShowSecurityCheck(false);
+          setShowBackupManager(false);
+          setShowEnhancedApiKeyManager(false);
+          setShowSessionManager(false);
+          setShowPermissionManager(false);
+          setShowActivityLogManager(false);
+          // 관리 도구 모달은 열린 상태로 유지
+        }}
+        currentUser={currentUser}
+        onSecurityCheck={() => setShowSecurityCheck(true)}
+        onBackupManager={() => setShowBackupManager(true)}
+        onEnhancedApiKeyManager={() => setShowEnhancedApiKeyManager(true)}
+        onSessionManager={() => setShowSessionManager(true)}
+        onPermissionManager={() => setShowPermissionManager(true)}
+        onActivityLogManager={() => setShowActivityLogManager(true)}
+      />
     </div>
   );
 }

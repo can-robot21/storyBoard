@@ -2,6 +2,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { GeneratedTextCard, SceneTextCard, CutTextCard } from '../../types/videoGeneration';
 import { useUIStore } from '../../stores/uiStore';
 import { ProjectReferenceModal } from '../common/ProjectReferenceModal';
+import { Trash2 } from 'lucide-react';
 
 interface TextCardGeneratorProps {
   generatedTextCards: GeneratedTextCard[];
@@ -56,6 +57,39 @@ export const TextCardGenerator: React.FC<TextCardGeneratorProps> = React.memo(({
 }) => {
   const { addNotification } = useUIStore();
   
+  // 에피소드만 선택 모드 상태
+  const [episodeOnlyMode, setEpisodeOnlyMode] = useState(false);
+  const [selectedEpisodeForCards, setSelectedEpisodeForCards] = useState<any>(null);
+  const [selectedCutsForEpisode, setSelectedCutsForEpisode] = useState<Set<string>>(new Set());
+
+  // 에피소드 선택 시 모든 컷을 기본 선택
+  const handleEpisodeSelectForCards = (episode: any) => {
+    setSelectedEpisodeForCards(episode);
+    
+    // 모든 컷을 기본 선택
+    const allCuts = new Set<string>();
+    episode.scenes.forEach((scene: any) => {
+      for (let i = 1; i <= (scene.cuts || 3); i++) {
+        allCuts.add(`${scene.id}-${i}`);
+      }
+    });
+    setSelectedCutsForEpisode(allCuts);
+  };
+
+  // 에피소드 컷 선택 토글
+  const toggleEpisodeCutSelection = (sceneId: number, cutNumber: number) => {
+    const cutKey = `${sceneId}-${cutNumber}`;
+    setSelectedCutsForEpisode(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(cutKey)) {
+        newSet.delete(cutKey);
+      } else {
+        newSet.add(cutKey);
+      }
+      return newSet;
+    });
+  };
+  
   // 상태 관리 (단순화)
   const [showSceneCards, setShowSceneCards] = useState(false);
   const [localSceneTextCards, setLocalSceneTextCards] = useState<SceneTextCard[]>([]);
@@ -70,7 +104,6 @@ export const TextCardGenerator: React.FC<TextCardGeneratorProps> = React.memo(({
     text: string;
   } | null>(null);
   const [showProjectReferenceModal, setShowProjectReferenceModal] = useState(false);
-  const [selectedEpisodeForCards, setSelectedEpisodeForCards] = useState<any>(null);
 
   // localStorage에서 씬 텍스트 카드 로드 및 변경 감지
   useEffect(() => {
@@ -100,13 +133,14 @@ export const TextCardGenerator: React.FC<TextCardGeneratorProps> = React.memo(({
     };
 
     window.addEventListener('storage', handleStorageChange);
-
-    // 주기적으로 localStorage 확인 (같은 탭에서의 변경 감지)
-    const interval = setInterval(loadCards, 1000);
+    
+    // 이벤트 기반으로 변경
+    const handleTextCardUpdate = () => loadCards();
+    window.addEventListener('textCardUpdated', handleTextCardUpdate);
 
     return () => {
       window.removeEventListener('storage', handleStorageChange);
-      clearInterval(interval);
+      window.removeEventListener('textCardUpdated', handleTextCardUpdate);
     };
   }, [setGeneratedSceneTextCards]);
 
@@ -149,6 +183,45 @@ export const TextCardGenerator: React.FC<TextCardGeneratorProps> = React.memo(({
       message: '씬 텍스트 카드가 삭제되었습니다.',
     });
   }, [localSceneTextCards, setGeneratedSceneTextCards, addNotification]);
+
+  // 일반 텍스트 카드 삭제
+  const deleteTextCard = useCallback((cardId: number) => {
+    setGeneratedTextCards(prev => prev.filter(card => card.id !== cardId));
+    
+    // 선택된 텍스트 카드에서도 제거
+    setSelectedTextCards(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(cardId);
+      return newSet;
+    });
+    
+    addNotification({
+      type: 'success',
+      title: '삭제 완료',
+      message: '텍스트 카드가 삭제되었습니다.',
+    });
+  }, [setGeneratedTextCards, setSelectedTextCards, addNotification]);
+
+  // 선택된 텍스트 카드들 일괄 삭제
+  const deleteSelectedTextCards = useCallback(() => {
+    if (selectedTextCards.size === 0) {
+      addNotification({
+        type: 'warning',
+        title: '선택된 카드 없음',
+        message: '삭제할 텍스트 카드를 선택해주세요.',
+      });
+      return;
+    }
+
+    setGeneratedTextCards(prev => prev.filter(card => !selectedTextCards.has(card.id)));
+    setSelectedTextCards(new Set());
+    
+    addNotification({
+      type: 'success',
+      title: '일괄 삭제 완료',
+      message: `${selectedTextCards.size}개의 텍스트 카드가 삭제되었습니다.`,
+    });
+  }, [selectedTextCards, setGeneratedTextCards, setSelectedTextCards, addNotification]);
 
   // 씬 수정 시작
   const startEditingScene = useCallback((sceneCard: SceneTextCard) => {
@@ -339,22 +412,46 @@ ${selectedEpisodeForCards.scenes.map((scene: any, index: number) =>
       
       {/* 프로젝트 참조 선택 섹션 */}
       <div className="mb-6 p-4 bg-white rounded-lg border">
-        <h4 className="text-md font-semibold text-gray-800 mb-3">프로젝트 참조에서 텍스트 카드 생성</h4>
+        <h4 className="text-md font-semibold text-gray-800 mb-3">에피소드 텍스트 카드 생성</h4>
+        
+        {/* 에피소드만 선택 모드 토글 */}
+        <div className="mb-4 p-3 bg-yellow-50 rounded border">
+          <div className="flex items-center justify-between">
+            <div>
+              <h5 className="text-sm font-medium text-yellow-800">에피소드 텍스트 카드 모드</h5>
+              <p className="text-xs text-yellow-700">에피소드 구조를 기반으로 씬별 텍스트 카드를 생성합니다</p>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={episodeOnlyMode}
+                onChange={(e) => setEpisodeOnlyMode(e.target.checked)}
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-yellow-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-yellow-600"></div>
+            </label>
+          </div>
+        </div>
         
         <div className="flex items-center gap-3 mb-3">
           <button
             onClick={() => setShowProjectReferenceModal(true)}
             className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors"
           >
-            📋 프로젝트 참조 선택
+            📋 에피소드 선택
           </button>
           
           {selectedEpisodeForCards && (
             <button
               onClick={handleGenerateCardsFromEpisode}
-              className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition-colors"
+              disabled={selectedCutsForEpisode.size === 0}
+              className={`px-4 py-2 rounded transition-colors ${
+                selectedCutsForEpisode.size === 0
+                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  : 'bg-green-600 text-white hover:bg-green-700'
+              }`}
             >
-              🎬 선택된 에피소드로 카드 생성
+              🎬 에피소드 텍스트 카드 생성 ({selectedCutsForEpisode.size}개)
             </button>
           )}
         </div>
@@ -366,6 +463,42 @@ ${selectedEpisodeForCards.scenes.map((scene: any, index: number) =>
             </div>
             <div className="text-xs text-gray-600 mt-1">
               {selectedEpisodeForCards.scenes.length}개 씬, 총 {selectedEpisodeForCards.scenes.reduce((sum: number, scene: any) => sum + (scene.cuts || 3), 0)}개 컷
+              <br />
+              <span className="text-green-600 font-medium">
+                선택된 컷: {selectedCutsForEpisode.size}개
+              </span>
+            </div>
+            
+            {/* 에피소드별 컷 선택 */}
+            <div className="mt-3">
+              <h5 className="text-sm font-medium text-gray-700 mb-2">컷 선택 (공통 항목 제외)</h5>
+              <div className="space-y-2">
+                {selectedEpisodeForCards.scenes.map((scene: any, sceneIndex: number) => (
+                  <div key={scene.id} className="bg-white p-2 rounded border">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-medium">{scene.title}</span>
+                      <span className="text-xs text-gray-500">{scene.cuts || 3}개 컷</span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-1">
+                      {Array.from({ length: scene.cuts || 3 }, (_, cutIndex) => {
+                        const cutKey = `${scene.id}-${cutIndex + 1}`;
+                        const isSelected = selectedCutsForEpisode.has(cutKey);
+                        return (
+                          <label key={cutIndex} className="flex items-center gap-1 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => toggleEpisodeCutSelection(scene.id, cutIndex + 1)}
+                              className="rounded"
+                            />
+                            <span className="text-xs">컷 {cutIndex + 1}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         )}
@@ -575,13 +708,29 @@ ${selectedEpisodeForCards.scenes.map((scene: any, index: number) =>
           <div className="flex items-center justify-between">
             <h4 className="text-md font-semibold text-gray-800">
               생성된 텍스트 카드 ({generatedTextCards.length}개)
+              {selectedTextCards.size > 0 && (
+                <span className="ml-2 text-sm text-blue-600">
+                  ({selectedTextCards.size}개 선택됨)
+                </span>
+              )}
             </h4>
-            <button
-              onClick={() => setShowTextResults(!showTextResults)}
-              className="px-3 py-1 text-xs rounded border hover:bg-gray-50 transition-colors"
-            >
-              {showTextResults ? '숨기기' : '보기'}
-            </button>
+            <div className="flex items-center gap-2">
+              {selectedTextCards.size > 0 && (
+                <button
+                  onClick={deleteSelectedTextCards}
+                  className="px-3 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
+                >
+                  <Trash2 className="w-3 h-3 mr-1 inline" />
+                  선택 삭제
+                </button>
+              )}
+              <button
+                onClick={() => setShowTextResults(!showTextResults)}
+                className="px-3 py-1 text-xs rounded border hover:bg-gray-50 transition-colors"
+              >
+                {showTextResults ? '숨기기' : '보기'}
+              </button>
+            </div>
           </div>
           
           {showTextResults && (
@@ -599,6 +748,22 @@ ${selectedEpisodeForCards.scenes.map((scene: any, index: number) =>
                       <span className="text-sm font-medium text-gray-700">
                         카드 {index + 1}
                       </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {onEditCard && (
+                        <button
+                          onClick={() => onEditCard(card.id, card.generatedText)}
+                          className="px-2 py-1 text-xs bg-yellow-500 text-white rounded hover:bg-yellow-600 transition-colors"
+                        >
+                          ✏️ 수정
+                        </button>
+                      )}
+                      <button
+                        onClick={() => deleteTextCard(card.id)}
+                        className="px-2 py-1 text-xs bg-red-500 text-white rounded hover:bg-red-600 transition-colors"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
                     </div>
                   </div>
                   
@@ -625,6 +790,28 @@ ${selectedEpisodeForCards.scenes.map((scene: any, index: number) =>
         generatedProjectData={generatedProjectData}
         episodes={episodes}
         onEpisodeSelection={handleEpisodeSelection}
+        // 에피소드만 선택 모드 전달
+        episodeOnlyMode={episodeOnlyMode}
+        onEpisodeSelectForCards={handleEpisodeSelectForCards}
+        onEditItem={(type, index, data) => {
+          // 데이터 수정 처리
+          if (type === 'koreanCards') {
+            // 한글 카드 수정
+            console.log('한글 카드 수정:', index, data);
+          } else if (type === 'englishCards') {
+            // 영어 카드 수정
+            console.log('영어 카드 수정:', index, data);
+          } else if (type === 'textCard') {
+            // 텍스트 카드 수정
+            const updatedCards = [...generatedTextCards];
+            updatedCards[index] = data;
+            setGeneratedTextCards(updatedCards);
+          }
+        }}
+        onProjectReset={() => {
+          // 프로젝트 초기화 로직 (부모 컴포넌트에서 처리)
+          console.log('프로젝트 초기화 요청');
+        }}
       />
     </div>
   );
