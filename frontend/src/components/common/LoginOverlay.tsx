@@ -12,6 +12,28 @@ interface LoginOverlayProps {
 export const LoginOverlay: React.FC<LoginOverlayProps> = ({ onLogin, onRegister, onDontShowToday, onClose }) => {
   const [dontShowToday, setDontShowToday] = useState(false);
 
+  const handleLoginClick = () => {
+    // 첫 모달 닫기
+    if (onClose) {
+      onClose();
+    }
+    // 로그인 모달 열기
+    setTimeout(() => {
+      onLogin();
+    }, 100);
+  };
+
+  const handleRegisterClick = () => {
+    // 첫 모달 닫기
+    if (onClose) {
+      onClose();
+    }
+    // 회원가입 모달 열기
+    setTimeout(() => {
+      onRegister();
+    }, 100);
+  };
+
   const handleDontShowTodayChange = () => {
     setDontShowToday(!dontShowToday);
     if (onDontShowToday) {
@@ -37,7 +59,7 @@ export const LoginOverlay: React.FC<LoginOverlayProps> = ({ onLogin, onRegister,
 
         <div className="space-y-4">
           <Button
-            onClick={onLogin}
+            onClick={handleLoginClick}
             className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 px-4 rounded-lg font-medium flex items-center justify-center gap-2 transition-all duration-200"
           >
             <LogIn className="w-5 h-5" />
@@ -45,7 +67,7 @@ export const LoginOverlay: React.FC<LoginOverlayProps> = ({ onLogin, onRegister,
           </Button>
           
           <Button
-            onClick={onRegister}
+            onClick={handleRegisterClick}
             variant="outline"
             className="w-full border-gray-300 hover:bg-gray-50 text-gray-700 py-3 px-4 rounded-lg font-medium flex items-center justify-center gap-2 transition-all duration-200"
           >
