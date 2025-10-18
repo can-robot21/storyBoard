@@ -552,16 +552,16 @@ ${episodes.map(episode =>
           <div className={`p-3 rounded-lg border text-sm ${
             apiKeyStatus.hasApiKey 
               ? 'bg-green-50 border-green-200 text-green-800' 
-              : 'bg-red-50 border-red-200 text-red-800'
+              : 'bg-blue-50 border-blue-200 text-blue-800'
           }`}>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <span className="font-medium">
-                  {apiKeyStatus.hasApiKey ? '✅' : '⚠️'} Google AI API 키 상태:
+                  {apiKeyStatus.hasApiKey ? '✅' : 'ℹ️'} Google AI API 키 상태:
                 </span>
                 <span>
                   {apiKeyStatus.hasApiKey 
-                    ? `설정됨 (${apiKeyStatus.isAdmin ? '관리자 환경변수' : '사용자 설정'})` 
+                    ? '설정됨' 
                     : '설정되지 않음'
                   }
                 </span>
@@ -572,7 +572,7 @@ ${episodes.map(episode =>
                     addNotification({
                       type: 'info',
                       title: 'API 키 설정 안내',
-                      message: '우측 상단의 설정 버튼을 클릭하여 Google AI API 키를 입력해주세요.',
+                      message: '개인 Google AI API 키를 설정하면 모든 기능을 사용할 수 있습니다. 우측 상단 설정 버튼을 클릭하여 API 키를 입력해주세요.',
                     });
                   }}
                   className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
@@ -581,6 +581,11 @@ ${episodes.map(episode =>
                 </button>
               )}
             </div>
+            {!apiKeyStatus.hasApiKey && (
+              <div className="mt-2 text-xs text-blue-700">
+                💡 개인 Google AI API 키를 설정하면 이미지 생성, 텍스트 생성, 영상 생성 등 모든 AI 기능을 사용할 수 있습니다.
+              </div>
+            )}
           </div>
           
           {/* 1단계: 기본 입력 */}

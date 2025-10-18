@@ -55,7 +55,6 @@ export default function App() {
   const [currentPage, setCurrentPage] = useState<'intro' | 'description' | 'main'>('intro');
   const [showAISettings, setShowAISettings] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
-  const [hasShownFirstTimeLoginModal, setHasShownFirstTimeLoginModal] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<'login' | 'register' | 'profile'>('login');
   const [AuthModal, setAuthModal] = useState<React.ComponentType<any> | null>(null);
   const [showMigrationModal, setShowMigrationModal] = useState(false);
@@ -448,15 +447,7 @@ export default function App() {
   const handlePageNavigation = {
     toIntro: () => setCurrentPage('intro'),
     toDescription: () => setCurrentPage('description'),
-    toMain: () => {
-      setCurrentPage('main');
-      // 본문 페이지 첫 접속시에만 로그인 모달 팝업
-      if (!hasShownFirstTimeLoginModal && !isLoggedIn) {
-        setShowAuthModal(true);
-        setAuthModalMode('login');
-        setHasShownFirstTimeLoginModal(true);
-      }
-    }
+    toMain: () => setCurrentPage('main')
   };
 
   // 페이지별 렌더링
