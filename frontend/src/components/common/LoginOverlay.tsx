@@ -54,20 +54,6 @@ export const LoginOverlay: React.FC<LoginOverlayProps> = ({ onLogin, onRegister,
           </Button>
         </div>
 
-        <div className="mt-6 text-center">
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <h3 className="font-medium text-blue-800 mb-2">AI API 키 설정 안내</h3>
-            <p className="text-sm text-blue-700">
-              구글, 챗GPT 등 사용자 AI API 키 설정 후 사용 가능합니다.
-            </p>
-            <div className="mt-2 text-xs text-blue-600">
-              <p>• 개인 Google AI API 키 또는 ChatGPT API 키 설정 필요</p>
-              <p>• 로그인 후 우측 상단 설정 버튼에서 API 키 입력</p>
-              <p>• API 키 설정 후 모든 AI 기능 사용 가능</p>
-            </div>
-          </div>
-        </div>
-
         <div className="mt-6 text-center text-xs text-gray-500">
           <p>로그인 후 AI API 키 입력 후 정상 사용할 수 있습니다.</p>
         </div>
