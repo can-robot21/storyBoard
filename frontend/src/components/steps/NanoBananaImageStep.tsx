@@ -277,6 +277,13 @@ export const NanoBananaImageStep: React.FC<NanoBananaImageStepProps> = ({
               onOpenSettings();
             }, 1000); // 1초 후 설정 모달 열기
           }
+        } else if (error.message.includes('API 키가 설정되지 않았습니다')) {
+          // API 키 설정되지 않을 때도 설정 모달 자동 열기
+          if (onOpenSettings) {
+            setTimeout(() => {
+              onOpenSettings();
+            }, 1000); // 1초 후 설정 모달 열기
+          }
         }
       }
     } finally {

@@ -596,6 +596,24 @@ export class NanoBananaService extends BaseAIService {
       return images[0];
     } catch (error) {
       console.error('❌ 나노 바나나 멀티모달 이미지 생성 오류:', error);
+      
+      // API 키 관련 에러 처리
+      if (error instanceof Error) {
+        if (error.message.includes('API key expired') || error.message.includes('API_KEY_INVALID')) {
+          throw new Error('Google AI API 키가 만료되었습니다. 설정에서 새로운 API 키를 입력해주세요.');
+        } else if (error.message.includes('API key is missing')) {
+          throw new Error('Google AI API 키가 설정되지 않았습니다. 우측 상단 설정 버튼을 클릭하여 API 키를 입력해주세요.');
+        } else if (error.message.includes('quota') || error.message.includes('QUOTA_EXCEEDED')) {
+          throw new Error('API 사용량 한도를 초과했습니다. 잠시 후 다시 시도해주세요.');
+        } else if (error.message.includes('permission') || error.message.includes('PERMISSION_DENIED')) {
+          throw new Error('Gemini API 사용 권한이 없습니다. Google AI Studio에서 Gemini API를 활성화해주세요.');
+        } else if (error.message.includes('safety') || error.message.includes('SAFETY')) {
+          throw new Error('안전 정책에 위배되는 내용이 감지되었습니다. 프롬프트를 수정해주세요.');
+        } else if (error.message.includes('network') || error.message.includes('fetch')) {
+          throw new Error('네트워크 연결에 문제가 있습니다. 인터넷 연결을 확인해주세요.');
+        }
+      }
+      
       throw new Error('이미지 생성에 실패했습니다.');
     }
   }
