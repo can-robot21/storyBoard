@@ -1,0 +1,42 @@
+warning: in the working copy of 'src/App.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/components/steps/VideoGenerationStep.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/services/database/DatabaseService.ts', LF will be replaced by CRLF the next time Git touches it
+package-lock.json
+package.json
+src/App.tsx
+src/components/common/AISettingsModal.tsx
+src/components/common/APIUsageIndicator.tsx
+src/components/common/AuthModal.tsx
+src/components/common/ProjectManager.tsx
+src/components/common/ProjectReferenceModal.tsx
+src/components/common/PromptTemplateManager.tsx
+src/components/common/StepHelpModal.tsx
+src/components/layout/ActionPanel.tsx
+src/components/layout/ImprovedMainLayout.tsx
+src/components/layout/StepProgressPanel.tsx
+src/components/shared/CommonInputsSection.tsx
+src/components/steps/ImageGenerationStep.tsx
+src/components/steps/ProjectOverviewStep.tsx
+src/components/steps/VideoGenerationStep.tsx
+src/components/videoGeneration/EpisodeStructureManager.tsx
+src/components/videoGeneration/ImageGenerator.tsx
+src/components/videoGeneration/TextCardGenerator.tsx
+src/components/videoGeneration/VideoGenerator.tsx
+src/hooks/useDatabase.ts
+src/hooks/useImageHandlers.ts
+src/hooks/useProjectOverview.ts
+src/hooks/useVideoGeneration.ts
+src/hooks/useVideoHandlers.ts
+src/services/apiUsageService.ts
+src/services/authService.ts
+src/services/database/DatabaseService.ts
+src/services/googleAIService.ts
+src/types/ai.ts
+src/types/projectOverview.ts
+src/types/videoGeneration.ts
+src/utils/dataSharingUtils.ts
+src/utils/helpers.ts
+src/utils/menuJsonUtils.ts
+src/utils/promptJSONUtils.ts
+src/utils/tokenCalculator.ts
+src/utils/videoModelConfig.ts
