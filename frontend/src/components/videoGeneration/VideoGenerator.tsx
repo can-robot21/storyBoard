@@ -4,6 +4,7 @@ import VideoCardModal from '../common/VideoCardModal';
 import VideoGenerationErrorModal from '../common/VideoGenerationErrorModal';
 import VideoPromptConfirmModal from '../common/VideoPromptConfirmModal';
 import ImageSelectionModal from '../common/ImageSelectionModal';
+import { MediaSlider } from '../common/MediaSlider';
 import { GeneratedVideo, GeneratedTextCard, GeneratedImage, ErrorModalState, ConfirmModalState, SceneTextCard } from '../../types/videoGeneration';
 import { Episode, Scene } from '../../types/projectOverview';
 import { useUIStore } from '../../stores/uiStore';
@@ -1986,100 +1987,52 @@ ${referenceImages.length > 0 ? '참조 이미지가 포함되어 있습니다.' 
         projectReferenceSettingCuts={generatedSettingCutImages}
       />
 
-        {/* 생성된 영상 목록 */}
-        {generatedVideos.length > 0 && (
+        {/* 생성된 영상 목록 - MediaSlider 사용 */}
+        {(generatedVideos.length > 0 || generatedCharacterImages.length > 0 || generatedVideoBackgrounds.length > 0) && (
           <div className="bg-white border rounded-lg p-4">
-            <h3 className="text-lg font-semibold text-gray-800 mb-4">🎬 생성된 영상 ({generatedVideos.length}개)</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {generatedVideos.map((video) => (
-                <div
-                  key={video.id}
-                  className="border rounded-lg p-3 hover:shadow-md transition-shadow"
-                >
-                  {/* 영상 썸네일 - 정사각형 */}
-                  <div 
-                    className="bg-gray-100 rounded mb-3 flex items-center justify-center relative group aspect-square"
-                    onClick={() => handleVideoCardClick(video)}
-                  >
-                    {video.thumbnail ? (
-                      <img
-                        src={video.thumbnail}
-                        alt="영상 썸네일"
-                        className="w-full h-full object-cover rounded"
-                      />
-                    ) : (
-                      <div className="text-gray-400 text-center">
-                        <Zap className="w-8 h-8 mx-auto mb-2" />
-                        <p className="text-sm">영상 미리보기</p>
-                      </div>
-                    )}
-                    
-                    {/* 재생 버튼 오버레이 */}
-                    <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all duration-200 flex items-center justify-center">
-                      <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                        <Play className="w-12 h-12 text-white" />
-                      </div>
-                    </div>
-                  </div>
-                  
-                  {/* 영상 정보 */}
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium text-gray-800">
-                        영상 #{video.id}
-                      </span>
-                      <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
-                        {video.videoRatio}
-                      </span>
-                    </div>
-                    <div className="text-xs text-gray-500">
-                      {new Date(video.timestamp).toLocaleString()}
-                    </div>
-                    <div className="text-xs text-gray-600 truncate">
-                      {video.projectTexts?.[0]?.substring(0, 50)}...
-                    </div>
-                    
-                    {/* 액션 버튼들 */}
-                    <div className="flex items-center justify-between pt-2">
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={(e) => handleVideoDownload(video, e)}
-                          className="flex items-center gap-1 px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
-                          title="영상 다운로드"
-                        >
-                          <Download className="w-3 h-3" />
-                          다운로드
-                        </button>
-                        {(video as any).videoObject && (
-                          <button
-                            onClick={() => handleExtendVideo((video as any).videoObject)}
-                            disabled={isGeneratingVideo}
-                            className="flex items-center gap-1 px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
-                            title="영상 확장"
-                          >
-                            <Zap className="w-3 h-3" />
-                            확장
-                          </button>
-                        )}
-                        <button
-                          onClick={() => handleVideoCardClick(video)}
-                          className="flex items-center gap-1 px-2 py-1 text-xs bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors"
-                          title="영상 상세보기"
-                        >
-                          <Play className="w-3 h-3" />
-                          재생
-                        </button>
-                      </div>
-                      {video.duration && (
-                        <span className="text-xs text-gray-500">
-                          {video.duration}초
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
+            <MediaSlider
+              images={[
+                ...generatedCharacterImages.map(img => ({
+                  id: img.id,
+                  type: 'image' as const,
+                  url: img.image,
+                  thumbnail: img.image,
+                  title: img.description,
+                  description: img.description,
+                  timestamp: img.timestamp
+                })),
+                ...generatedVideoBackgrounds.map(img => ({
+                  id: img.id + 10000, // ID 충돌 방지
+                  type: 'image' as const,
+                  url: img.image,
+                  thumbnail: img.image,
+                  title: img.description,
+                  description: img.description,
+                  timestamp: img.timestamp
+                }))
+              ]}
+              videos={generatedVideos.map(video => ({
+                id: video.id,
+                type: 'video' as const,
+                url: video.videoUrl,
+                thumbnail: video.thumbnail,
+                title: `영상 #${video.id}`,
+                description: video.projectTexts?.[0] || '생성된 영상',
+                timestamp: video.timestamp
+              }))}
+              onImageClick={(item) => {
+                // 이미지 클릭 시 처리 (모달 열기 등)
+                console.log('이미지 클릭:', item);
+              }}
+              onVideoClick={(item) => {
+                // 영상 클릭 시 VideoCardModal 열기
+                const video = generatedVideos.find(v => v.id === item.id);
+                if (video) {
+                  handleVideoCardClick(video);
+                }
+              }}
+              className="w-full"
+            />
           </div>
         )}
 
