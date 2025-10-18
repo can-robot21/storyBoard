@@ -527,6 +527,7 @@ export const ImprovedMainLayout: React.FC<ImprovedMainLayoutProps> = ({
             canProceedToNext={canProceedToNext}
             currentUser={currentUser}
             globalImageSettings={settings.image}
+            onOpenSettings={onAISettingsClick}
           />
         );
 

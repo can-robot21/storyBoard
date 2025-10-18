@@ -50,6 +50,50 @@ export class NanoBananaService extends BaseAIService {
     this.isAvailableFlag = true;
   }
 
+  // 한국 캐릭터 생성을 위한 프롬프트 강화
+  private enhanceKoreanCharacterPrompt(prompt: string): string {
+    const lowerPrompt = prompt.toLowerCase();
+    
+    // 한국 관련 키워드가 있는지 확인
+    const hasKoreanKeywords = lowerPrompt.includes('한국') || 
+                             lowerPrompt.includes('korean') || 
+                             lowerPrompt.includes('한국인') ||
+                             lowerPrompt.includes('아시아') ||
+                             lowerPrompt.includes('asian');
+    
+    if (hasKoreanKeywords) {
+      console.log('🇰🇷 나노 바나나 한국 캐릭터 감지 - 프롬프트 강화 적용');
+      
+      // 한국 캐릭터 특징 강화
+      let enhancedPrompt = prompt;
+      
+      // 성별 구분 추가
+      if (lowerPrompt.includes('여성') || lowerPrompt.includes('여자') || lowerPrompt.includes('female')) {
+        enhancedPrompt += ', Korean woman with East Asian features';
+      } else if (lowerPrompt.includes('남성') || lowerPrompt.includes('남자') || lowerPrompt.includes('male')) {
+        enhancedPrompt += ', Korean man with East Asian features';
+      } else {
+        enhancedPrompt += ', Korean person with East Asian features';
+      }
+      
+      // 아시아인 특징 추가
+      enhancedPrompt += ', distinctive Asian facial features, natural Korean appearance';
+      
+      // 한국 전통 의상이 언급된 경우
+      if (lowerPrompt.includes('전통') || lowerPrompt.includes('한복') || lowerPrompt.includes('traditional')) {
+        enhancedPrompt += ', wearing traditional Korean clothing (hanbok)';
+      }
+      
+      // 현대 한국인 특징 추가
+      enhancedPrompt += ', contemporary Korean style, authentic Korean characteristics';
+      
+      console.log('✅ 나노 바나나 한국 캐릭터 프롬프트 강화 완료');
+      return enhancedPrompt;
+    }
+    
+    return prompt;
+  }
+
   async generateText(options: TextGenerationOptions): Promise<TextGenerationResponse> {
     if (!this.ai) {
       return this.formatTextResponse(
@@ -122,8 +166,11 @@ export class NanoBananaService extends BaseAIService {
       // 새로운 gemini-2.5-flash-image 모델 사용
       const model = 'gemini-2.5-flash-image';
       
+      // 한국 캐릭터 생성을 위한 프롬프트 강화
+      const enhancedPrompt = this.enhanceKoreanCharacterPrompt(options.prompt);
+      
       // 이미지 생성 전용 프롬프트로 변환 (비율 정보 포함)
-      let imagePrompt = `Create a detailed image: ${options.prompt}. Make it high quality, detailed, and visually appealing.`;
+      let imagePrompt = `Create a detailed image: ${enhancedPrompt}. Make it high quality, detailed, and visually appealing.`;
       
       // 비율 정보 추가 (더 명확한 지시)
       if (options.aspectRatio) {

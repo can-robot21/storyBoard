@@ -42,6 +42,8 @@ interface NanoBananaImageStepProps {
     quality: 'standard' | 'high' | 'ultra';
     aspectRatio: '16:9' | '9:16' | '2:3' | '1:1' | 'free';
   };
+  // 설정 모달 열기 함수
+  onOpenSettings?: () => void;
 }
 
 export const NanoBananaImageStep: React.FC<NanoBananaImageStepProps> = ({
@@ -65,7 +67,8 @@ export const NanoBananaImageStep: React.FC<NanoBananaImageStepProps> = ({
   onNext,
   canProceedToNext,
   currentUser,
-  globalImageSettings
+  globalImageSettings,
+  onOpenSettings
 }) => {
   // 기본 이미지 생성 상태
   const [characterInput, setCharacterInput] = useState('');
@@ -257,6 +260,25 @@ export const NanoBananaImageStep: React.FC<NanoBananaImageStepProps> = ({
       }
     } catch (error) {
       console.error('❌ 이미지 생성 오류:', error);
+      
+      // API 키 관련 에러 처리
+      if (error instanceof Error) {
+        if (error.message.includes('API 키가 만료되었습니다')) {
+          // API 키 만료 시 설정 모달 자동 열기
+          if (onOpenSettings) {
+            setTimeout(() => {
+              onOpenSettings();
+            }, 1000); // 1초 후 설정 모달 열기
+          }
+        } else if (error.message.includes('API 키가 유효하지 않습니다')) {
+          // API 키 유효하지 않을 때도 설정 모달 자동 열기
+          if (onOpenSettings) {
+            setTimeout(() => {
+              onOpenSettings();
+            }, 1000); // 1초 후 설정 모달 열기
+          }
+        }
+      }
     } finally {
       setIsGenerating(false);
     }
