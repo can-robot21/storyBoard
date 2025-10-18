@@ -457,6 +457,12 @@ export default function App() {
     setDontShowLoginOverlayToday(true);
   };
 
+  // 로그인 오버레이 닫기 핸들러
+  const handleCloseLoginOverlay = () => {
+    // 오늘 그만보기 상태로 설정하여 모달 숨김
+    handleDontShowToday();
+  };
+
   // 페이지 라우팅 핸들러
   const handlePageNavigation = {
     toIntro: () => setCurrentPage('intro'),
@@ -570,6 +576,7 @@ export default function App() {
           onLogin={handleLogin}
           onRegister={handleRegister}
           onDontShowToday={handleDontShowToday}
+          onClose={handleCloseLoginOverlay}
         />
       )}
       

@@ -6,15 +6,20 @@ interface LoginOverlayProps {
   onLogin: () => void;
   onRegister: () => void;
   onDontShowToday?: () => void;
+  onClose?: () => void;
 }
 
-export const LoginOverlay: React.FC<LoginOverlayProps> = ({ onLogin, onRegister, onDontShowToday }) => {
+export const LoginOverlay: React.FC<LoginOverlayProps> = ({ onLogin, onRegister, onDontShowToday, onClose }) => {
   const [dontShowToday, setDontShowToday] = useState(false);
 
   const handleDontShowTodayChange = () => {
     setDontShowToday(!dontShowToday);
     if (onDontShowToday) {
       onDontShowToday();
+    }
+    // 체크박스 클릭 시 모달 닫기
+    if (onClose) {
+      onClose();
     }
   };
   return (
