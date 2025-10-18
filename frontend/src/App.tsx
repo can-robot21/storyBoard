@@ -69,6 +69,13 @@ export default function App() {
   const [showActivityLogManager, setShowActivityLogManager] = useState(false);
   const [showManagementModal, setShowManagementModal] = useState(false);
 
+  // 오늘 그만보기 상태
+  const [dontShowLoginOverlayToday, setDontShowLoginOverlayToday] = useState(() => {
+    const today = new Date().toDateString();
+    const savedDate = localStorage.getItem('dontShowLoginOverlayDate');
+    return savedDate === today;
+  });
+
   // 인증 서비스 초기화
   useEffect(() => {
     const initializeAuth = async () => {
@@ -443,6 +450,13 @@ export default function App() {
     });
   };
 
+  // 오늘 그만보기 핸들러
+  const handleDontShowToday = () => {
+    const today = new Date().toDateString();
+    localStorage.setItem('dontShowLoginOverlayDate', today);
+    setDontShowLoginOverlayToday(true);
+  };
+
   // 페이지 라우팅 핸들러
   const handlePageNavigation = {
     toIntro: () => setCurrentPage('intro'),
@@ -550,11 +564,12 @@ export default function App() {
         />
       </div>
       
-      {/* 미로그인 상태에서 로그인 오버레이 표시 */}
-      {!isLoggedIn && (
+      {/* 미로그인 상태에서 로그인 오버레이 표시 (오늘 그만보기 체크 안된 경우만) */}
+      {!isLoggedIn && !dontShowLoginOverlayToday && (
         <LoginOverlay
           onLogin={handleLogin}
           onRegister={handleRegister}
+          onDontShowToday={handleDontShowToday}
         />
       )}
       
