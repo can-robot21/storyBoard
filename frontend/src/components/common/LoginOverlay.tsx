@@ -81,9 +81,9 @@ export const LoginOverlay: React.FC<LoginOverlayProps> = ({ onLogin, onRegister,
         </div>
 
         {/* 하단 버튼 영역 */}
-        <div className="mt-6 space-y-3">
+        <div className="mt-6 flex items-center justify-between">
           {/* 일주일간 감추기 체크박스 */}
-          <div className="flex items-center justify-center gap-2">
+          <div className="flex items-center gap-2">
             <button
               onClick={handleDontShowWeekChange}
               className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${
@@ -98,14 +98,12 @@ export const LoginOverlay: React.FC<LoginOverlayProps> = ({ onLogin, onRegister,
           </div>
 
           {/* 닫기 버튼 */}
-          <div className="flex justify-end">
-            <button
-              onClick={onClose}
-              className="px-4 py-2 text-sm bg-gray-500 text-white rounded-md hover:bg-gray-600 transition-colors"
-            >
-              닫기
-            </button>
-          </div>
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-sm bg-gray-500 text-white rounded-md hover:bg-gray-600 transition-colors"
+          >
+            닫기
+          </button>
         </div>
       </div>
     </div>
