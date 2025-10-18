@@ -317,16 +317,39 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({
             </div>
           )}
 
-          <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+          <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
             <div className="flex items-start gap-2">
-              <AlertCircle className="w-5 h-5 text-yellow-600 mt-0.5" />
-              <div className="text-sm text-yellow-800">
-                <p className="font-medium mb-1">API 키 설정 방법:</p>
-                <ol className="list-decimal list-inside space-y-1 text-xs">
-                  <li>프로젝트 루트에 <code>.env</code> 파일을 생성하세요</li>
-                  <li><code>env.example</code> 파일을 참고하여 API 키를 설정하세요</li>
-                  <li>개발 서버를 재시작하세요</li>
-                </ol>
+              <Key className="w-5 h-5 text-blue-600 mt-0.5" />
+              <div className="text-sm text-blue-800">
+                <p className="font-medium mb-2">개인 API 키 입력 및 관리 안내:</p>
+                <div className="space-y-2 text-xs">
+                  <div className="flex items-start gap-2">
+                    <span className="text-blue-600 font-medium">•</span>
+                    <span>개인 Google AI API 키를 입력하면 모든 AI 기능을 사용할 수 있습니다</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="text-blue-600 font-medium">•</span>
+                    <span>API 키는 브라우저에 안전하게 저장되며 외부로 전송되지 않습니다</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="text-blue-600 font-medium">•</span>
+                    <span>Google AI Studio에서 무료 API 키를 발급받을 수 있습니다</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="text-blue-600 font-medium">•</span>
+                    <span>API 키는 언제든지 수정하거나 삭제할 수 있습니다</span>
+                  </div>
+                </div>
+                <div className="mt-3 pt-2 border-t border-blue-300">
+                  <a 
+                    href="https://aistudio.google.com/app/apikey" 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="text-blue-600 hover:text-blue-800 font-medium text-xs underline"
+                  >
+                    🔗 Google AI Studio에서 API 키 발급받기
+                  </a>
+                </div>
               </div>
             </div>
           </div>

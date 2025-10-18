@@ -465,6 +465,12 @@ Style requirements:
       throw new Error('이미지 데이터 형식을 인식할 수 없습니다. API 응답 구조가 변경되었을 수 있습니다.');
     } catch (error) {
       console.error('Google AI 이미지 생성 오류:', error);
+      
+      // API 키 관련 에러인 경우 더 명확한 메시지 제공
+      if (error instanceof Error && error.message.includes('API key is missing')) {
+        throw new Error('Google AI API 키가 설정되지 않았습니다. 우측 상단 설정 버튼을 클릭하여 API 키를 입력해주세요.');
+      }
+      
       throw new Error('이미지 생성에 실패했습니다.');
     }
   }
@@ -506,6 +512,12 @@ Style requirements:
       return images;
     } catch (error) {
       console.error('Google AI 배경 이미지 생성 오류:', error);
+      
+      // API 키 관련 에러인 경우 더 명확한 메시지 제공
+      if (error instanceof Error && error.message.includes('API key is missing')) {
+        throw new Error('Google AI API 키가 설정되지 않았습니다. 우측 상단 설정 버튼을 클릭하여 API 키를 입력해주세요.');
+      }
+      
       throw new Error('배경 이미지 생성에 실패했습니다.');
     }
   }
