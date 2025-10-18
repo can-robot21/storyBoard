@@ -223,6 +223,10 @@ export default function App() {
     setShowAuthModal(true);
   };
 
+  const handleAuthModeChange = (mode: 'login' | 'register' | 'profile') => {
+    setAuthModalMode(mode);
+  };
+
   const handleLoginSuccess = async (user: User, needsMigration?: boolean) => {
     if (needsMigration && currentUser) {
       // 마이그레이션이 필요한 경우
@@ -598,6 +602,7 @@ export default function App() {
           onSuccess={handleLoginSuccess}
           currentUser={currentUser}
           onAccountDeletion={handleAccountDeletion}
+          onModeChange={handleAuthModeChange}
         />
       )}
 

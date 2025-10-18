@@ -10,6 +10,7 @@ interface AuthModalProps {
   onSuccess: (user: User, needsMigration?: boolean) => void;
   currentUser?: User | null;
   onAccountDeletion?: () => void;
+  onModeChange?: (mode: 'login' | 'register' | 'profile') => void;
 }
 
 export const AuthModal: React.FC<AuthModalProps> = ({
@@ -18,7 +19,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   mode,
   onSuccess,
   currentUser,
-  onAccountDeletion
+  onAccountDeletion,
+  onModeChange
 }) => {
   const [formData, setFormData] = useState<RegisterData>({
     name: '',
@@ -376,11 +378,31 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               <button
                 type="button"
                 onClick={() => {
-                  // 모드 변경은 부모 컴포넌트에서 처리
+                  if (onModeChange) {
+                    onModeChange('register');
+                  }
                 }}
                 className="text-blue-600 hover:text-blue-800 font-medium"
               >
                 회원가입
+              </button>
+            </div>
+          )}
+
+          {/* 로그인 링크 (회원가입 모드일 때만) */}
+          {mode === 'register' && (
+            <div className="text-center text-sm text-gray-600">
+              이미 계정이 있으신가요?{' '}
+              <button
+                type="button"
+                onClick={() => {
+                  if (onModeChange) {
+                    onModeChange('login');
+                  }
+                }}
+                className="text-blue-600 hover:text-blue-800 font-medium"
+              >
+                로그인
               </button>
             </div>
           )}
