@@ -113,7 +113,7 @@ const IntroPage: React.FC<IntroPageProps> = ({ onStart }) => {
 
       {/* 하단 정보 */}
       <div className="mt-16 text-center">
-        <div className="flex items-center justify-center space-x-8 text-sm text-gray-500">
+        <div className="flex items-center justify-center space-x-8 text-sm text-gray-500 mb-6">
           <div className="flex items-center">
             <div className="w-2 h-2 bg-green-500 rounded-full mr-2"></div>
             무료 체험
@@ -126,6 +126,21 @@ const IntroPage: React.FC<IntroPageProps> = ({ onStart }) => {
             <div className="w-2 h-2 bg-purple-500 rounded-full mr-2"></div>
             실시간 생성
           </div>
+        </div>
+        
+        {/* 서비스 정보 */}
+        <div className="text-sm text-gray-400">
+          <p className="mb-2">작은별 612의 스토리보드 AI 서비스입니다.</p>
+          <p>
+            <a 
+              href="https://star612.net" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="text-blue-500 hover:text-blue-600 transition-colors underline"
+            >
+              star612.net
+            </a>
+          </p>
         </div>
       </div>
     </div>

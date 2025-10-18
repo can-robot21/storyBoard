@@ -7,6 +7,7 @@ interface HeaderProps {
   onLogout: () => void;
   onProfileClick?: () => void;
   onRegister?: () => void;
+  onTitleClick?: () => void;
   currentUser?: {
     name: string;
     email: string;
@@ -19,11 +20,17 @@ export const Header: React.FC<HeaderProps> = ({
   onLogout,
   onProfileClick,
   onRegister,
+  onTitleClick,
   currentUser
 }) => {
   return (
-    <header className="w-full bg-white shadow-md px-6 py-3 flex justify-between items-center">
-      <h1 className="text-xl font-bold text-gray-800">🎬 영상/스토리보드 AI</h1>
+    <header className="w-full bg-gradient-to-r from-blue-50 to-purple-50 shadow-md px-6 py-3 flex justify-between items-center border-b border-gray-200">
+      <button
+        onClick={onTitleClick}
+        className="text-xl font-bold text-gray-800 hover:text-blue-600 transition-colors cursor-pointer"
+      >
+        🎬 영상/스토리보드 AI
+      </button>
 
       <div className="flex items-center gap-3">
         {/* 로그인/로그아웃 버튼 */}

@@ -46,7 +46,7 @@ export const ActionPanel: React.FC<ActionPanelProps> = ({
   return (
     <>
       {isActionPanelVisible && (
-        <div className="bg-white border-t border-gray-200 shadow-lg">
+        <div className="bg-gradient-to-r from-blue-50 to-purple-50 border-t border-gray-200 shadow-lg">
           <div className="px-6 py-4">
             <div className="flex items-center justify-center">
               {/* 핵심 도구 버튼들만 중앙에 배치 */}

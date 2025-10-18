@@ -475,6 +475,7 @@ export default function App() {
           onLogout={handleLogout}
           onProfileClick={handleProfile}
           onRegister={handleRegister}
+          onTitleClick={handlePageNavigation.toIntro}
           currentUser={currentUser}
         />
       </div>
