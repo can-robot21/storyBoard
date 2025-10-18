@@ -37,6 +37,8 @@ interface ImageGenerationStepProps {
     quality: 'standard' | 'high' | 'ultra';
     aspectRatio: '16:9' | '9:16' | '2:3' | '1:1' | 'free';
   };
+  // 설정 모달 열기 함수
+  onOpenSettings?: () => void;
 }
 
 export const ImageGenerationStep: React.FC<ImageGenerationStepProps> = ({
@@ -56,7 +58,8 @@ export const ImageGenerationStep: React.FC<ImageGenerationStepProps> = ({
   finalScenario,
   onNext,
   canProceedToNext,
-  globalImageSettings
+  globalImageSettings,
+  onOpenSettings
 }) => {
   const { addNotification } = useUIStore();
   
@@ -115,7 +118,8 @@ export const ImageGenerationStep: React.FC<ImageGenerationStepProps> = ({
       numberOfImages
     },
     'current-project', // currentProjectId
-    globalImageSettings // 상단 기본 설정 전달
+    globalImageSettings, // 상단 기본 설정 전달
+    onOpenSettings // 설정 모달 열기 함수
   );
 
   // 캐릭터 생성

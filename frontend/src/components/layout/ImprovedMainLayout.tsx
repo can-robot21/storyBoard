@@ -500,6 +500,7 @@ export const ImprovedMainLayout: React.FC<ImprovedMainLayoutProps> = ({
             onNext={projectHandlers.handleNext}
             canProceedToNext={canProceedToNext}
             globalImageSettings={settings.image}
+            onOpenSettings={onAISettingsClick}
           />
         );
 
