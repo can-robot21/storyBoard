@@ -1,11 +1,4 @@
 {
-<<<<<<< HEAD
-  "devDependencies": {
-    "buffer": "^6.0.3",
-    "crypto-browserify": "^3.12.1",
-    "path-browserify": "^1.0.1",
-    "stream-browserify": "^3.0.0"
-=======
   "name": "frontend",
   "version": "0.1.0",
   "private": true,
@@ -56,7 +49,10 @@
   "devDependencies": {
     "autoprefixer": "^10.4.21",
     "postcss": "^8.5.6",
-    "tailwindcss": "^3.4.17"
->>>>>>> 087e037350b6bbe9cf6e44404a2bc05a22ebd1e2
+    "tailwindcss": "^3.4.17",
+    "buffer": "^6.0.3",
+    "crypto-browserify": "^3.12.1",
+    "path-browserify": "^1.0.1",
+    "stream-browserify": "^3.0.0"
   }
 }

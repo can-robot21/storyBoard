@@ -36,6 +36,8 @@ import { userPermissionService } from './services/userPermissionService';
 import { ActivityLogManagerModal } from './components/common/ActivityLogManagerModal';
 import { userActivityLogService } from './services/userActivityLogService';
 import { ManagementModal } from './components/common/ManagementModal';
+import IntroPage from './components/pages/IntroPage';
+import DescriptionPage from './components/pages/DescriptionPage';
 
 // const mainSteps = [
 //   "프로젝트 개요",
@@ -48,6 +50,9 @@ export default function App() {
   const [currentStep, setCurrentStep] = useState("프로젝트 개요");
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  
+  // 페이지 라우팅 상태
+  const [currentPage, setCurrentPage] = useState<'intro' | 'description' | 'main'>('intro');
   const [showAISettings, setShowAISettings] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<'login' | 'register' | 'profile'>('login');
@@ -438,6 +443,28 @@ export default function App() {
     });
   };
 
+  // 페이지 라우팅 핸들러
+  const handlePageNavigation = {
+    toIntro: () => setCurrentPage('intro'),
+    toDescription: () => setCurrentPage('description'),
+    toMain: () => setCurrentPage('main')
+  };
+
+  // 페이지별 렌더링
+  if (currentPage === 'intro') {
+    return <IntroPage onStart={handlePageNavigation.toDescription} />;
+  }
+
+  if (currentPage === 'description') {
+    return (
+      <DescriptionPage 
+        onBack={handlePageNavigation.toIntro}
+        onNext={handlePageNavigation.toMain}
+      />
+    );
+  }
+
+  // 메인 애플리케이션 (기존 코드)
   return (
     <div className="h-screen flex flex-col bg-gray-50 overflow-hidden">
       {/* 상단 헤더 - 고정 */}
