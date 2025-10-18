@@ -76,6 +76,18 @@ export default function App() {
     return savedDate === today;
   });
 
+  // 일주일간 감추기 상태
+  const [dontShowLoginOverlayWeek, setDontShowLoginOverlayWeek] = useState(() => {
+    const now = new Date();
+    const savedWeekDate = localStorage.getItem('dontShowLoginOverlayWeek');
+    if (savedWeekDate) {
+      const savedDate = new Date(savedWeekDate);
+      const weekLater = new Date(savedDate.getTime() + 7 * 24 * 60 * 60 * 1000);
+      return now < weekLater;
+    }
+    return false;
+  });
+
   // 인증 서비스 초기화
   useEffect(() => {
     const initializeAuth = async () => {
@@ -461,6 +473,13 @@ export default function App() {
     setDontShowLoginOverlayToday(true);
   };
 
+  // 일주일간 감추기 핸들러
+  const handleDontShowWeek = () => {
+    const now = new Date();
+    localStorage.setItem('dontShowLoginOverlayWeek', now.toISOString());
+    setDontShowLoginOverlayWeek(true);
+  };
+
   // 로그인 오버레이 닫기 핸들러
   const handleCloseLoginOverlay = () => {
     // 오늘 그만보기 상태로 설정하여 모달 숨김
@@ -574,12 +593,13 @@ export default function App() {
         />
       </div>
       
-      {/* 미로그인 상태에서 로그인 오버레이 표시 (오늘 그만보기 체크 안된 경우만) */}
-      {!isLoggedIn && !dontShowLoginOverlayToday && (
+      {/* 미로그인 상태에서 로그인 오버레이 표시 (오늘 그만보기 및 일주일간 감추기 체크 안된 경우만) */}
+      {!isLoggedIn && !dontShowLoginOverlayToday && !dontShowLoginOverlayWeek && (
         <LoginOverlay
           onLogin={handleLogin}
           onRegister={handleRegister}
           onDontShowToday={handleDontShowToday}
+          onDontShowWeek={handleDontShowWeek}
           onClose={handleCloseLoginOverlay}
         />
       )}
