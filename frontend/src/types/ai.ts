@@ -20,7 +20,8 @@ export type ImageModel =
   | 'imagen-4.0-ultra-generate-001'
   | 'dall-e-3'
   | 'dall-e-2'
-  | 'gemini-2.5-flash-image-preview';
+  | 'gemini-2.5-flash-image-preview'
+  | 'gemini-2.5-flash-image';
 
 // 영상 생성 모델 타입
 export type VideoModel = 

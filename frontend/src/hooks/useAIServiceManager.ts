@@ -164,11 +164,11 @@ export const useAIServiceManager = () => {
       if (availableProviders.length > 0) {
         await initializeAIService(availableProviders[0]);
       } else {
-        // API 키가 없어도 기본적으로 Google 서비스 시도
-        console.warn('사용 가능한 API 키가 없습니다. Google 서비스를 기본으로 시도합니다.');
+        // API 키가 없을 때는 조용히 처리 (경고 메시지 제거)
+        console.info('API 키가 설정되지 않았습니다. 설정에서 API 키를 입력해주세요.');
         setState(prev => ({
           ...prev,
-          error: 'API 키가 설정되지 않았습니다. 설정에서 API 키를 입력해주세요.'
+          error: null // 에러 상태를 null로 설정하여 조용히 처리
         }));
       }
     };

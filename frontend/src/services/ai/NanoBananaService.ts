@@ -112,18 +112,15 @@ export class NanoBananaService extends BaseAIService {
       return {
         images: [],
         usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
-        model: options.model || 'gemini-2.5-flash-image-preview'
+        model: options.model || 'gemini-2.5-flash-image'
       };
     }
 
     try {
       console.log('🍌 Nano Banana 이미지 생성 시작:', options.prompt);
       
-      const config = {
-        responseModalities: ['IMAGE'],
-      };
-      
-      const model = 'gemini-2.5-flash-image-preview';
+      // 새로운 gemini-2.5-flash-image 모델 사용
+      const model = 'gemini-2.5-flash-image';
       
       // 이미지 생성 전용 프롬프트로 변환 (비율 정보 포함)
       let imagePrompt = `Create a detailed image: ${options.prompt}. Make it high quality, detailed, and visually appealing.`;
@@ -150,64 +147,22 @@ export class NanoBananaService extends BaseAIService {
         imagePrompt += ` Generate in ${qualityDescription}.`;
       }
       
-      const contents = [
-        {
-          role: 'user',
-          parts: [
-            {
-              text: imagePrompt,
-            },
-          ],
-        },
-      ];
-
-      console.log('🔄 API 호출 시작...');
+      console.log('🔄 새로운 gemini-2.5-flash-image 모델로 API 호출 시작...');
       
-      // 먼저 generateContentStream 시도
-      let response;
-      try {
-        response = await this.ai.models.generateContentStream({
-          model,
-          config,
-          contents,
-        });
-      } catch (streamError) {
-        console.log('⚠️ 스트림 방식 실패, 일반 generateContent 시도...', streamError);
-        
-        // 스트림이 실패하면 일반 generateContent 사용
-        const simpleResponse = await this.ai.models.generateContent({
-          model,
-          contents,
-        });
-        
-        // 일반 응답을 스트림 형태로 변환
-        response = {
-          [Symbol.asyncIterator]: async function* () {
-            yield simpleResponse;
-          }
-        };
-      }
+      // 새로운 모델 사용 방식 (제공된 예시 코드 기반)
+      const response = await this.ai.models.generateContent({
+        model,
+        contents: [{ text: imagePrompt }],
+      });
 
-      console.log('📡 스트림 응답 처리 시작...');
+      console.log('📡 응답 처리 시작...');
       const images: string[] = [];
-      let chunkCount = 0;
-      let hasImageData = false;
 
-      for await (const chunk of response) {
-        chunkCount++;
-        console.log(`📦 청크 ${chunkCount} 처리 중...`);
-        
-        if (!chunk.candidates || !chunk.candidates[0]?.content?.parts) {
-          console.log('⚠️ 유효하지 않은 청크 건너뛰기');
-          continue;
-        }
-
-        const parts = chunk.candidates[0].content.parts;
-        
-        for (const part of parts) {
+      // 응답에서 이미지 데이터 추출
+      if (response.candidates && response.candidates[0]?.content?.parts) {
+        for (const part of response.candidates[0].content.parts) {
           if (part.inlineData) {
             console.log('🖼️ 이미지 데이터 발견!');
-            hasImageData = true;
             const inlineData = part.inlineData;
             const mimeType = inlineData.mimeType || 'image/jpeg';
             const base64Data = inlineData.data || '';
@@ -224,29 +179,36 @@ export class NanoBananaService extends BaseAIService {
         }
       }
 
-      console.log(`📊 처리 완료 - 이미지 데이터 발견: ${hasImageData}, 이미지 개수: ${images.length}`);
-
       console.log(`🎉 이미지 생성 완료: ${images.length}개 이미지`);
 
       if (images.length === 0) {
         console.error('❌ 이미지 생성 실패 - 응답에서 이미지 데이터를 찾을 수 없습니다.');
-        console.error('📊 디버그 정보:', {
-          hasImageData,
-          chunkCount,
-          responseModalities: config.responseModalities,
-          model,
-          prompt: imagePrompt
-        });
         throw new Error('이미지 생성 결과가 없습니다. API가 텍스트만 반환하고 있습니다.');
       }
 
       return this.formatImageResponse(
         images,
         { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
-        options.model || 'gemini-2.5-flash-image-preview'
+        options.model || 'gemini-2.5-flash-image'
       );
     } catch (error) {
       console.error('❌ Nano Banana 이미지 생성 오류:', error);
+      
+      // API 키 관련 오류 처리
+      if (error instanceof Error) {
+        if (error.message.includes('API key') || error.message.includes('INVALID_ARGUMENT')) {
+          throw new Error('Google AI API 키가 유효하지 않습니다. 설정에서 올바른 API 키를 입력해주세요.');
+        } else if (error.message.includes('quota') || error.message.includes('QUOTA_EXCEEDED')) {
+          throw new Error('API 사용량 한도를 초과했습니다. 잠시 후 다시 시도해주세요.');
+        } else if (error.message.includes('permission') || error.message.includes('PERMISSION_DENIED')) {
+          throw new Error('Imagen API 사용 권한이 없습니다. Google AI Studio에서 Imagen API를 활성화해주세요.');
+        } else if (error.message.includes('safety') || error.message.includes('SAFETY')) {
+          throw new Error('안전 정책에 위배되는 내용이 감지되었습니다. 프롬프트를 수정해주세요.');
+        } else if (error.message.includes('network') || error.message.includes('fetch')) {
+          throw new Error('네트워크 연결에 문제가 있습니다. 인터넷 연결을 확인해주세요.');
+        }
+      }
+      
       this.handleError(error, '이미지 생성');
     }
   }

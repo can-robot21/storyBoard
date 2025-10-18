@@ -218,7 +218,7 @@ export const NanoBananaImageStep: React.FC<NanoBananaImageStepProps> = ({
         result = await nanoBananaService.generateImage({
           prompt: finalPrompt,
           provider: 'nano-banana',
-          model: 'gemini-2.5-flash-image-preview',
+          model: 'gemini-2.5-flash-image',
           aspectRatio: settings.aspectRatio as any,
           quality: settings.quality as any,
           style: settings.style as any
