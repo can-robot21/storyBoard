@@ -35,25 +35,33 @@ export class GoogleAIService {
       return '';
     };
 
-    this.apiKeyInUse = isAdmin
-      ? (process.env.REACT_APP_GEMINI_API_KEY || 'AIzaSyDjHf_s-Tdr8gH8kb5spxDm_kg5XYD8pQs')
-      : (getLocalApiKey() || '');
+    // 환경 변수 사용 중단 - 보안상 클라이언트에 API 키 노출 방지
+    this.apiKeyInUse = getLocalApiKey() || '';
 
     this.ai = new GoogleGenAI({
-      apiKey: this.apiKeyInUse || 'your-gemini-api-key'
+      apiKey: this.apiKeyInUse || ''
     });
+  }
+
+  // API 키 검증
+  private validateApiKey(): void {
+    if (!this.apiKeyInUse || this.apiKeyInUse.trim() === '') {
+      throw new Error('Google AI API 키가 설정되지 않았습니다. 설정에서 API 키를 입력해주세요.');
+    }
+    
+    if (!this.apiKeyInUse.startsWith('AIza')) {
+      throw new Error('유효하지 않은 Google AI API 키 형식입니다. 올바른 API 키를 입력해주세요.');
+    }
   }
 
   // 텍스트 생성 (프로젝트 개요용)
   async generateText(prompt: string, model: string = 'gemini-2.5-flash', retryCount: number = 0): Promise<string> {
+    this.validateApiKey(); // API 키 검증
+    
     const maxRetries = 3;
     const retryDelay = 2000; // 2초
 
     try {
-      // API 키 검증
-      if (!this.apiKeyInUse || this.apiKeyInUse === 'your-gemini-api-key') {
-        throw new Error('Google AI API 키가 설정되지 않았습니다. 환경 변수에 REACT_APP_GEMINI_API_KEY를 설정하거나 사용자 설정에서 API 키를 입력해주세요.');
-      }
 
       // 프롬프트 검증
       if (!prompt || prompt.trim().length === 0) {
