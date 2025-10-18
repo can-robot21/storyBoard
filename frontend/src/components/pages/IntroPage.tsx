@@ -130,15 +130,17 @@ const IntroPage: React.FC<IntroPageProps> = ({ onStart }) => {
         
         {/* 서비스 정보 */}
         <div className="text-sm text-gray-400">
-          <p className="mb-2">작은별 612의 스토리보드 AI 서비스입니다.</p>
+          <p className="mb-2">
+            작은별 612의 스토리보드 AI 서비스입니다. © 2024 작은별612
+          </p>
           <p>
             <a 
               href="https://star612.net" 
               target="_blank" 
               rel="noopener noreferrer"
-              className="text-blue-500 hover:text-blue-600 transition-colors underline"
+              className="text-blue-500 hover:text-blue-600 transition-colors underline font-medium"
             >
-              star612.net
+              작은별612 바로가기
             </a>
           </p>
         </div>

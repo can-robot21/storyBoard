@@ -549,15 +549,6 @@ ${episodes.map(episode =>
         <div className="space-y-3">
           <div className="text-sm font-medium text-gray-700 mb-3">프로젝트 생성 단계</div>
           
-          {/* 관리자 계정 정보 표시 */}
-          {apiKeyStatus.isAdmin && (
-            <div className="p-3 rounded-lg border bg-blue-50 border-blue-200 text-blue-800 text-sm">
-              <div className="flex items-center gap-2">
-                <span className="font-medium">👤 관리자 계정:</span>
-                <span>star612.net@gmail.com (환경변수 API 키 사용)</span>
-              </div>
-            </div>
-          )}
           <div className={`p-3 rounded-lg border text-sm ${
             apiKeyStatus.hasApiKey 
               ? 'bg-green-50 border-green-200 text-green-800' 
