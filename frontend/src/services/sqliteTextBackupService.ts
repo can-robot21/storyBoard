@@ -173,11 +173,87 @@ export class SQLiteTextBackupService {
       const generatedSceneTextCards = localStorage.getItem('generatedSceneTextCards');
       if (generatedSceneTextCards) textData.generatedSceneTextCards = JSON.parse(generatedSceneTextCards);
 
+      // 생성된 이미지 리스트 (메타데이터만)
+      const generatedImages = localStorage.getItem('generatedImages');
+      if (generatedImages) {
+        const images = JSON.parse(generatedImages);
+        textData.generatedImagesList = images.map((img: any) => ({
+          id: img.id,
+          description: img.description,
+          prompt: img.prompt,
+          timestamp: img.timestamp,
+          type: img.type,
+          hasImage: !!img.image
+        }));
+      }
+
+      // 생성된 영상 리스트 (메타데이터만)
+      const generatedVideos = localStorage.getItem('generatedVideos');
+      if (generatedVideos) {
+        const videos = JSON.parse(generatedVideos);
+        textData.generatedVideosList = videos.map((video: any) => ({
+          id: video.id,
+          prompt: video.prompt,
+          englishPrompt: video.englishPrompt,
+          koreanPrompt: video.koreanPrompt,
+          timestamp: video.timestamp,
+          duration: video.duration,
+          ratio: video.ratio,
+          model: video.model,
+          hasVideo: !!video.video
+        }));
+      }
+
+      // 프롬프트 템플릿
+      const promptTemplates = localStorage.getItem('promptTemplates');
+      if (promptTemplates) textData.promptTemplates = JSON.parse(promptTemplates);
+
+      // 도구 및 설정 정보
+      textData.toolsAndSettings = this.collectToolsAndSettings();
+
       console.log('📝 텍스트 데이터 수집 완료:', Object.keys(textData));
       return textData;
     } catch (error) {
       console.error('❌ 텍스트 데이터 수집 실패:', error);
       return textData;
+    }
+  }
+
+  /**
+   * 도구 및 설정 정보 수집
+   */
+  private collectToolsAndSettings(): any {
+    try {
+      return {
+        // AI 설정
+        aiSettings: {
+          selectedProvider: localStorage.getItem('selectedAIProvider'),
+          apiKeysConfigured: {
+            google: !!localStorage.getItem('user_api_keys')?.includes('google'),
+            openai: !!localStorage.getItem('user_api_keys')?.includes('openai'),
+            anthropic: !!localStorage.getItem('user_api_keys')?.includes('anthropic')
+          }
+        },
+        // 프로젝트 설정
+        projectSettings: {
+          imageSettings: localStorage.getItem('imageSettings'),
+          videoSettings: localStorage.getItem('videoSettings'),
+          sceneCutSettings: localStorage.getItem('sceneCutSettings')
+        },
+        // 사용자 설정
+        userSettings: {
+          currentUser: localStorage.getItem('storyboard_current_user'),
+          preferences: localStorage.getItem('userPreferences')
+        },
+        // 도구 사용 기록
+        toolUsage: {
+          lastUsedTools: localStorage.getItem('lastUsedTools'),
+          toolStatistics: localStorage.getItem('toolStatistics')
+        }
+      };
+    } catch (error) {
+      console.error('도구 및 설정 정보 수집 실패:', error);
+      return {};
     }
   }
 

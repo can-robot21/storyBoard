@@ -125,7 +125,7 @@ export class BackupManagementService {
   }
 
   /**
-   * 프로젝트 데이터 수집
+   * 프로젝트 데이터 수집 (이미지/영상 파일 제외, 메타데이터만 저장)
    */
   private collectProjectData(): any {
     const data: any = {};
@@ -135,7 +135,7 @@ export class BackupManagementService {
       const keys = [
         'story', 'characterList', 'scenarioPrompt', 'storySummary', 'finalScenario',
         'generatedProjectData', 'episodeStructureData', 'generatedTextCards',
-        'generatedSceneTextCards', 'generatedImages', 'generatedVideos'
+        'generatedSceneTextCards'
       ];
 
       keys.forEach(key => {
@@ -149,9 +149,102 @@ export class BackupManagementService {
         }
       });
 
+      // 생성된 이미지 리스트 (파일 제외, 메타데이터만)
+      const generatedImages = localStorage.getItem('generatedImages');
+      if (generatedImages) {
+        const images = JSON.parse(generatedImages);
+        data.generatedImagesList = images.map((img: any) => ({
+          id: img.id,
+          description: img.description,
+          prompt: img.prompt,
+          timestamp: img.timestamp,
+          type: img.type,
+          // 실제 이미지 데이터는 제외
+          hasImage: !!img.image
+        }));
+      }
+
+      // 생성된 영상 리스트 (파일 제외, 메타데이터만)
+      const generatedVideos = localStorage.getItem('generatedVideos');
+      if (generatedVideos) {
+        const videos = JSON.parse(generatedVideos);
+        data.generatedVideosList = videos.map((video: any) => ({
+          id: video.id,
+          prompt: video.prompt,
+          englishPrompt: video.englishPrompt,
+          koreanPrompt: video.koreanPrompt,
+          timestamp: video.timestamp,
+          duration: video.duration,
+          ratio: video.ratio,
+          model: video.model,
+          // 실제 영상 데이터는 제외
+          hasVideo: !!video.video
+        }));
+      }
+
+      // 프롬프트 템플릿 및 도구 정보
+      data.promptTemplates = this.collectPromptTemplates();
+      data.toolsAndSettings = this.collectToolsAndSettings();
+
       return data;
     } catch (error) {
       console.error('❌ 프로젝트 데이터 수집 실패:', error);
+      return {};
+    }
+  }
+
+  /**
+   * 프롬프트 템플릿 수집
+   */
+  private collectPromptTemplates(): any {
+    try {
+      const templates = localStorage.getItem('promptTemplates');
+      if (templates) {
+        return JSON.parse(templates);
+      }
+      return [];
+    } catch (error) {
+      console.error('프롬프트 템플릿 수집 실패:', error);
+      return [];
+    }
+  }
+
+  /**
+   * 도구 및 설정 정보 수집
+   */
+  private collectToolsAndSettings(): any {
+    try {
+      const settings = {
+        // AI 설정
+        aiSettings: {
+          selectedProvider: localStorage.getItem('selectedAIProvider'),
+          apiKeysConfigured: {
+            google: !!localStorage.getItem('user_api_keys')?.includes('google'),
+            openai: !!localStorage.getItem('user_api_keys')?.includes('openai'),
+            anthropic: !!localStorage.getItem('user_api_keys')?.includes('anthropic')
+          }
+        },
+        // 프로젝트 설정
+        projectSettings: {
+          imageSettings: localStorage.getItem('imageSettings'),
+          videoSettings: localStorage.getItem('videoSettings'),
+          sceneCutSettings: localStorage.getItem('sceneCutSettings')
+        },
+        // 사용자 설정
+        userSettings: {
+          currentUser: localStorage.getItem('storyboard_current_user'),
+          preferences: localStorage.getItem('userPreferences')
+        },
+        // 도구 사용 기록
+        toolUsage: {
+          lastUsedTools: localStorage.getItem('lastUsedTools'),
+          toolStatistics: localStorage.getItem('toolStatistics')
+        }
+      };
+
+      return settings;
+    } catch (error) {
+      console.error('도구 및 설정 정보 수집 실패:', error);
       return {};
     }
   }
