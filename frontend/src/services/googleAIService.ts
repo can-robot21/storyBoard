@@ -270,6 +270,50 @@ STYLE GUIDELINES:
     }
   }
 
+  // 한국 캐릭터 생성을 위한 프롬프트 강화
+  private enhanceKoreanCharacterPrompt(prompt: string): string {
+    const lowerPrompt = prompt.toLowerCase();
+    
+    // 한국 관련 키워드가 있는지 확인
+    const hasKoreanKeywords = lowerPrompt.includes('한국') || 
+                             lowerPrompt.includes('korean') || 
+                             lowerPrompt.includes('한국인') ||
+                             lowerPrompt.includes('아시아') ||
+                             lowerPrompt.includes('asian');
+    
+    if (hasKoreanKeywords) {
+      console.log('🇰🇷 한국 캐릭터 감지 - 프롬프트 강화 적용');
+      
+      // 한국 캐릭터 특징 강화
+      let enhancedPrompt = prompt;
+      
+      // 성별 구분 추가
+      if (lowerPrompt.includes('여성') || lowerPrompt.includes('여자') || lowerPrompt.includes('female')) {
+        enhancedPrompt += ', Korean woman with East Asian features';
+      } else if (lowerPrompt.includes('남성') || lowerPrompt.includes('남자') || lowerPrompt.includes('male')) {
+        enhancedPrompt += ', Korean man with East Asian features';
+      } else {
+        enhancedPrompt += ', Korean person with East Asian features';
+      }
+      
+      // 아시아인 특징 추가
+      enhancedPrompt += ', distinctive Asian facial features, natural Korean appearance';
+      
+      // 한국 전통 의상이 언급된 경우
+      if (lowerPrompt.includes('전통') || lowerPrompt.includes('한복') || lowerPrompt.includes('traditional')) {
+        enhancedPrompt += ', wearing traditional Korean clothing (hanbok)';
+      }
+      
+      // 현대 한국인 특징 추가
+      enhancedPrompt += ', contemporary Korean style, authentic Korean characteristics';
+      
+      console.log('✅ 한국 캐릭터 프롬프트 강화 완료');
+      return enhancedPrompt;
+    }
+    
+    return prompt;
+  }
+
   // 이미지 생성 (캐릭터용) - 여러 이미지 반환
   async generateMultipleCharacterImages(prompt: string, aspectRatio: string = '1:1', numberOfImages: number = 1): Promise<string[]> {
     try {
@@ -284,10 +328,13 @@ STYLE GUIDELINES:
       // 프롬프트 검증 및 강화
       const validatedPrompt = this.validateAndEnhancePrompt(prompt, 'character');
       
+      // 한국 캐릭터 생성을 위한 프롬프트 강화
+      const enhancedPrompt = this.enhanceKoreanCharacterPrompt(validatedPrompt);
+      
       // 스토리보드 연계를 위한 상세한 프롬프트 생성
       const detailedPrompt = `Create a detailed character image for video production:
 
-${validatedPrompt}
+${enhancedPrompt}
 
 Technical specifications:
 - High quality, professional character design
@@ -381,10 +428,13 @@ Style requirements:
       // 프롬프트 검증 및 강화
       const validatedPrompt = this.validateAndEnhancePrompt(prompt, 'character');
       
+      // 한국 캐릭터 생성을 위한 프롬프트 강화
+      const enhancedPrompt = this.enhanceKoreanCharacterPrompt(validatedPrompt);
+      
       // 스토리보드 연계를 위한 상세한 프롬프트 생성
       const detailedPrompt = `Create a detailed character image for video production:
 
-${validatedPrompt}
+${enhancedPrompt}
 
 Technical specifications:
 - High quality, professional character design
@@ -466,9 +516,21 @@ Style requirements:
     } catch (error) {
       console.error('Google AI 이미지 생성 오류:', error);
       
-      // API 키 관련 에러인 경우 더 명확한 메시지 제공
-      if (error instanceof Error && error.message.includes('API key is missing')) {
-        throw new Error('Google AI API 키가 설정되지 않았습니다. 우측 상단 설정 버튼을 클릭하여 API 키를 입력해주세요.');
+      // API 키 관련 에러 처리
+      if (error instanceof Error) {
+        if (error.message.includes('API key expired') || error.message.includes('API_KEY_INVALID')) {
+          throw new Error('Google AI API 키가 만료되었습니다. 설정에서 새로운 API 키를 입력해주세요.');
+        } else if (error.message.includes('API key is missing')) {
+          throw new Error('Google AI API 키가 설정되지 않았습니다. 우측 상단 설정 버튼을 클릭하여 API 키를 입력해주세요.');
+        } else if (error.message.includes('quota') || error.message.includes('QUOTA_EXCEEDED')) {
+          throw new Error('API 사용량 한도를 초과했습니다. 잠시 후 다시 시도해주세요.');
+        } else if (error.message.includes('permission') || error.message.includes('PERMISSION_DENIED')) {
+          throw new Error('Imagen API 사용 권한이 없습니다. Google AI Studio에서 Imagen API를 활성화해주세요.');
+        } else if (error.message.includes('safety') || error.message.includes('SAFETY')) {
+          throw new Error('안전 정책에 위배되는 내용이 감지되었습니다. 프롬프트를 수정해주세요.');
+        } else if (error.message.includes('network') || error.message.includes('fetch')) {
+          throw new Error('네트워크 연결에 문제가 있습니다. 인터넷 연결을 확인해주세요.');
+        }
       }
       
       throw new Error('이미지 생성에 실패했습니다.');
@@ -567,6 +629,24 @@ Style requirements:
       throw new Error('배경 이미지 생성 결과가 없습니다.');
     } catch (error) {
       console.error('Google AI 배경 이미지 생성 오류:', error);
+      
+      // API 키 관련 에러 처리
+      if (error instanceof Error) {
+        if (error.message.includes('API key expired') || error.message.includes('API_KEY_INVALID')) {
+          throw new Error('Google AI API 키가 만료되었습니다. 설정에서 새로운 API 키를 입력해주세요.');
+        } else if (error.message.includes('API key is missing')) {
+          throw new Error('Google AI API 키가 설정되지 않았습니다. 우측 상단 설정 버튼을 클릭하여 API 키를 입력해주세요.');
+        } else if (error.message.includes('quota') || error.message.includes('QUOTA_EXCEEDED')) {
+          throw new Error('API 사용량 한도를 초과했습니다. 잠시 후 다시 시도해주세요.');
+        } else if (error.message.includes('permission') || error.message.includes('PERMISSION_DENIED')) {
+          throw new Error('Imagen API 사용 권한이 없습니다. Google AI Studio에서 Imagen API를 활성화해주세요.');
+        } else if (error.message.includes('safety') || error.message.includes('SAFETY')) {
+          throw new Error('안전 정책에 위배되는 내용이 감지되었습니다. 프롬프트를 수정해주세요.');
+        } else if (error.message.includes('network') || error.message.includes('fetch')) {
+          throw new Error('네트워크 연결에 문제가 있습니다. 인터넷 연결을 확인해주세요.');
+        }
+      }
+      
       throw new Error('배경 이미지 생성에 실패했습니다.');
     }
   }
