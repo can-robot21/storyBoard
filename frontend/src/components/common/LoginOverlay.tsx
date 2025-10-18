@@ -5,13 +5,11 @@ import { LogIn, UserPlus, Shield, Check } from 'lucide-react';
 interface LoginOverlayProps {
   onLogin: () => void;
   onRegister: () => void;
-  onDontShowToday?: () => void;
   onDontShowWeek?: () => void;
   onClose?: () => void;
 }
 
-export const LoginOverlay: React.FC<LoginOverlayProps> = ({ onLogin, onRegister, onDontShowToday, onDontShowWeek, onClose }) => {
-  const [dontShowToday, setDontShowToday] = useState(false);
+export const LoginOverlay: React.FC<LoginOverlayProps> = ({ onLogin, onRegister, onDontShowWeek, onClose }) => {
   const [dontShowWeek, setDontShowWeek] = useState(false);
 
   const handleLoginClick = () => {
@@ -34,17 +32,6 @@ export const LoginOverlay: React.FC<LoginOverlayProps> = ({ onLogin, onRegister,
     setTimeout(() => {
       onRegister();
     }, 100);
-  };
-
-  const handleDontShowTodayChange = () => {
-    setDontShowToday(!dontShowToday);
-    if (onDontShowToday) {
-      onDontShowToday();
-    }
-    // 체크박스 클릭 시 모달 닫기
-    if (onClose) {
-      onClose();
-    }
   };
 
   const handleDontShowWeekChange = () => {
@@ -95,37 +82,19 @@ export const LoginOverlay: React.FC<LoginOverlayProps> = ({ onLogin, onRegister,
 
         {/* 하단 버튼 영역 */}
         <div className="mt-6 space-y-3">
-          {/* 체크박스 옵션들 */}
-          <div className="flex flex-col gap-2">
-            {/* 오늘은 그만보기 체크박스 */}
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleDontShowTodayChange}
-                className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${
-                  dontShowToday 
-                    ? 'bg-blue-600 border-blue-600 text-white' 
-                    : 'border-gray-300 hover:border-blue-400'
-                }`}
-              >
-                {dontShowToday && <Check className="w-3 h-3" />}
-              </button>
-              <span className="text-xs text-gray-600">오늘은 그만보기</span>
-            </div>
-
-            {/* 일주일간 감추기 체크박스 */}
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleDontShowWeekChange}
-                className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${
-                  dontShowWeek 
-                    ? 'bg-purple-600 border-purple-600 text-white' 
-                    : 'border-gray-300 hover:border-purple-400'
-                }`}
-              >
-                {dontShowWeek && <Check className="w-3 h-3" />}
-              </button>
-              <span className="text-xs text-gray-600">일주일간 감추기</span>
-            </div>
+          {/* 일주일간 감추기 체크박스 */}
+          <div className="flex items-center justify-center gap-2">
+            <button
+              onClick={handleDontShowWeekChange}
+              className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${
+                dontShowWeek 
+                  ? 'bg-purple-600 border-purple-600 text-white' 
+                  : 'border-gray-300 hover:border-purple-400'
+              }`}
+            >
+              {dontShowWeek && <Check className="w-3 h-3" />}
+            </button>
+            <span className="text-xs text-gray-600">일주일간 감추기</span>
           </div>
 
           {/* 닫기 버튼 */}

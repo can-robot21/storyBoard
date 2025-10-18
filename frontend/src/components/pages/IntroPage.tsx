@@ -107,7 +107,7 @@ const IntroPage: React.FC<IntroPageProps> = ({ onStart }) => {
           바로 시작하기
         </button>
         <p className="text-sm text-gray-500 mt-4">
-          로그인 없이 바로 체험해보세요
+          영상 제작을 위한 좀더 AI와 함께하는 쉬운 접근
         </p>
       </div>
 

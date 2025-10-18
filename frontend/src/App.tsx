@@ -69,13 +69,6 @@ export default function App() {
   const [showActivityLogManager, setShowActivityLogManager] = useState(false);
   const [showManagementModal, setShowManagementModal] = useState(false);
 
-  // 오늘 그만보기 상태
-  const [dontShowLoginOverlayToday, setDontShowLoginOverlayToday] = useState(() => {
-    const today = new Date().toDateString();
-    const savedDate = localStorage.getItem('dontShowLoginOverlayDate');
-    return savedDate === today;
-  });
-
   // 일주일간 감추기 상태
   const [dontShowLoginOverlayWeek, setDontShowLoginOverlayWeek] = useState(() => {
     const now = new Date();
@@ -466,13 +459,6 @@ export default function App() {
     });
   };
 
-  // 오늘 그만보기 핸들러
-  const handleDontShowToday = () => {
-    const today = new Date().toDateString();
-    localStorage.setItem('dontShowLoginOverlayDate', today);
-    setDontShowLoginOverlayToday(true);
-  };
-
   // 일주일간 감추기 핸들러
   const handleDontShowWeek = () => {
     const now = new Date();
@@ -482,8 +468,8 @@ export default function App() {
 
   // 로그인 오버레이 닫기 핸들러
   const handleCloseLoginOverlay = () => {
-    // 오늘 그만보기 상태로 설정하여 모달 숨김
-    handleDontShowToday();
+    // 일주일간 감추기 상태로 설정하여 모달 숨김
+    handleDontShowWeek();
   };
 
   // 페이지 라우팅 핸들러
@@ -593,12 +579,11 @@ export default function App() {
         />
       </div>
       
-      {/* 미로그인 상태에서 로그인 오버레이 표시 (오늘 그만보기 및 일주일간 감추기 체크 안된 경우만) */}
-      {!isLoggedIn && !dontShowLoginOverlayToday && !dontShowLoginOverlayWeek && (
+      {/* 미로그인 상태에서 로그인 오버레이 표시 (일주일간 감추기 체크 안된 경우만) */}
+      {!isLoggedIn && !dontShowLoginOverlayWeek && (
         <LoginOverlay
           onLogin={handleLogin}
           onRegister={handleRegister}
-          onDontShowToday={handleDontShowToday}
           onDontShowWeek={handleDontShowWeek}
           onClose={handleCloseLoginOverlay}
         />
