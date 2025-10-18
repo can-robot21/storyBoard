@@ -402,7 +402,11 @@ Style requirements:
       
       // API 키 관련 오류 처리
       if (error instanceof Error) {
-        if (error.message.includes('API key') || error.message.includes('INVALID_ARGUMENT')) {
+        if (error.message.includes('API key expired') || error.message.includes('API_KEY_INVALID')) {
+          throw new Error('Google AI API 키가 만료되었습니다. 설정에서 새로운 API 키를 입력해주세요.');
+        } else if (error.message.includes('API key is missing')) {
+          throw new Error('Google AI API 키가 설정되지 않았습니다. 우측 상단 설정 버튼을 클릭하여 API 키를 입력해주세요.');
+        } else if (error.message.includes('API key') || error.message.includes('INVALID_ARGUMENT')) {
           throw new Error('Google AI API 키가 유효하지 않습니다. 설정에서 올바른 API 키를 입력해주세요.');
         } else if (error.message.includes('quota') || error.message.includes('QUOTA_EXCEEDED')) {
           throw new Error('API 사용량 한도를 초과했습니다. 잠시 후 다시 시도해주세요.');

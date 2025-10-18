@@ -241,6 +241,14 @@ export const useImageHandlers = (
           errorMessage = '이미지 생성에 실패했습니다. 프롬프트를 더 구체적으로 작성해보세요.';
         } else if (error.message.includes('API 키')) {
           errorMessage = 'Google AI API 키가 설정되지 않았습니다. 설정에서 API 키를 입력해주세요.';
+        } else if (error.message.includes('API 키가 설정되지 않았습니다')) {
+          errorMessage = 'Google AI API 키가 설정되지 않았습니다. 설정에서 API 키를 입력해주세요.';
+          // API 키 설정되지 않을 때도 설정 모달 자동 열기
+          if (onOpenSettings) {
+            setTimeout(() => {
+              onOpenSettings();
+            }, 1000); // 1초 후 설정 모달 열기
+          }
         } else if (error.message.includes('API 키가 만료되었습니다')) {
           errorMessage = 'Google AI API 키가 만료되었습니다. 설정에서 새로운 API 키를 입력해주세요.';
           // API 키 만료 시 설정 모달 자동 열기
