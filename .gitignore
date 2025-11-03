@@ -203,5 +203,7 @@ node_modules/
 .Spotlight-V100
 .Trashes
 ehthumbs.db
-Thumbs.dbweb/_import/
-web/storyboard_source_*.tar.gz
+Thumbs.db
+
+# Web backup folders (excluded from git)
+web/
