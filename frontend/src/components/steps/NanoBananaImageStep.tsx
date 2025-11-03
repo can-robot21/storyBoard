@@ -4,26 +4,26 @@ import { NanoBananaService } from '../../services/ai/NanoBananaService';
 import { ImageAnalysisModal } from '../common/ImageAnalysisModal';
 import { ImageGenerationForm, ImageGenerationConfig } from '../common/ImageGenerationForm';
 import { AdvancedImageGenerationModal } from '../common/AdvancedImageGenerationModal';
-import { APIKeySetupModal } from '../common/APIKeySetupModal';
-
-interface GeneratedItem {
-  id: number;
-  description: string;
-  image: string;
-  attachedImages: File[];
-  timestamp: string;
-}
+import { AISettingsModal } from '../common/AISettingsModal';
+import { StyleReferenceModal } from '../common/StyleReferenceModal';
+import { PromptConfirmationModal } from '../common/PromptConfirmationModal';
+import { NanoBananaImageStepHeader } from './NanoBananaImageStepHeader';
+import { NanoBananaImageStepTabs } from './NanoBananaImageStepTabs';
+import { AIProvider } from '../../types/ai';
+import type { GeneratedCharacter, GeneratedBackground, GeneratedSettingCut, ImageGenerationMetadata } from '../../types/project';
+import { useUIStore } from '../../stores/uiStore';
+import { ErrorMessageModal } from '../common/ErrorMessageModal';
 
 interface NanoBananaImageStepProps {
-  generatedCharacters: GeneratedItem[];
-  setGeneratedCharacters: React.Dispatch<React.SetStateAction<GeneratedItem[]>>;
-  generatedBackgrounds: GeneratedItem[];
-  setGeneratedBackgrounds: React.Dispatch<React.SetStateAction<GeneratedItem[]>>;
-  generatedSettingCuts: GeneratedItem[];
-  setGeneratedSettingCuts: React.Dispatch<React.SetStateAction<GeneratedItem[]>>;
+  generatedCharacters: GeneratedCharacter[];
+  setGeneratedCharacters: React.Dispatch<React.SetStateAction<GeneratedCharacter[]>>;
+  generatedBackgrounds: GeneratedBackground[];
+  setGeneratedBackgrounds: React.Dispatch<React.SetStateAction<GeneratedBackground[]>>;
+  generatedSettingCuts: GeneratedSettingCut[];
+  setGeneratedSettingCuts: React.Dispatch<React.SetStateAction<GeneratedSettingCut[]>>;
   // 고급 이미지 생성 props
-  generatedAdvancedImages: GeneratedItem[];
-  setGeneratedAdvancedImages: React.Dispatch<React.SetStateAction<GeneratedItem[]>>;
+  generatedAdvancedImages: GeneratedCharacter[];
+  setGeneratedAdvancedImages: React.Dispatch<React.SetStateAction<GeneratedCharacter[]>>;
   generatedProjectData: any;
   showTextResults: boolean;
   setShowTextResults: (show: boolean) => void;
@@ -37,13 +37,6 @@ interface NanoBananaImageStepProps {
   canProceedToNext?: () => boolean;
   // 사용자 정보
   currentUser?: any;
-  // 상단 기본 설정
-  globalImageSettings?: {
-    quality: 'standard' | 'high' | 'ultra';
-    aspectRatio: '16:9' | '9:16' | '2:3' | '1:1' | 'free';
-  };
-  // 설정 모달 열기 함수
-  onOpenSettings?: () => void;
 }
 
 export const NanoBananaImageStep: React.FC<NanoBananaImageStepProps> = ({
@@ -66,10 +59,21 @@ export const NanoBananaImageStep: React.FC<NanoBananaImageStepProps> = ({
   finalScenario,
   onNext,
   canProceedToNext,
-  currentUser,
-  globalImageSettings,
-  onOpenSettings
+  currentUser
 }) => {
+  const { addNotification } = useUIStore();
+  
+  // 에러 모달 상태
+  const [errorModal, setErrorModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+  }>({
+    isOpen: false,
+    title: '',
+    message: ''
+  });
+  
   // 기본 이미지 생성 상태
   const [characterInput, setCharacterInput] = useState('');
   const [backgroundInput, setBackgroundInput] = useState('');
@@ -78,14 +82,105 @@ export const NanoBananaImageStep: React.FC<NanoBananaImageStepProps> = ({
   const [attachedBackgroundImages, setAttachedBackgroundImages] = useState<File[]>([]);
   const [attachedSettingImages, setAttachedSettingImages] = useState<File[]>([]);
   
+  // 공통 입력 항목 표시 상태
+  const [showCommonInputs, setShowCommonInputs] = useState(false);
+  const [commonInputsCompleted, setCommonInputsCompleted] = useState(false);
+  
   // 공통 이미지 생성 설정
   const [imageConfig, setImageConfig] = useState<ImageGenerationConfig>({
     style: 'realistic',
     quality: 'high',
     aspectRatio: '1:1',
     customSize: '',
-    additionalPrompt: ''
+    additionalPrompt: '',
+    // Imagen 3/4 옵션들
+    numberOfImages: 4,
+    imageSize: '1K',
+    personGeneration: 'allow_adult',
+    // Gemini 2.5 Flash Image 옵션들 (img2img용)
+    responseModalities: 'Image',
+    styleEnhancement: 'balanced',
+    editMode: 'modify',
+    detailPreservation: 70,
+    editIntensity: 50,
+    cameraControl: 'maintain'
   });
+  const [showCommonOptions, setShowCommonOptions] = useState(true);
+  
+  // 개별 옵션 표시 상태
+  const [showCharacterOptions, setShowCharacterOptions] = useState(false);
+  const [showBackgroundOptions, setShowBackgroundOptions] = useState(false);
+  const [showSettingOptions, setShowSettingOptions] = useState(false);
+  
+  // 개별 옵션 설정 상태
+  const [characterOptions, setCharacterOptions] = useState<ImageGenerationConfig>({
+    ...imageConfig,
+    customSize: '',
+    additionalPrompt: '',
+    responseModalities: 'Image',
+    styleEnhancement: 'none',
+    editMode: 'modify',
+    detailPreservation: 75,
+    editIntensity: 50,
+    cameraControl: 'maintain',
+    // 카메라 설정 옵션들
+    cameraPosition: 'front',
+    lensType: 'standard',
+    focalDistance: 'medium',
+    cameraFilter: 'none'
+  });
+  
+  const [backgroundOptions, setBackgroundOptions] = useState<ImageGenerationConfig>({
+    ...imageConfig,
+    customSize: '',
+    additionalPrompt: '',
+    responseModalities: 'Image',
+    styleEnhancement: 'none',
+    editMode: 'modify',
+    detailPreservation: 75,
+    editIntensity: 50,
+    cameraControl: 'maintain',
+    // 카메라 설정 옵션들
+    cameraPosition: 'front',
+    lensType: 'standard',
+    focalDistance: 'medium',
+    cameraFilter: 'none'
+  });
+  
+  const [settingOptions, setSettingOptions] = useState<ImageGenerationConfig>({
+    ...imageConfig,
+    customSize: '',
+    additionalPrompt: '',
+    responseModalities: 'Image',
+    styleEnhancement: 'none',
+    editMode: 'modify',
+    detailPreservation: 75,
+    editIntensity: 50,
+    cameraControl: 'maintain',
+    // 카메라 설정 옵션들
+    cameraPosition: 'front',
+    lensType: 'standard',
+    focalDistance: 'medium',
+    cameraFilter: 'none'
+  });
+  
+  // 공통 입력 완료 처리
+  const handleCommonInputsComplete = () => {
+    if (!story || characterList.length === 0) {
+      console.log('스토리와 캐릭터 정보를 입력해주세요.');
+      return;
+    }
+
+    setCommonInputsCompleted(true);
+    setShowCommonInputs(false);
+    console.log('기본 정보가 성공적으로 입력되었습니다.');
+  };
+
+  // 공통 입력 초기화
+  const handleCommonInputsReset = () => {
+    setCommonInputsCompleted(false);
+    console.log('공통 입력 항목이 초기화되었습니다.');
+  };
 
   // 고급 이미지 생성 모달 상태
   const [showAdvancedModal, setShowAdvancedModal] = useState(false);
@@ -93,591 +188,1088 @@ export const NanoBananaImageStep: React.FC<NanoBananaImageStepProps> = ({
   // 이미지 분석 모달 상태
   const [showImageAnalysisModal, setShowImageAnalysisModal] = useState(false);
   
-  // API 키 설정 모달 상태
-  const [showAPIKeySetupModal, setShowAPIKeySetupModal] = useState(false);
+  // AI 설정 모달 상태
+  const [showAISettingsModal, setShowAISettingsModal] = useState(false);
+  const [selectedAIProvider, setSelectedAIProvider] = useState<AIProvider>('google');
+
+  // 스타일 참조 모달 상태
+  const [showStyleReferenceModal, setShowStyleReferenceModal] = useState(false);
 
   // 생성 중 상태
   const [isGeneratingCharacter, setIsGeneratingCharacter] = useState(false);
   const [isGeneratingBackground, setIsGeneratingBackground] = useState(false);
   const [isGeneratingSettingCut, setIsGeneratingSettingCut] = useState(false);
+  
+  // 프롬프트 확인 모달 상태
+  const [showPromptModal, setShowPromptModal] = useState(false);
+  const [pendingGeneration, setPendingGeneration] = useState<{
+    type: 'character' | 'background' | 'setting';
+    prompt: string;
+    attachedImages: File[];
+    settings: ImageGenerationConfig;
+  } | null>(null);
 
-  // API 키 확인 (사용자별 또는 환경 변수)
+  // API 키 확인 함수 (개선된 버전)
   const getAPIKey = () => {
     try {
-      if (currentUser?.apiKeys?.google) return currentUser.apiKeys.google;
       if (typeof window !== 'undefined') {
+        const currentUserRaw = localStorage.getItem('storyboard_current_user');
         const localKeysRaw = localStorage.getItem('user_api_keys');
-        if (localKeysRaw) {
-          const localKeys = JSON.parse(localKeysRaw);
-          if (localKeys?.google) return localKeys.google as string;
-        }
+        const currentUser = currentUserRaw ? JSON.parse(currentUserRaw) : null;
+        const localKeys = localKeysRaw ? JSON.parse(localKeysRaw) : {};
+        
+        // 우선순위: 로컬 키 > 사용자 키 > 빈 문자열
+        const apiKey = localKeys.google || currentUser?.apiKeys?.google || '';
+        
+        console.log('🔍 API 키 검색 결과:', {
+          hasLocalKeys: !!localKeys.google,
+          hasUserKeys: !!currentUser?.apiKeys?.google,
+          currentUser: currentUser?.email,
+          finalKey: apiKey ? `${apiKey.substring(0, 8)}...` : '없음'
+        });
+        
+        return apiKey;
       }
-    } catch {}
-    return process.env.REACT_APP_GEMINI_API_KEY || '';
+    } catch (error) {
+      console.error('❌ API 키 로드 오류:', error);
+    }
+    return '';
   };
 
-  const hasAPIKey = getAPIKey().trim() !== '';
-
-  // 나노 바나나 서비스 직접 인스턴스화
+  // NanoBanana 서비스 인스턴스
   const nanoBananaService = useMemo(() => {
-    try {
-      const apiKey = getAPIKey().trim();
-      if (!apiKey || apiKey.length < 20 || !apiKey.startsWith('AIza')) {
-        return null;
-      }
-      return new NanoBananaService({ apiKey });
-    } catch (error) {
-      console.error('⚠ 나노 바나나 서비스 초기화 실패:', error);
+    const apiKey = getAPIKey();
+    console.log('🔑 API 키 상태:', apiKey ? '설정됨' : '미설정');
+    
+    if (!apiKey || apiKey.trim() === '') {
+      console.warn('⚠️ API 키가 설정되지 않았습니다.');
       return null;
     }
-  }, [getAPIKey]);
-
-  // 설정 우선순위 적용 함수 (본문 설정 우선)
-  const applySettingsPriority = () => {
-    // 본문 설정이 있으면 우선 적용, 없으면 상단 기본 설정 사용
-    const finalAspectRatio = imageConfig.aspectRatio || globalImageSettings?.aspectRatio || '16:9';
-    const finalQuality = imageConfig.quality || globalImageSettings?.quality || 'high';
-    const finalStyle = imageConfig.style || 'realistic';
-
-    // 설정 우선순위 안내 메시지
-    if (imageConfig.aspectRatio && globalImageSettings?.aspectRatio && imageConfig.aspectRatio !== globalImageSettings.aspectRatio) {
-      console.log('📋 설정 우선순위: 본문 설정이 상단 기본 설정보다 우선 적용됩니다.');
-      console.log(`   본문 비율: ${imageConfig.aspectRatio}, 상단 기본 비율: ${globalImageSettings.aspectRatio}`);
+    
+    try {
+      const service = new NanoBananaService({ apiKey });
+      console.log('✅ NanoBanana 서비스 초기화 성공');
+      return service;
+    } catch (error) {
+      console.error('❌ NanoBanana 서비스 초기화 실패:', error);
+      return null;
     }
-    if (imageConfig.quality && globalImageSettings?.quality && imageConfig.quality !== globalImageSettings.quality) {
-      console.log('📋 설정 우선순위: 본문 설정이 상단 기본 설정보다 우선 적용됩니다.');
-      console.log(`   본문 품질: ${imageConfig.quality}, 상단 기본 품질: ${globalImageSettings.quality}`);
+  }, [currentUser]); // currentUser가 변경될 때마다 서비스 재생성
+
+  // 캐릭터 생성 핸들러
+  const handleGenerateCharacter = async () => {
+    if (!characterInput.trim()) {
+      console.log('캐릭터 설명을 입력해주세요.');
+      return;
     }
 
-    return {
-      aspectRatio: finalAspectRatio,
-      quality: finalQuality,
-      style: finalStyle
-    };
+    // 프롬프트 확인 모달 표시
+    setPendingGeneration({
+      type: 'character',
+      prompt: characterInput,
+      attachedImages: attachedCharacterImages,
+      settings: characterOptions
+    });
+    setShowPromptModal(true);
   };
 
-  // 공통 이미지 생성 함수
-  const generateImage = async (
-    prompt: string,
-    attachedImages: File[],
-    setIsGenerating: (loading: boolean) => void,
-    setResult: (result: any) => void,
-    clearInput: () => void
-  ) => {
+  // 실제 캐릭터 생성 실행
+  const executeCharacterGeneration = async () => {
+    if (!pendingGeneration) return;
+
+    if (!nanoBananaService) {
+      console.error('❌ NanoBanana 서비스가 초기화되지 않았습니다.');
+      alert('API 키가 설정되지 않았습니다. 설정에서 Google AI API 키를 입력해주세요.');
+      setIsGeneratingCharacter(false);
+      return;
+    }
+
+    setIsGeneratingCharacter(true);
     try {
-      setIsGenerating(true);
+      let result;
       
-      if (!nanoBananaService) {
-        console.error('❌ 나노 바나나 서비스를 사용할 수 없습니다.');
+      if (pendingGeneration.attachedImages.length > 0) {
+        // img2img 생성 (첨부된 이미지가 있을 때)
+        console.log('🍌 img2img 캐릭터 생성 시작');
+        
+        // 상세 프롬프트 구성
+        let detailedPrompt = pendingGeneration.prompt;
+        
+        // 기본 설정 추가
+        if (pendingGeneration.settings.customSize) {
+          detailedPrompt += `\n\n사이즈 요청사항: ${pendingGeneration.settings.customSize}`;
+        }
+        if (pendingGeneration.settings.additionalPrompt) {
+          detailedPrompt += `\n\n추가 요청사항: ${pendingGeneration.settings.additionalPrompt}`;
+        }
+        
+        // 스타일과 품질 추가
+        detailedPrompt += `\n\n스타일: ${pendingGeneration.settings.style}, 품질: ${pendingGeneration.settings.quality}, 비율: ${pendingGeneration.settings.aspectRatio}`;
+        
+        // 카메라 설정 추가
+        if (pendingGeneration.settings.cameraPosition) {
+          const cameraMap: { [key: string]: string } = {
+            'front': '정면 촬영',
+            'side': '측면 촬영',
+            'back': '후면 촬영',
+            'top': '상단 촬영',
+            'low_angle': '로우 앵글',
+            'high_angle': '하이 앵글',
+            'bird_eye': '버드아이 뷰',
+            'worm_eye': '웜아이 뷰'
+          };
+          detailedPrompt += `\n카메라 위치: ${cameraMap[pendingGeneration.settings.cameraPosition] || pendingGeneration.settings.cameraPosition}`;
+        }
+        
+        if (pendingGeneration.settings.lensType) {
+          detailedPrompt += `\n렌즈: ${pendingGeneration.settings.lensType}`;
+        }
+        
+        if (pendingGeneration.settings.focalDistance) {
+          detailedPrompt += `\n초점 거리: ${pendingGeneration.settings.focalDistance}`;
+        }
+        
+        // 스타일 강화 설정 추가
+        if (pendingGeneration.settings.styleEnhancement && pendingGeneration.settings.styleEnhancement !== 'none') {
+          const enhancementMap: { [key: string]: string } = {
+            'enhanced': '강화된 스타일',
+            'subtle': '은은한 스타일 강화',
+            'dramatic': '드라마틱한 스타일 강화'
+          };
+          detailedPrompt += `\n스타일 강화: ${enhancementMap[pendingGeneration.settings.styleEnhancement] || pendingGeneration.settings.styleEnhancement}`;
+        }
+        
+        // 편집 모드 추가
+        if (pendingGeneration.settings.editMode) {
+          const editModeMap: { [key: string]: string } = {
+            'modify': '수정 모드',
+            'enhance': '향상 모드',
+            'transform': '변환 모드'
+          };
+          detailedPrompt += `\n편집 모드: ${editModeMap[pendingGeneration.settings.editMode] || pendingGeneration.settings.editMode}`;
+        }
+        
+        // 세부사항 보존 설정 추가
+        if (pendingGeneration.settings.detailPreservation) {
+          detailedPrompt += `\n세부사항 보존: ${pendingGeneration.settings.detailPreservation}%`;
+        }
+        
+        const imageResult = await nanoBananaService.generateImageWithReference(
+          detailedPrompt,
+          pendingGeneration.attachedImages[0]
+        );
+        
+        if (imageResult) {
+          result = {
+            images: [imageResult],
+            usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+            model: 'gemini-2.5-flash-image'
+          };
+        }
+      } else {
+        // 일반 이미지 생성
+        console.log('🍌 일반 캐릭터 생성 시작');
+        
+        // 상세 프롬프트 구성
+        let detailedPrompt = pendingGeneration.prompt;
+        
+        // 기본 설정 추가
+        if (pendingGeneration.settings.customSize) {
+          detailedPrompt += `\n\n사이즈 요청사항: ${pendingGeneration.settings.customSize}`;
+        }
+        if (pendingGeneration.settings.additionalPrompt) {
+          detailedPrompt += `\n\n추가 요청사항: ${pendingGeneration.settings.additionalPrompt}`;
+        }
+        
+        // 스타일과 품질 추가
+        detailedPrompt += `\n\n스타일: ${pendingGeneration.settings.style}, 품질: ${pendingGeneration.settings.quality}, 비율: ${pendingGeneration.settings.aspectRatio}`;
+        
+        // 카메라 설정 추가
+        if (pendingGeneration.settings.cameraPosition) {
+          const cameraMap: { [key: string]: string } = {
+            'front': '정면 촬영',
+            'side': '측면 촬영',
+            'back': '후면 촬영',
+            'top': '상단 촬영',
+            'low_angle': '로우 앵글',
+            'high_angle': '하이 앵글',
+            'bird_eye': '버드아이 뷰',
+            'worm_eye': '웜아이 뷰'
+          };
+          detailedPrompt += `\n카메라 위치: ${cameraMap[pendingGeneration.settings.cameraPosition] || pendingGeneration.settings.cameraPosition}`;
+        }
+        
+        if (pendingGeneration.settings.lensType) {
+          detailedPrompt += `\n렌즈: ${pendingGeneration.settings.lensType}`;
+        }
+        
+        if (pendingGeneration.settings.focalDistance) {
+          detailedPrompt += `\n초점 거리: ${pendingGeneration.settings.focalDistance}`;
+        }
+        
+        // 스타일 강화 설정 추가
+        if (pendingGeneration.settings.styleEnhancement && pendingGeneration.settings.styleEnhancement !== 'none') {
+          const enhancementMap: { [key: string]: string } = {
+            'enhanced': '강화된 스타일',
+            'subtle': '은은한 스타일 강화',
+            'dramatic': '드라마틱한 스타일 강화'
+          };
+          detailedPrompt += `\n스타일 강화: ${enhancementMap[pendingGeneration.settings.styleEnhancement] || pendingGeneration.settings.styleEnhancement}`;
+        }
+        
+        // 편집 모드 추가
+        if (pendingGeneration.settings.editMode) {
+          const editModeMap: { [key: string]: string } = {
+            'modify': '수정 모드',
+            'enhance': '향상 모드',
+            'transform': '변환 모드'
+          };
+          detailedPrompt += `\n편집 모드: ${editModeMap[pendingGeneration.settings.editMode] || pendingGeneration.settings.editMode}`;
+        }
+        
+        // 세부사항 보존 설정 추가
+        if (pendingGeneration.settings.detailPreservation) {
+          detailedPrompt += `\n세부사항 보존: ${pendingGeneration.settings.detailPreservation}%`;
+        }
+        
+        result = await nanoBananaService.generateImage({
+          prompt: detailedPrompt,
+        provider: 'google',
+          aspectRatio: pendingGeneration.settings.aspectRatio as "16:9" | "1:1" | "9:16" | "4:3" | "3:4",
+          style: pendingGeneration.settings.style as "photographic" | "artistic" | "cartoon" | "anime",
+          quality: pendingGeneration.settings.quality as "standard" | "high" | "ultra",
+          numberOfImages: pendingGeneration.settings.numberOfImages,
+        model: 'gemini-2.5-flash-image-preview'
+      });
+      }
+
+      if (result && result.images && result.images.length > 0) {
+        // 나노 바나나는 항상 1개만 생성되므로 메타데이터에 반영
+        const personGeneration = pendingGeneration.settings?.personGeneration || 'allow_adult';
+        const generationMetadata: ImageGenerationMetadata = {
+          personGeneration: personGeneration as 'allow_adult' | 'allow_all' | 'dont_allow' | undefined,
+          aspectRatio: pendingGeneration.settings?.aspectRatio || '1:1',
+          numberOfImages: 1, // 나노 바나나는 항상 1개만 생성
+          apiResponse: {
+            generatedCount: 1,
+            requestedCount: 1,
+            timestamp: new Date().toISOString()
+          }
+        };
+        
+        const newCharacter: GeneratedCharacter = {
+          id: Date.now(),
+          description: pendingGeneration.prompt,
+          image: result.images[0],
+          attachedImages: pendingGeneration.attachedImages.map(f => f.name || 'file'), // File[]를 string[]로 변환
+          timestamp: new Date().toISOString(),
+          type: 'character',
+          generationMetadata
+        };
+
+        setGeneratedCharacters(prev => [...prev, newCharacter]);
+        setCharacterInput('');
+        setAttachedCharacterImages([]);
+        
+        // 성공 메시지 (나노 바나나 특성 반영)
+        const personGenerationText = personGeneration === 'allow_all' ? '모든 연령 허용' :
+                                    personGeneration === 'allow_adult' ? '성인만 허용' :
+                                    personGeneration === 'dont_allow' ? '사람 생성 차단' : '기본값';
+        
+        addNotification({
+          type: 'success',
+          title: '캐릭터 생성 완료',
+          message: `이미지가 생성되었습니다. (나노 바나나 API는 항상 1개만 생성)\n\n적용된 옵션:\n• 사람 생성: ${personGenerationText}\n• 화면 비율: ${pendingGeneration.settings?.aspectRatio || '1:1'}`
+        });
+        
+        if (process.env.NODE_ENV === 'development') {
+          console.log('✅ 캐릭터 생성 완료:', {
+            이미지개수: 1,
+            personGeneration,
+            aspectRatio: pendingGeneration.settings?.aspectRatio
+          });
+        }
+      } else {
+        throw new Error('이미지 생성 결과가 없습니다.');
+      }
+    } catch (error) {
+      console.error('❌ 캐릭터 생성 오류:', error);
+      const errorMessage = error instanceof Error ? error.message : '알 수 없는 오류가 발생했습니다.';
+      
+      // 에러 모달 표시
+      setErrorModal({
+        isOpen: true,
+        title: '캐릭터 생성 실패',
+        message: errorMessage
+      });
+    } finally {
+      setIsGeneratingCharacter(false);
+      setShowPromptModal(false);
+      setPendingGeneration(null);
+    }
+  };
+
+  // 배경 생성 핸들러
+  const handleGenerateBackground = async () => {
+    if (!backgroundInput.trim()) {
+      console.log('배경 설명을 입력해주세요.');
         return;
       }
       
-      // 설정 우선순위 적용
-      const settings = applySettingsPriority();
-      console.log('⚙️ 적용된 설정:', settings);
-      
-      // 프롬프트 구성
-      let finalPrompt = prompt;
-      if (imageConfig.additionalPrompt.trim()) {
-        finalPrompt = `${finalPrompt}\n\n추가 요청사항: ${imageConfig.additionalPrompt}`;
-      }
-      if (imageConfig.customSize.trim()) {
-        finalPrompt = `${finalPrompt}\n\n사이즈 요청사항: ${imageConfig.customSize}`;
-      }
-      
-      // 스타일과 품질 추가 (우선순위 적용된 설정 사용)
-      finalPrompt = `${finalPrompt}\n\n스타일: ${settings.style}, 품질: ${settings.quality}, 비율: ${settings.aspectRatio}`;
-      
-      console.log('🔥 최종 프롬프트:', finalPrompt);
+    // 프롬프트 확인 모달 표시
+    setPendingGeneration({
+      type: 'background',
+      prompt: backgroundInput,
+      attachedImages: attachedBackgroundImages,
+      settings: backgroundOptions
+    });
+    setShowPromptModal(true);
+  };
 
+  // 실제 배경 생성 실행
+  const executeBackgroundGeneration = async () => {
+    if (!pendingGeneration) return;
+
+    if (!nanoBananaService) {
+      console.error('❌ NanoBanana 서비스가 초기화되지 않았습니다.');
+      alert('API 키가 설정되지 않았습니다. 설정에서 Google AI API 키를 입력해주세요.');
+      setIsGeneratingBackground(false);
+      return;
+    }
+      
+    setIsGeneratingBackground(true);
+    try {
       let result;
       
-      // 첨부된 이미지가 있는 경우 멀티 이미지 생성 사용
-      if (attachedImages.length > 0) {
-        console.log('📷 첨부된 이미지와 함께 생성:', attachedImages.length, '개');
+      if (pendingGeneration.attachedImages.length > 0) {
+        // img2img 생성 (첨부된 이미지가 있을 때)
+        console.log('🍌 img2img 배경 생성 시작');
         
-        if (attachedImages.length > 1) {
-          // 멀티 이미지 생성
-          result = await nanoBananaService.generateImageWithMultipleReferences(
-            finalPrompt,
-            attachedImages,
-            imageConfig.customSize
-          );
-        } else {
-          // 단일 이미지 생성
-          result = await nanoBananaService.generateImageWithReference(
-            finalPrompt,
-            attachedImages[0],
-            imageConfig.customSize
-          );
+        // 상세 프롬프트 구성
+        let detailedPrompt = pendingGeneration.prompt;
+        
+        // 기본 설정 추가
+        if (pendingGeneration.settings.customSize) {
+          detailedPrompt += `\n\n사이즈 요청사항: ${pendingGeneration.settings.customSize}`;
+        }
+        if (pendingGeneration.settings.additionalPrompt) {
+          detailedPrompt += `\n\n추가 요청사항: ${pendingGeneration.settings.additionalPrompt}`;
         }
         
-        // 결과를 표준 형식으로 변환
-        if (result) {
-          result = { images: [result] };
+        // 스타일과 품질 추가
+        detailedPrompt += `\n\n스타일: ${pendingGeneration.settings.style}, 품질: ${pendingGeneration.settings.quality}, 비율: ${pendingGeneration.settings.aspectRatio}`;
+        
+        // 카메라 설정 추가
+        if (pendingGeneration.settings.cameraPosition) {
+          const cameraMap: { [key: string]: string } = {
+            'front': '정면 촬영',
+            'side': '측면 촬영',
+            'back': '후면 촬영',
+            'top': '상단 촬영',
+            'low_angle': '로우 앵글',
+            'high_angle': '하이 앵글',
+            'bird_eye': '버드아이 뷰',
+            'worm_eye': '웜아이 뷰'
+          };
+          detailedPrompt += `\n카메라 위치: ${cameraMap[pendingGeneration.settings.cameraPosition] || pendingGeneration.settings.cameraPosition}`;
+        }
+        
+        if (pendingGeneration.settings.lensType) {
+          detailedPrompt += `\n렌즈: ${pendingGeneration.settings.lensType}`;
+        }
+        
+        if (pendingGeneration.settings.focalDistance) {
+          detailedPrompt += `\n초점 거리: ${pendingGeneration.settings.focalDistance}`;
+        }
+        
+        // 스타일 강화 설정 추가
+        if (pendingGeneration.settings.styleEnhancement && pendingGeneration.settings.styleEnhancement !== 'none') {
+          const enhancementMap: { [key: string]: string } = {
+            'enhanced': '강화된 스타일',
+            'subtle': '은은한 스타일 강화',
+            'dramatic': '드라마틱한 스타일 강화'
+          };
+          detailedPrompt += `\n스타일 강화: ${enhancementMap[pendingGeneration.settings.styleEnhancement] || pendingGeneration.settings.styleEnhancement}`;
+        }
+        
+        // 편집 모드 추가
+        if (pendingGeneration.settings.editMode) {
+          const editModeMap: { [key: string]: string } = {
+            'modify': '수정 모드',
+            'enhance': '향상 모드',
+            'transform': '변환 모드'
+          };
+          detailedPrompt += `\n편집 모드: ${editModeMap[pendingGeneration.settings.editMode] || pendingGeneration.settings.editMode}`;
+        }
+        
+        // 세부사항 보존 설정 추가
+        if (pendingGeneration.settings.detailPreservation) {
+          detailedPrompt += `\n세부사항 보존: ${pendingGeneration.settings.detailPreservation}%`;
+        }
+        
+        const imageResult = await nanoBananaService.generateImageWithReference(
+          detailedPrompt,
+          pendingGeneration.attachedImages[0]
+        );
+        
+        if (imageResult) {
+          result = {
+            images: [imageResult],
+            usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+            model: 'gemini-2.5-flash-image'
+          };
         }
       } else {
-        // 텍스트만으로 생성
+        // 일반 이미지 생성
+        console.log('🍌 일반 배경 생성 시작');
+        
+        // 상세 프롬프트 구성
+        let detailedPrompt = pendingGeneration.prompt;
+        
+        // 기본 설정 추가
+        if (pendingGeneration.settings.customSize) {
+          detailedPrompt += `\n\n사이즈 요청사항: ${pendingGeneration.settings.customSize}`;
+        }
+        if (pendingGeneration.settings.additionalPrompt) {
+          detailedPrompt += `\n\n추가 요청사항: ${pendingGeneration.settings.additionalPrompt}`;
+        }
+        
+        // 스타일과 품질 추가
+        detailedPrompt += `\n\n스타일: ${pendingGeneration.settings.style}, 품질: ${pendingGeneration.settings.quality}, 비율: ${pendingGeneration.settings.aspectRatio}`;
+        
+        // 카메라 설정 추가
+        if (pendingGeneration.settings.cameraPosition) {
+          const cameraMap: { [key: string]: string } = {
+            'front': '정면 촬영',
+            'side': '측면 촬영',
+            'back': '후면 촬영',
+            'top': '상단 촬영',
+            'low_angle': '로우 앵글',
+            'high_angle': '하이 앵글',
+            'bird_eye': '버드아이 뷰',
+            'worm_eye': '웜아이 뷰'
+          };
+          detailedPrompt += `\n카메라 위치: ${cameraMap[pendingGeneration.settings.cameraPosition] || pendingGeneration.settings.cameraPosition}`;
+        }
+        
+        if (pendingGeneration.settings.lensType) {
+          detailedPrompt += `\n렌즈: ${pendingGeneration.settings.lensType}`;
+        }
+        
+        if (pendingGeneration.settings.focalDistance) {
+          detailedPrompt += `\n초점 거리: ${pendingGeneration.settings.focalDistance}`;
+        }
+        
+        // 스타일 강화 설정 추가
+        if (pendingGeneration.settings.styleEnhancement && pendingGeneration.settings.styleEnhancement !== 'none') {
+          const enhancementMap: { [key: string]: string } = {
+            'enhanced': '강화된 스타일',
+            'subtle': '은은한 스타일 강화',
+            'dramatic': '드라마틱한 스타일 강화'
+          };
+          detailedPrompt += `\n스타일 강화: ${enhancementMap[pendingGeneration.settings.styleEnhancement] || pendingGeneration.settings.styleEnhancement}`;
+        }
+        
+        // 편집 모드 추가
+        if (pendingGeneration.settings.editMode) {
+          const editModeMap: { [key: string]: string } = {
+            'modify': '수정 모드',
+            'enhance': '향상 모드',
+            'transform': '변환 모드'
+          };
+          detailedPrompt += `\n편집 모드: ${editModeMap[pendingGeneration.settings.editMode] || pendingGeneration.settings.editMode}`;
+        }
+        
+        // 세부사항 보존 설정 추가
+        if (pendingGeneration.settings.detailPreservation) {
+          detailedPrompt += `\n세부사항 보존: ${pendingGeneration.settings.detailPreservation}%`;
+        }
+        
         result = await nanoBananaService.generateImage({
-          prompt: finalPrompt,
-          provider: 'nano-banana',
-          model: 'gemini-2.5-flash-image',
-          aspectRatio: settings.aspectRatio as any,
-          quality: settings.quality as any,
-          style: settings.style as any
-        });
+          prompt: detailedPrompt,
+        provider: 'google',
+          aspectRatio: pendingGeneration.settings.aspectRatio as "16:9" | "1:1" | "9:16" | "4:3" | "3:4",
+          style: pendingGeneration.settings.style as "photographic" | "artistic" | "cartoon" | "anime",
+          quality: pendingGeneration.settings.quality as "standard" | "high" | "ultra",
+          numberOfImages: pendingGeneration.settings.numberOfImages,
+        model: 'gemini-2.5-flash-image-preview'
+      });
       }
 
-      if (result) {
-        // result가 string인 경우 (멀티 이미지 함수에서 반환)
-        if (typeof result === 'string') {
-          const newItem = {
-            id: Date.now(),
-            description: prompt,
-            image: result,
-            attachedImages: attachedImages,
-            timestamp: new Date().toISOString(),
-          };
-          
-          console.log('💾 이미지 생성 완료:', newItem);
-          setResult(newItem);
-          clearInput();
-        }
-        // result가 객체인 경우 (기존 generateImage 함수에서 반환)
-        else if (result.images && result.images.length > 0) {
-          const newItem = {
-            id: Date.now(),
-            description: prompt,
-            image: result.images[0],
-            attachedImages: attachedImages,
-            timestamp: new Date().toISOString(),
-          };
-          
-          console.log('💾 이미지 생성 완료:', newItem);
-          setResult(newItem);
-          clearInput();
+      if (result && result.images && result.images.length > 0) {
+        // 나노 바나나는 항상 1개만 생성되므로 메타데이터에 반영
+        const personGeneration = pendingGeneration.settings?.personGeneration || 'allow_adult';
+        const generationMetadata: ImageGenerationMetadata = {
+          personGeneration: personGeneration as 'allow_adult' | 'allow_all' | 'dont_allow' | undefined,
+          aspectRatio: pendingGeneration.settings?.aspectRatio || '1:1',
+          numberOfImages: 1, // 나노 바나나는 항상 1개만 생성
+          apiResponse: {
+            generatedCount: 1,
+            requestedCount: 1,
+            timestamp: new Date().toISOString()
+          }
+        };
+        
+        const newBackground: GeneratedBackground = {
+          id: Date.now(),
+          description: pendingGeneration.prompt,
+          image: result.images[0],
+          attachedImages: pendingGeneration.attachedImages.map(f => f.name || 'file'), // File[]를 string[]로 변환
+          timestamp: new Date().toISOString(),
+          type: 'background',
+          generationMetadata
+        };
+
+        setGeneratedBackgrounds(prev => [...prev, newBackground]);
+        setBackgroundInput('');
+        setAttachedBackgroundImages([]);
+        
+        // 성공 메시지 (나노 바나나 특성 반영)
+        const personGenerationText = personGeneration === 'allow_all' ? '모든 연령 허용' :
+                                    personGeneration === 'allow_adult' ? '성인만 허용' :
+                                    personGeneration === 'dont_allow' ? '사람 생성 차단' : '기본값';
+        
+        addNotification({
+          type: 'success',
+          title: '배경 생성 완료',
+          message: `이미지가 생성되었습니다. (나노 바나나 API는 항상 1개만 생성)\n\n적용된 옵션:\n• 사람 생성: ${personGenerationText}\n• 화면 비율: ${pendingGeneration.settings?.aspectRatio || '1:1'}`
+        });
+        
+        if (process.env.NODE_ENV === 'development') {
+          console.log('✅ 배경 생성 완료:', {
+            이미지개수: 1,
+            personGeneration,
+            aspectRatio: pendingGeneration.settings?.aspectRatio
+          });
         }
       }
     } catch (error) {
-      console.error('❌ 이미지 생성 오류:', error);
+      console.error('배경 생성 오류:', error);
+      const errorMessage = error instanceof Error ? error.message : '알 수 없는 오류가 발생했습니다.';
       
-      // API 키 관련 에러 처리
-      if (error instanceof Error) {
-        if (error.message.includes('API 키가 만료되었습니다')) {
-          // API 키 만료 시 설정 모달 자동 열기
-          if (onOpenSettings) {
-            setTimeout(() => {
-              onOpenSettings();
-            }, 1000); // 1초 후 설정 모달 열기
-          }
-        } else if (error.message.includes('API 키가 유효하지 않습니다')) {
-          // API 키 유효하지 않을 때도 설정 모달 자동 열기
-          if (onOpenSettings) {
-            setTimeout(() => {
-              onOpenSettings();
-            }, 1000); // 1초 후 설정 모달 열기
-          }
-        } else if (error.message.includes('API 키가 설정되지 않았습니다')) {
-          // API 키 설정되지 않을 때도 설정 모달 자동 열기
-          if (onOpenSettings) {
-            setTimeout(() => {
-              onOpenSettings();
-            }, 1000); // 1초 후 설정 모달 열기
-          }
-        }
-      }
+      // 에러 모달 표시
+      setErrorModal({
+        isOpen: true,
+        title: '배경 생성 실패',
+        message: errorMessage
+      });
     } finally {
-      setIsGenerating(false);
+      setIsGeneratingBackground(false);
+      setShowPromptModal(false);
+      setPendingGeneration(null);
     }
   };
 
-  // 캐릭터 생성
-  const handleGenerateCharacter = () => {
-    generateImage(
-      characterInput,
-      attachedCharacterImages,
-      setIsGeneratingCharacter,
-      (newCharacter) => setGeneratedCharacters(prev => [...prev, newCharacter]),
-      () => {
-        setCharacterInput("");
-        setAttachedCharacterImages([]);
-      }
-    );
+  // 설정 컷 생성 핸들러
+  const handleGenerateSettingCut = async () => {
+    if (!settingCut.trim()) {
+      console.log('설정 컷 설명을 입력해주세요.');
+      return;
+    }
+
+    // 프롬프트 확인 모달 표시
+    setPendingGeneration({
+      type: 'setting',
+      prompt: settingCut,
+      attachedImages: attachedSettingImages,
+      settings: settingOptions
+    });
+    setShowPromptModal(true);
   };
 
-  // 배경 생성
-  const handleGenerateBackground = () => {
-    generateImage(
-      backgroundInput,
-      attachedBackgroundImages,
-      setIsGeneratingBackground,
-      (newBackground) => setGeneratedBackgrounds(prev => [...prev, newBackground]),
-      () => {
-        setBackgroundInput("");
-        setAttachedBackgroundImages([]);
-      }
-    );
-  };
+  // 실제 설정 컷 생성 실행
+  const executeSettingCutGeneration = async () => {
+    if (!pendingGeneration) return;
 
-  // 설정 컷 생성
-  const handleGenerateSettingCut = () => {
-    generateImage(
-      settingCut,
-      attachedSettingImages,
-      setIsGeneratingSettingCut,
-      (newSettingCut) => setGeneratedSettingCuts(prev => [...prev, newSettingCut]),
-      () => {
-        setSettingCut("");
+    if (!nanoBananaService) {
+      console.error('❌ NanoBanana 서비스가 초기화되지 않았습니다.');
+      alert('API 키가 설정되지 않았습니다. 설정에서 Google AI API 키를 입력해주세요.');
+      setIsGeneratingSettingCut(false);
+      return;
+    }
+
+    setIsGeneratingSettingCut(true);
+    try {
+      let result;
+      
+      if (pendingGeneration.attachedImages.length > 0) {
+        // img2img 생성 (첨부된 이미지가 있을 때)
+        console.log('🍌 img2img 설정 컷 생성 시작');
+        
+        // 상세 프롬프트 구성
+        let detailedPrompt = pendingGeneration.prompt;
+        
+        // 기본 설정 추가
+        if (pendingGeneration.settings.customSize) {
+          detailedPrompt += `\n\n사이즈 요청사항: ${pendingGeneration.settings.customSize}`;
+        }
+        if (pendingGeneration.settings.additionalPrompt) {
+          detailedPrompt += `\n\n추가 요청사항: ${pendingGeneration.settings.additionalPrompt}`;
+        }
+        
+        // 스타일과 품질 추가
+        detailedPrompt += `\n\n스타일: ${pendingGeneration.settings.style}, 품질: ${pendingGeneration.settings.quality}, 비율: ${pendingGeneration.settings.aspectRatio}`;
+        
+        // 카메라 설정 추가
+        if (pendingGeneration.settings.cameraPosition) {
+          const cameraMap: { [key: string]: string } = {
+            'front': '정면 촬영',
+            'side': '측면 촬영',
+            'back': '후면 촬영',
+            'top': '상단 촬영',
+            'low_angle': '로우 앵글',
+            'high_angle': '하이 앵글',
+            'bird_eye': '버드아이 뷰',
+            'worm_eye': '웜아이 뷰'
+          };
+          detailedPrompt += `\n카메라 위치: ${cameraMap[pendingGeneration.settings.cameraPosition] || pendingGeneration.settings.cameraPosition}`;
+        }
+        
+        if (pendingGeneration.settings.lensType) {
+          detailedPrompt += `\n렌즈: ${pendingGeneration.settings.lensType}`;
+        }
+        
+        if (pendingGeneration.settings.focalDistance) {
+          detailedPrompt += `\n초점 거리: ${pendingGeneration.settings.focalDistance}`;
+        }
+        
+        // 스타일 강화 설정 추가
+        if (pendingGeneration.settings.styleEnhancement && pendingGeneration.settings.styleEnhancement !== 'none') {
+          const enhancementMap: { [key: string]: string } = {
+            'enhanced': '강화된 스타일',
+            'subtle': '은은한 스타일 강화',
+            'dramatic': '드라마틱한 스타일 강화'
+          };
+          detailedPrompt += `\n스타일 강화: ${enhancementMap[pendingGeneration.settings.styleEnhancement] || pendingGeneration.settings.styleEnhancement}`;
+        }
+        
+        // 편집 모드 추가
+        if (pendingGeneration.settings.editMode) {
+          const editModeMap: { [key: string]: string } = {
+            'modify': '수정 모드',
+            'enhance': '향상 모드',
+            'transform': '변환 모드'
+          };
+          detailedPrompt += `\n편집 모드: ${editModeMap[pendingGeneration.settings.editMode] || pendingGeneration.settings.editMode}`;
+        }
+        
+        // 세부사항 보존 설정 추가
+        if (pendingGeneration.settings.detailPreservation) {
+          detailedPrompt += `\n세부사항 보존: ${pendingGeneration.settings.detailPreservation}%`;
+        }
+        
+        const imageResult = await nanoBananaService.generateImageWithReference(
+          detailedPrompt,
+          pendingGeneration.attachedImages[0]
+        );
+        
+        if (imageResult) {
+          result = {
+            images: [imageResult],
+            usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+            model: 'gemini-2.5-flash-image'
+          };
+        }
+      } else {
+        // 일반 이미지 생성
+        console.log('🍌 일반 설정 컷 생성 시작');
+        
+        // 상세 프롬프트 구성
+        let detailedPrompt = pendingGeneration.prompt;
+        
+        // 기본 설정 추가
+        if (pendingGeneration.settings.customSize) {
+          detailedPrompt += `\n\n사이즈 요청사항: ${pendingGeneration.settings.customSize}`;
+        }
+        if (pendingGeneration.settings.additionalPrompt) {
+          detailedPrompt += `\n\n추가 요청사항: ${pendingGeneration.settings.additionalPrompt}`;
+        }
+        
+        // 스타일과 품질 추가
+        detailedPrompt += `\n\n스타일: ${pendingGeneration.settings.style}, 품질: ${pendingGeneration.settings.quality}, 비율: ${pendingGeneration.settings.aspectRatio}`;
+        
+        // 카메라 설정 추가
+        if (pendingGeneration.settings.cameraPosition) {
+          const cameraMap: { [key: string]: string } = {
+            'front': '정면 촬영',
+            'side': '측면 촬영',
+            'back': '후면 촬영',
+            'top': '상단 촬영',
+            'low_angle': '로우 앵글',
+            'high_angle': '하이 앵글',
+            'bird_eye': '버드아이 뷰',
+            'worm_eye': '웜아이 뷰'
+          };
+          detailedPrompt += `\n카메라 위치: ${cameraMap[pendingGeneration.settings.cameraPosition] || pendingGeneration.settings.cameraPosition}`;
+        }
+        
+        if (pendingGeneration.settings.lensType) {
+          detailedPrompt += `\n렌즈: ${pendingGeneration.settings.lensType}`;
+        }
+        
+        if (pendingGeneration.settings.focalDistance) {
+          detailedPrompt += `\n초점 거리: ${pendingGeneration.settings.focalDistance}`;
+        }
+        
+        // 스타일 강화 설정 추가
+        if (pendingGeneration.settings.styleEnhancement && pendingGeneration.settings.styleEnhancement !== 'none') {
+          const enhancementMap: { [key: string]: string } = {
+            'enhanced': '강화된 스타일',
+            'subtle': '은은한 스타일 강화',
+            'dramatic': '드라마틱한 스타일 강화'
+          };
+          detailedPrompt += `\n스타일 강화: ${enhancementMap[pendingGeneration.settings.styleEnhancement] || pendingGeneration.settings.styleEnhancement}`;
+        }
+        
+        // 편집 모드 추가
+        if (pendingGeneration.settings.editMode) {
+          const editModeMap: { [key: string]: string } = {
+            'modify': '수정 모드',
+            'enhance': '향상 모드',
+            'transform': '변환 모드'
+          };
+          detailedPrompt += `\n편집 모드: ${editModeMap[pendingGeneration.settings.editMode] || pendingGeneration.settings.editMode}`;
+        }
+        
+        // 세부사항 보존 설정 추가
+        if (pendingGeneration.settings.detailPreservation) {
+          detailedPrompt += `\n세부사항 보존: ${pendingGeneration.settings.detailPreservation}%`;
+        }
+        
+        result = await nanoBananaService.generateImage({
+          prompt: detailedPrompt,
+        provider: 'google',
+          aspectRatio: pendingGeneration.settings.aspectRatio as "16:9" | "1:1" | "9:16" | "4:3" | "3:4",
+          style: pendingGeneration.settings.style as "photographic" | "artistic" | "cartoon" | "anime",
+          quality: pendingGeneration.settings.quality as "standard" | "high" | "ultra",
+          numberOfImages: pendingGeneration.settings.numberOfImages,
+        model: 'gemini-2.5-flash-image-preview'
+      });
+      }
+
+      if (result && result.images && result.images.length > 0) {
+        // 나노 바나나는 항상 1개만 생성되므로 메타데이터에 반영
+        const personGeneration = pendingGeneration.settings?.personGeneration || 'allow_adult';
+        const generationMetadata: ImageGenerationMetadata = {
+          personGeneration: personGeneration as 'allow_adult' | 'allow_all' | 'dont_allow' | undefined,
+          aspectRatio: pendingGeneration.settings?.aspectRatio || '1:1',
+          numberOfImages: 1, // 나노 바나나는 항상 1개만 생성
+          apiResponse: {
+            generatedCount: 1,
+            requestedCount: 1,
+            timestamp: new Date().toISOString()
+          }
+        };
+        
+        const newSettingCut: GeneratedSettingCut = {
+          id: Date.now(),
+          description: pendingGeneration.prompt,
+          image: result.images[0],
+          attachedImages: pendingGeneration.attachedImages.map(f => f.name || 'file'), // File[]를 string[]로 변환
+          timestamp: new Date().toISOString(),
+          type: 'setting',
+          generationMetadata
+        };
+
+        setGeneratedSettingCuts(prev => [...prev, newSettingCut]);
+        setSettingCut('');
         setAttachedSettingImages([]);
+        
+        // 성공 메시지 (나노 바나나 특성 반영)
+        const personGenerationText = personGeneration === 'allow_all' ? '모든 연령 허용' :
+                                    personGeneration === 'allow_adult' ? '성인만 허용' :
+                                    personGeneration === 'dont_allow' ? '사람 생성 차단' : '기본값';
+        
+        addNotification({
+          type: 'success',
+          title: '설정 컷 생성 완료',
+          message: `이미지가 생성되었습니다. (나노 바나나 API는 항상 1개만 생성)\n\n적용된 옵션:\n• 사람 생성: ${personGenerationText}\n• 화면 비율: ${pendingGeneration.settings?.aspectRatio || '1:1'}`
+        });
+        
+        if (process.env.NODE_ENV === 'development') {
+          console.log('✅ 설정 컷 생성 완료:', {
+            이미지개수: 1,
+            personGeneration,
+            aspectRatio: pendingGeneration.settings?.aspectRatio
+          });
+        }
       }
-    );
+    } catch (error) {
+      console.error('설정 컷 생성 오류:', error);
+      const errorMessage = error instanceof Error ? error.message : '알 수 없는 오류가 발생했습니다.';
+      
+      // 에러 모달 표시
+      setErrorModal({
+        isOpen: true,
+        title: '설정 컷 생성 실패',
+        message: errorMessage
+      });
+    } finally {
+      setIsGeneratingSettingCut(false);
+      setShowPromptModal(false);
+      setPendingGeneration(null);
+    }
   };
 
   // 고급 이미지 생성 완료 핸들러
-  const handleAdvancedImageComplete = (result: { description: string; image: string; attachedImages: File[] }) => {
-    const newImage = {
-      id: Date.now(),
-      description: result.description,
-      image: result.image,
-      attachedImages: result.attachedImages,
-      timestamp: new Date().toISOString(),
-    };
+  const handleAdvancedImageComplete = (result: any) => {
+    console.log('🎉 고급 이미지 생성 완료:', result);
     
-    console.log('💾 고급 이미지 최종 저장:', newImage);
-    setGeneratedAdvancedImages(prev => [...prev, newImage]);
+    if (result && result.image) {
+      const newAdvancedImage: GeneratedCharacter = {
+        id: Date.now(),
+        description: result.description || '고급 이미지',
+        image: result.image,
+        attachedImages: (result.attachedImages || []).map((f: File) => f.name || 'file'), // File[]를 string[]로 변환
+        timestamp: new Date().toISOString(),
+        type: 'character'
+      };
+      
+      setGeneratedAdvancedImages(prev => [...prev, newAdvancedImage]);
+      console.log('✅ 고급 이미지가 성공적으로 생성되어 목록에 추가되었습니다.');
+      
+      // 모달 닫기
+      setShowAdvancedModal(false);
+    } else {
+      console.error('❌ 고급 이미지 생성 결과가 올바르지 않습니다:', result);
+    }
+  };
+
+  // 프롬프트 확인 모달 핸들러
+  const handlePromptConfirm = async () => {
+    if (!pendingGeneration) return;
+
+    switch (pendingGeneration.type) {
+      case 'character':
+        await executeCharacterGeneration();
+        break;
+      case 'background':
+        await executeBackgroundGeneration();
+        break;
+      case 'setting':
+        await executeSettingCutGeneration();
+        break;
+    }
+  };
+
+  const handlePromptCancel = () => {
+    setShowPromptModal(false);
+    setPendingGeneration(null);
   };
 
   return (
     <div className="space-y-6">
-      {/* 프로젝트 개요 연계 정보 표시 */}
-      {story && (
-        <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-          <h4 className="text-sm font-semibold text-blue-800 mb-2">📋 프로젝트 개요 연계</h4>
-          <div className="text-sm text-blue-700">
-            <div><strong>스토리:</strong> {story}</div>
-            {characterList.length > 0 && (
-              <div><strong>캐릭터:</strong> {characterList.map(c => c.name).join(', ')}</div>
-            )}
-            {finalScenario && (
-              <div><strong>시나리오:</strong> {finalScenario.substring(0, 100)}...</div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* TXT2IMG 연계 정보 표시 */}
-      {(generatedCharacters.length > 0 || generatedBackgrounds.length > 0 || generatedSettingCuts.length > 0) && (
-        <div className="bg-green-50 p-4 rounded-lg border border-green-200">
-          <h4 className="text-sm font-semibold text-green-800 mb-2">🎨 TXT2IMG 연계</h4>
-          <div className="text-sm text-green-700">
-            {generatedCharacters.length > 0 && (
-              <div><strong>캐릭터 이미지:</strong> {generatedCharacters.length}개 생성됨</div>
-            )}
-            {generatedBackgrounds.length > 0 && (
-              <div><strong>배경 이미지:</strong> {generatedBackgrounds.length}개 생성됨</div>
-            )}
-            {generatedSettingCuts.length > 0 && (
-              <div><strong>설정컷 이미지:</strong> {generatedSettingCuts.length}개 생성됨</div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* 나노 바나나 전용 헤더 */}
-      <div className="bg-gradient-to-r from-yellow-50 to-orange-50 rounded-lg border border-yellow-200 p-4">
-        <h3 className="font-medium text-yellow-800 mb-2 flex items-center gap-2">
-          <span className="text-xl">🍌</span>
-          나노 바나나 이미지 생성
-        </h3>
-        <p className="text-sm text-yellow-700">
-          Google Gemini 2.5 Flash Image Preview를 사용한 고급 이미지 생성
-        </p>
-        <div className="mt-3">
-          <Button 
-            onClick={() => hasAPIKey ? setShowAdvancedModal(true) : setShowAPIKeySetupModal(true)}
-            className="w-full bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 text-white font-medium py-2 px-4 rounded-lg transition-all duration-200 shadow-md hover:shadow-lg"
-          >
-            🎨 고급 이미지 생성
-          </Button>
-        </div>
-      </div>
-
-      {/* API 키 상태 안내 */}
-      {!hasAPIKey && (
-        <div className="mb-6 bg-gradient-to-r from-red-50 to-orange-50 border border-red-200 rounded-lg p-4">
-          <div className="flex items-start gap-3">
-            <div className="text-2xl">🔑</div>
-            <div className="flex-1">
-              <h3 className="font-semibold text-red-800 mb-2">API 키 설정 필요</h3>
-              <p className="text-red-700 text-sm mb-3">
-                IMG2IMG 기능을 사용하려면 Google AI API 키가 필요합니다. 
-                아래 버튼을 클릭하여 API 키를 설정해주세요.
-              </p>
-              <div className="flex gap-2">
-                <Button
-                  onClick={() => setShowAPIKeySetupModal(true)}
-                  className="bg-red-600 hover:bg-red-700 text-white text-sm px-4 py-2 rounded-md"
-                >
-                  🔑 API 키 설정하기
-                </Button>
-                <Button
-                  onClick={() => window.open('https://aistudio.google.com/app/apikey', '_blank')}
-                  variant="outline"
-                  className="text-sm px-4 py-2 rounded-md"
-                >
-                  🌐 Google AI Studio 방문
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 이미지 분석 섹션 */}
-      <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
-        <div className="flex items-center justify-between mb-3">
-          <h4 className="font-medium text-purple-800">🔍 이미지 분석 [분석툴]</h4>
-          <Button
-            onClick={() => hasAPIKey ? setShowImageAnalysisModal(true) : setShowAPIKeySetupModal(true)}
-            variant="outline"
-            className="text-sm"
-          >
-            분석 도구 열기
-          </Button>
-        </div>
-        <p className="text-sm text-purple-600">
-          AI를 사용하여 이미지를 분석하고 텍스트로 변환합니다. 분석 결과를 복사하여 프롬프트에 활용할 수 있습니다.
-        </p>
-      </div>
-
-      {/* 캐릭터 생성 */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <h3 className="font-medium text-gray-800">캐릭터 생성</h3>
-            <span className="text-xs bg-red-100 text-red-600 px-2 py-1 rounded-full">
-              필수항목
-            </span>
-            {!hasAPIKey && (
-              <span className="text-xs bg-red-100 text-red-600 px-2 py-1 rounded-full">
-                API 키 필요
-              </span>
-            )}
-          </div>
-          <Button 
-            onClick={handleGenerateCharacter}
-            disabled={!hasAPIKey || (!characterInput.trim() && attachedCharacterImages.length === 0)}
-            className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
-          >
-            이미지 생성
-          </Button>
-        </div>
-        
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-          <div className="flex items-start gap-2">
-            <span className="text-yellow-600 text-sm">⚠️</span>
-            <div className="text-sm text-yellow-700">
-              <strong>필수 입력:</strong> 캐릭터 설명을 입력하거나 참조 이미지를 첨부해주세요.
-            </div>
-          </div>
-        </div>
-        
-        {/* 설정 우선순위 안내 메시지 */}
-        {globalImageSettings && (
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
-            <div className="flex items-start gap-2">
-              <span className="text-blue-600 text-sm">ℹ️</span>
-              <div className="text-sm text-blue-700">
-                <strong>설정 우선순위 안내:</strong> 본문의 이미지 생성 옵션이 상단 기본 설정보다 우선 적용됩니다.
-                <br />
-                <span className="text-xs text-blue-600">
-                  상단 기본 설정: 비율 {globalImageSettings.aspectRatio}, 품질 {globalImageSettings.quality}
-                </span>
-              </div>
-            </div>
-          </div>
-        )}
-        
-        {hasAPIKey ? (
-          <ImageGenerationForm
-            title=""
-            placeholder="캐릭터 설명을 입력하세요 (예: 20대 남성, 검은 머리, 캐주얼한 옷차림)"
-            inputValue={characterInput}
-            onInputChange={setCharacterInput}
-            attachedImages={attachedCharacterImages}
-            onImagesChange={setAttachedCharacterImages}
-            config={imageConfig}
-            onConfigChange={setImageConfig}
-            onGenerate={handleGenerateCharacter}
-            isGenerating={isGeneratingCharacter}
-            maxImages={5}
-            showDownloadButtons={true}
-          />
-        ) : (
-          <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-            <p className="text-gray-500 text-sm text-center">
-              API 키를 설정하면 캐릭터 생성 기능을 사용할 수 있습니다.
-            </p>
-          </div>
-        )}
-      </div>
-
-      {/* 배경 생성 */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <h3 className="font-medium text-gray-800">배경 생성</h3>
-            <span className="text-xs bg-red-100 text-red-600 px-2 py-1 rounded-full">
-              필수항목
-            </span>
-            {!hasAPIKey && (
-              <span className="text-xs bg-red-100 text-red-600 px-2 py-1 rounded-full">
-                API 키 필요
-              </span>
-            )}
-          </div>
-          <Button 
-            onClick={handleGenerateBackground}
-            disabled={!hasAPIKey || (!backgroundInput.trim() && attachedBackgroundImages.length === 0)}
-            className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
-          >
-            이미지 생성
-          </Button>
-        </div>
-        
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-          <div className="flex items-start gap-2">
-            <span className="text-yellow-600 text-sm">⚠️</span>
-            <div className="text-sm text-yellow-700">
-              <strong>필수 입력:</strong> 배경 설명을 입력하거나 참조 이미지를 첨부해주세요.
-            </div>
-          </div>
-        </div>
-        {hasAPIKey ? (
-          <ImageGenerationForm
-            title=""
-            placeholder="배경 설명을 입력하세요 (예: 도시의 밤거리, 네온사인이 반짝이는 거리)"
-            inputValue={backgroundInput}
-            onInputChange={setBackgroundInput}
-            attachedImages={attachedBackgroundImages}
-            onImagesChange={setAttachedBackgroundImages}
-            config={imageConfig}
-            onConfigChange={setImageConfig}
-            onGenerate={handleGenerateBackground}
-            isGenerating={isGeneratingBackground}
-            maxImages={5}
-            showDownloadButtons={true}
-          />
-        ) : (
-          <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-            <p className="text-gray-500 text-sm text-center">
-              API 키를 설정하면 배경 생성 기능을 사용할 수 있습니다.
-            </p>
-          </div>
-        )}
-      </div>
-
-      {/* 설정 컷 생성 */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <h3 className="font-medium text-gray-800">설정 컷</h3>
-            <span className="text-xs bg-red-100 text-red-600 px-2 py-1 rounded-full">
-              필수항목
-            </span>
-            {!hasAPIKey && (
-              <span className="text-xs bg-red-100 text-red-600 px-2 py-1 rounded-full">
-                API 키 필요
-              </span>
-            )}
-          </div>
-          <Button 
-            onClick={handleGenerateSettingCut}
-            disabled={!hasAPIKey || (!settingCut.trim() && attachedSettingImages.length === 0)}
-            className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
-          >
-            이미지 생성
-          </Button>
-        </div>
-        
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-          <div className="flex items-start gap-2">
-            <span className="text-yellow-600 text-sm">⚠️</span>
-            <div className="text-sm text-yellow-700">
-              <strong>필수 입력:</strong> 설정 컷 설명을 입력하거나 참조 이미지를 첨부해주세요.
-            </div>
-          </div>
-        </div>
-        {hasAPIKey ? (
-          <ImageGenerationForm
-            title=""
-            placeholder="설정 컷 설명을 입력하세요 (예: 카페 내부, 따뜻한 조명의 분위기)"
-            inputValue={settingCut}
-            onInputChange={setSettingCut}
-            attachedImages={attachedSettingImages}
-            onImagesChange={setAttachedSettingImages}
-            config={imageConfig}
-            onConfigChange={setImageConfig}
-            onGenerate={handleGenerateSettingCut}
-            isGenerating={isGeneratingSettingCut}
-            maxImages={5}
-            showDownloadButtons={false}
-          />
-        ) : (
-          <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-            <p className="text-gray-500 text-sm text-center">
-              API 키를 설정하면 설정 컷 생성 기능을 사용할 수 있습니다.
-            </p>
-          </div>
-        )}
-      </div>
-
-      {/* 다음 버튼 */}
-      {(generatedCharacters.length > 0 || generatedBackgrounds.length > 0 || generatedSettingCuts.length > 0) && (
-        <div className="bg-white rounded-lg border p-6">
-          <div className="flex justify-between items-center">
-            <div>
-              <h3 className="text-lg font-medium mb-2">나노 바나나 이미지 생성 완료</h3>
-              <p className="text-sm text-gray-600">
-                생성된 항목: 캐릭터 {generatedCharacters.length}개, 
-                배경 {generatedBackgrounds.length}개, 
-                설정컷 {generatedSettingCuts.length}개
-              </p>
-              <p className="text-xs text-gray-500 mt-1">
-                생성된 이미지는 오른쪽 본문에서 확인할 수 있습니다.
-              </p>
-            </div>
-            <Button 
-              onClick={onNext}
-              className="bg-green-600 hover:bg-green-700"
-            >
-              다음
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* 고급 이미지 생성 모달 */}
-      <AdvancedImageGenerationModal
-        isOpen={showAdvancedModal}
-        onClose={() => setShowAdvancedModal(false)}
-        onComplete={handleAdvancedImageComplete}
-        nanoBananaService={nanoBananaService}
+      {/* 상단 블록: 프로젝트 개요, 이미지 생성 옵션, 공통 입력 항목, 이미지 분석 도구 */}
+      <NanoBananaImageStepHeader
+        story={story}
+        characterList={characterList}
+        storySummary={storySummary}
+        finalScenario={finalScenario}
+        showCommonOptions={showCommonOptions}
+        setShowCommonOptions={setShowCommonOptions}
+        imageConfig={imageConfig}
+        setImageConfig={setImageConfig}
+        showCommonInputs={showCommonInputs}
+        setShowCommonInputs={setShowCommonInputs}
+        commonInputsCompleted={commonInputsCompleted}
+        onCommonInputsComplete={handleCommonInputsComplete}
+        onCommonInputsReset={handleCommonInputsReset}
+        onOpenImageAnalysis={() => setShowImageAnalysisModal(true)}
+        onOpenAPIKeySetup={() => setShowAISettingsModal(true)}
+        onOpenAdvancedImageGeneration={() => setShowAdvancedModal(true)}
+        onOpenStyleReference={() => setShowStyleReferenceModal(true)}
       />
 
-      {/* 이미지 분석 모달 */}
+      {/* 탭 기반 생성 도구 */}
+      <NanoBananaImageStepTabs
+        onGenerateCharacter={handleGenerateCharacter}
+        onGenerateBackground={handleGenerateBackground}
+        onGenerateSettingCut={handleGenerateSettingCut}
+        characterInput={characterInput}
+        setCharacterInput={setCharacterInput}
+        backgroundInput={backgroundInput}
+        setBackgroundInput={setBackgroundInput}
+        settingCut={settingCut}
+        setSettingCut={setSettingCut}
+        attachedCharacterImages={attachedCharacterImages}
+        setAttachedCharacterImages={setAttachedCharacterImages}
+        attachedBackgroundImages={attachedBackgroundImages}
+        setAttachedBackgroundImages={setAttachedBackgroundImages}
+        attachedSettingImages={attachedSettingImages}
+        setAttachedSettingImages={setAttachedSettingImages}
+        showCharacterOptions={showCharacterOptions}
+        setShowCharacterOptions={setShowCharacterOptions}
+        showBackgroundOptions={showBackgroundOptions}
+        setShowBackgroundOptions={setShowBackgroundOptions}
+        showSettingOptions={showSettingOptions}
+        setShowSettingOptions={setShowSettingOptions}
+        characterOptions={characterOptions}
+        setCharacterOptions={setCharacterOptions}
+        backgroundOptions={backgroundOptions}
+        setBackgroundOptions={setBackgroundOptions}
+        settingOptions={settingOptions}
+        setSettingOptions={setSettingOptions}
+        isGenerating={isGeneratingCharacter || isGeneratingBackground || isGeneratingSettingCut}
+        generatedCharacters={generatedCharacters}
+        generatedBackgrounds={generatedBackgrounds}
+        generatedSettingCuts={generatedSettingCuts}
+        generatedAdvancedImages={generatedAdvancedImages}
+        setGeneratedAdvancedImages={setGeneratedAdvancedImages}
+      />
+
+      {/* 하단 생성 이미지 첨부 */}
+      <div className="bg-white rounded-lg border p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold">생성된 이미지</h2>
+        </div>
+
+        {generatedAdvancedImages.length > 0 && (
+          <div className="mt-4">
+            <h3 className="text-md font-medium mb-3">생성된 이미지 ({generatedAdvancedImages.length}개)</h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {generatedAdvancedImages.map((advancedImage, index) => (
+                <div key={advancedImage.id} className="border rounded-lg p-3">
+                  <img
+                    src={advancedImage.image}
+                    alt={`이미지 ${index + 1}`}
+                    className="w-full h-32 object-cover rounded mb-2"
+                  />
+                  <p className="text-xs text-gray-600 mb-2 line-clamp-2">
+                    {advancedImage.description}
+                  </p>
+                  <div className="flex gap-1">
+                    <button
+                      onClick={() => {
+                        try {
+                          const canvas = document.createElement('canvas');
+                          const img = new Image();
+                          img.onload = () => {
+                            canvas.width = img.width;
+                            canvas.height = img.height;
+                            const ctx = canvas.getContext('2d');
+                            if (ctx) {
+                              ctx.drawImage(img, 0, 0);
+                              
+                              canvas.toBlob((blob) => {
+                                if (blob) {
+                                  const url = URL.createObjectURL(blob);
+                        const link = document.createElement('a');
+                                  link.href = url;
+                                  link.download = `이미지_상세_${index + 1}_${Date.now()}.png`;
+                                  document.body.appendChild(link);
+                        link.click();
+                                  document.body.removeChild(link);
+                                  URL.revokeObjectURL(url);
+                                }
+                              }, 'image/png');
+                            }
+                          };
+                          img.src = advancedImage.image;
+                        } catch (error) {
+                          console.error('상세 다운로드 오류:', error);
+                        }
+                      }}
+                      className="bg-green-600 hover:bg-green-700 text-white p-1 rounded text-xs"
+                      title="상세 다운로드"
+                    >
+                      HD
+                    </button>
+                    <button
+                      onClick={() => {
+                        try {
+                          const canvas = document.createElement('canvas');
+                          const img = new Image();
+                          img.onload = () => {
+                            canvas.width = img.width;
+                            canvas.height = img.height;
+                            const ctx = canvas.getContext('2d');
+                            if (ctx) {
+                              ctx.drawImage(img, 0, 0);
+                              
+                              canvas.toBlob((blob) => {
+                                if (blob) {
+                          const url = URL.createObjectURL(blob);
+                          const link = document.createElement('a');
+                          link.href = url;
+                                  link.download = `이미지_저사양_${index + 1}_${Date.now()}.jpg`;
+                          document.body.appendChild(link);
+                          link.click();
+                          document.body.removeChild(link);
+                          URL.revokeObjectURL(url);
+                                }
+                              }, 'image/jpeg', 0.7); // JPEG 품질 70%
+                            }
+                          };
+                          img.src = advancedImage.image;
+                        } catch (error) {
+                          console.error('저사양 다운로드 오류:', error);
+                        }
+                      }}
+                      className="bg-blue-600 hover:bg-blue-700 text-white p-1 rounded text-xs"
+                      title="저사양 다운로드"
+                    >
+                      SD
+                    </button>
+                  </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+      {/* 모달들 */}
+        <AdvancedImageGenerationModal
+          isOpen={showAdvancedModal}
+          onClose={() => setShowAdvancedModal(false)}
+          onComplete={handleAdvancedImageComplete}
+          nanoBananaService={nanoBananaService}
+        />
+
       <ImageAnalysisModal
         isOpen={showImageAnalysisModal}
         onClose={() => setShowImageAnalysisModal(false)}
       />
 
-      {/* API 키 설정 모달 */}
-      {showAPIKeySetupModal && (
-        <APIKeySetupModal
-          onClose={() => setShowAPIKeySetupModal(false)}
-        />
-      )}
+      <AISettingsModal
+        isOpen={showAISettingsModal}
+        onClose={() => setShowAISettingsModal(false)}
+        selectedProvider={selectedAIProvider}
+        onProviderChange={setSelectedAIProvider}
+        onSave={() => {
+          // API 키 저장 후 서비스 재초기화
+          console.log('AI 설정이 저장되었습니다.');
+        }}
+      />
+
+      <StyleReferenceModal
+        isOpen={showStyleReferenceModal}
+        onClose={() => setShowStyleReferenceModal(false)}
+      />
+
+      {/* 프롬프트 확인 모달 */}
+      <PromptConfirmationModal
+        isOpen={showPromptModal}
+        onClose={handlePromptCancel}
+        onConfirm={handlePromptConfirm}
+        prompt={pendingGeneration?.prompt || ''}
+        title={`${pendingGeneration?.type === 'character' ? '캐릭터' : pendingGeneration?.type === 'background' ? '배경' : '설정 컷'} 이미지 생성 확인`}
+        isLoading={isGeneratingCharacter || isGeneratingBackground || isGeneratingSettingCut}
+        attachedImages={pendingGeneration?.attachedImages || []}
+        settings={pendingGeneration?.settings}
+        isNanoBanana={true} // 나노 바나나 API 사용 표시
+      />
+
+      {/* 에러 모달 */}
+      <ErrorMessageModal
+        isOpen={errorModal.isOpen}
+        onClose={() => setErrorModal({ isOpen: false, title: '', message: '' })}
+        error={{
+          title: errorModal.title,
+          message: errorModal.message,
+          type: 'error'
+        }}
+      />
     </div>
   );
 };
-

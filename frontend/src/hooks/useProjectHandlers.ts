@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useUIStore } from '../stores/uiStore';
-import { googleAIService } from '../services/googleAIService';
+import { GoogleAIService } from '../services/googleAIService';
+import { getAPIKeyFromStorage } from '../utils/apiKeyUtils';
 
 export const useProjectHandlers = (
   story: string,
@@ -21,6 +22,11 @@ export const useProjectHandlers = (
   setStepStatus?: (status: any) => void
 ) => {
   const { addNotification } = useUIStore();
+  
+  // API 키 가져오기 (통합 유틸리티 사용)
+  const getAPIKey = (): string => {
+    return getAPIKeyFromStorage('google');
+  };
   const [isGeneratingAll, setIsGeneratingAll] = useState(false);
 
   const handleGenerateAllPrompts = async () => {
@@ -45,6 +51,11 @@ export const useProjectHandlers = (
 
 각 항목별로 그룹화하여 정리하고, 영상 생성에 최적화된 프롬프트를 포함해주세요.`;
 
+      const apiKey = getAPIKey();
+      if (!apiKey) {
+        throw new Error('Google AI API 키가 설정되지 않았습니다. 로그인 후 설정에서 API 키를 입력해주세요.');
+      }
+      const googleAIService = GoogleAIService.getInstance();
       const result = await googleAIService.generateText(prompt);
       
       // JSON 파싱 시도
@@ -98,6 +109,11 @@ export const useProjectHandlers = (
 
 시나리오의 핵심 요소와 전개를 포함한 프롬프트를 생성해주세요.`;
 
+      const apiKey = getAPIKey();
+      if (!apiKey) {
+        throw new Error('Google AI API 키가 설정되지 않았습니다. 로그인 후 설정에서 API 키를 입력해주세요.');
+      }
+      const googleAIService = GoogleAIService.getInstance();
       const result = await googleAIService.generateText(prompt);
       setScenarioPrompt(result);
 
@@ -131,6 +147,11 @@ ${story}
 
 핵심 내용과 주요 전개를 포함하여 간결하게 정리해주세요.`;
 
+      const apiKey = getAPIKey();
+      if (!apiKey) {
+        throw new Error('Google AI API 키가 설정되지 않았습니다. 로그인 후 설정에서 API 키를 입력해주세요.');
+      }
+      const googleAIService = GoogleAIService.getInstance();
       const result = await googleAIService.generateText(prompt);
       setStorySummary(result);
     } catch (error) {
@@ -186,6 +207,11 @@ ${story}
 
     try {
       const prompt = `다음 스토리를 더욱 매력적이고 영상 제작에 적합하게 재작성해주세요:\n\n${story}`;
+      const apiKey = getAPIKey();
+      if (!apiKey) {
+        throw new Error('Google AI API 키가 설정되지 않았습니다. 로그인 후 설정에서 API 키를 입력해주세요.');
+      }
+      const googleAIService = GoogleAIService.getInstance();
       const result = await googleAIService.generateText(prompt);
       setStory(result);
       addNotification({
@@ -214,6 +240,11 @@ ${story}
 
     try {
       const prompt = `다음 캐릭터들을 더욱 상세하고 영상 제작에 적합하게 재작성해주세요:\n\n${characterList.map(c => `${c.name}: ${c.description}`).join('\n')}`;
+      const apiKey = getAPIKey();
+      if (!apiKey) {
+        throw new Error('Google AI API 키가 설정되지 않았습니다. 로그인 후 설정에서 API 키를 입력해주세요.');
+      }
+      const googleAIService = GoogleAIService.getInstance();
       const result = await googleAIService.generateText(prompt);
       
       // JSON 파싱 시도
@@ -260,6 +291,11 @@ ${story}
 
     try {
       const prompt = `다음 시나리오 프롬프트를 더욱 효과적이고 영상 제작에 최적화되게 재작성해주세요:\n\n${scenarioPrompt}`;
+      const apiKey = getAPIKey();
+      if (!apiKey) {
+        throw new Error('Google AI API 키가 설정되지 않았습니다. 로그인 후 설정에서 API 키를 입력해주세요.');
+      }
+      const googleAIService = GoogleAIService.getInstance();
       const result = await googleAIService.generateText(prompt);
       setScenarioPrompt(result);
       addNotification({
@@ -288,6 +324,11 @@ ${story}
 
     try {
       const prompt = `다음 스토리 요약을 더욱 간결하고 명확하게 재작성해주세요:\n\n${storySummary}`;
+      const apiKey = getAPIKey();
+      if (!apiKey) {
+        throw new Error('Google AI API 키가 설정되지 않았습니다. 로그인 후 설정에서 API 키를 입력해주세요.');
+      }
+      const googleAIService = GoogleAIService.getInstance();
       const result = await googleAIService.generateText(prompt);
       setStorySummary(result);
       addNotification({
@@ -316,6 +357,11 @@ ${story}
 
     try {
       const prompt = `다음 최종 시나리오를 더욱 완성도 높고 영상 제작에 적합하게 재작성해주세요:\n\n${finalScenario}`;
+      const apiKey = getAPIKey();
+      if (!apiKey) {
+        throw new Error('Google AI API 키가 설정되지 않았습니다. 로그인 후 설정에서 API 키를 입력해주세요.');
+      }
+      const googleAIService = GoogleAIService.getInstance();
       const result = await googleAIService.generateText(prompt);
       setFinalScenario(result);
       addNotification({
@@ -344,6 +390,11 @@ ${story}
 
     try {
       const prompt = `다음 통합 AI 검토 결과를 더욱 체계적이고 영상 제작에 최적화되게 재작성해주세요:\n\n${generatedProjectData.reviewResult}`;
+      const apiKey = getAPIKey();
+      if (!apiKey) {
+        throw new Error('Google AI API 키가 설정되지 않았습니다. 로그인 후 설정에서 API 키를 입력해주세요.');
+      }
+      const googleAIService = GoogleAIService.getInstance();
       const result = await googleAIService.generateText(prompt);
       setGeneratedProjectData({
         ...generatedProjectData,
@@ -467,6 +518,7 @@ ${story}
     handleGenerateStorySummary,
     handleSaveScenario,
     handleNextStep,
+    handleNext: handleNextStep, // 별칭 추가
     canProceedToNext,
     isGeneratingAll,
     // 재생성 기능들

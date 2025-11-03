@@ -1,6 +1,5 @@
 import { IAIService, AIServiceFactory, AIProvider, AIServiceConfig } from '../../types/ai';
 import { GoogleAIService } from './GoogleAIService';
-import { OpenAIService } from './OpenAIService';
 import { ChatGPTService } from './ChatGPTService';
 import { NanoBananaService } from './NanoBananaService';
 
@@ -39,20 +38,8 @@ export class AIServiceFactoryImpl implements AIServiceFactory {
           baseUrl: config.baseUrl
         });
         break;
-      case 'openai':
-        service = new OpenAIService({
-          apiKey: config.apiKey,
-          baseUrl: config.baseUrl
-        });
-        break;
       case 'chatgpt':
         service = new ChatGPTService({
-          apiKey: config.apiKey,
-          baseUrl: config.baseUrl
-        });
-        break;
-      case 'nano-banana':
-        service = new NanoBananaService({
           apiKey: config.apiKey,
           baseUrl: config.baseUrl
         });
@@ -60,6 +47,9 @@ export class AIServiceFactoryImpl implements AIServiceFactory {
       case 'anthropic':
         // TODO: Anthropic 서비스 구현
         throw new Error('Anthropic 서비스는 아직 구현되지 않았습니다.');
+      case 'kling':
+        // TODO: Kling AI 서비스 구현
+        throw new Error('Kling AI 서비스는 아직 구현되지 않았습니다.');
       default:
         throw new Error(`지원하지 않는 AI 제공자입니다: ${provider}`);
     }
@@ -80,19 +70,24 @@ export class AIServiceFactoryImpl implements AIServiceFactory {
     return available;
   }
 
+  // 로그아웃 시 모든 서비스 무효화
+  invalidateAllServices(): void {
+    console.log('🔑 모든 AI 서비스 무효화 시작');
+    this.services.clear();
+    console.log('🔑 모든 AI 서비스 무효화 완료');
+  }
+
   validateConfig(provider: AIProvider, config: Partial<AIServiceConfig>): boolean {
     try {
       switch (provider) {
         case 'google':
           return !!(config.apiKey && config.apiKey.startsWith('AI'));
-        case 'openai':
-          return !!(config.apiKey && config.apiKey.startsWith('sk-'));
         case 'chatgpt':
           return !!(config.apiKey && config.apiKey.startsWith('sk-'));
-        case 'nano-banana':
-          return !!(config.apiKey && config.apiKey.startsWith('AI'));
         case 'anthropic':
           return !!(config.apiKey && config.apiKey.startsWith('sk-ant-'));
+        case 'kling':
+          return !!(config.apiKey && config.apiKey.length > 0);
         default:
           return false;
       }

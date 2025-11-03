@@ -71,12 +71,11 @@ export const useProjectOverview = () => {
     };
 
     const user = getCurrentUser();
-    const adminEmail = process.env.REACT_APP_ADMIN_EMAIL || 'star612.net@gmail.com';
+    const adminEmail = (process.env.REACT_APP_ADMIN_EMAIL as string) || 'star612.net@gmail.com';
     const isAdmin = !!(user && user.email === adminEmail);
 
-    const apiKey = isAdmin
-      ? (process.env.REACT_APP_GEMINI_API_KEY || '')
-      : getLocalApiKey();
+    // 모든 사용자가 개인 API 키를 입력해야 함 (환경변수 사용 안함)
+    const apiKey = getLocalApiKey();
 
     return {
       hasApiKey: !!(apiKey && apiKey !== 'your-gemini-api-key' && apiKey !== 'your-gemini-api-key-here'),

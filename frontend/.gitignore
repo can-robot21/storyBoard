@@ -194,3 +194,9 @@ node_modules/
 .Trashes
 ehthumbs.db
 Thumbs.db
+# Backup and refactored files
+*.backup
+*.backup.*
+*.refactored.*
+*refactored.tsx
+*refactored.ts

@@ -1,7 +1,24 @@
 // AI 서비스 관련 타입들
 
 // AI 제공자 타입
-export type AIProvider = 'google' | 'openai' | 'chatgpt' | 'anthropic' | 'nano-banana';
+export type AIProvider = 'google' | 'chatgpt' | 'anthropic' | 'kling';
+
+// 생성 기능 타입
+export type GenerationType = 'text' | 'image' | 'video';
+
+// 기능별 AI Provider 설정
+export interface FunctionBasedAIProviders {
+  text: AIProvider;
+  image: AIProvider;
+  video: AIProvider;
+}
+
+// 기본 기능별 AI Provider 설정
+export const DEFAULT_FUNCTION_AI_PROVIDERS: FunctionBasedAIProviders = {
+  text: 'google',
+  image: 'google',
+  video: 'google'
+};
 
 // AI 모델 타입
 export type AIModel = 
@@ -18,6 +35,7 @@ export type ImageModel =
   | 'imagen-4.0-fast-generate-001'
   | 'imagen-4.0-generate-001'
   | 'imagen-4.0-ultra-generate-001'
+  | 'imagen-3.0-generate-002'
   | 'dall-e-3'
   | 'dall-e-2'
   | 'gemini-2.5-flash-image-preview'
@@ -77,7 +95,8 @@ export interface TextGenerationOptions extends BaseAIOptions {
   provider: AIProvider;
   model: AIModel;
   stream?: boolean;
-  systemPrompt?: string;
+  systemPrompt?: string; // Provider별 기본 System Prompt가 없을 때 사용
+  generationType?: GenerationType; // 텍스트/이미지/영상 구분
 }
 
 // 이미지 생성 옵션

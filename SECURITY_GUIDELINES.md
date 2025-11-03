@@ -1,146 +1,102 @@
-# 🔒 API 키 보안 가이드라인
+# 🔒 보안 가이드라인
 
-## ⚠️ 중요 보안 알림
+## GitHub 저장소 보안 체크리스트
 
-**2025년 1월 27일**: Google Cloud Platform에서 공개적으로 노출된 API 키가 감지되었습니다.
+### ✅ 커밋 전 필수 확인사항
 
-### 🚨 발생한 문제
-- **API 키**: `AIzaSyDjHf_s-Tdr8gH8kb5spxDm_kg5XYD8pQs`
-- **프로젝트**: star612-tutor
-- **노출 위치**: GitHub 공개 저장소
-- **파일**: `frontend/src/services/googleAIService.ts`
+1. **환경변수 파일 확인**
+   - [ ] `.env` 파일이 `.gitignore`에 포함되어 있는지 확인
+   - [ ] `env.example`에 실제 값이 아닌 예시 값만 포함
+   - [ ] 실제 API 키나 비밀번호가 코드에 하드코딩되지 않았는지 확인
 
-### ✅ 즉시 조치 완료
-1. **API 키 제거**: 소스 코드에서 하드코딩된 API 키 제거
-2. **환경 변수 사용**: `process.env.REACT_APP_GEMINI_API_KEY`로 변경
-3. **보안 문서 작성**: 이 가이드라인 문서 생성
+2. **민감한 정보 검색**
+   ```bash
+   # API 키 패턴 검색
+   grep -r "sk-[a-zA-Z0-9]" . --exclude-dir=node_modules
+   
+   # 비밀번호 패턴 검색
+   grep -r "password.*=" . --exclude-dir=node_modules
+   
+   # 이메일 주소 검색
+   grep -r "@.*\.com" . --exclude-dir=node_modules
+   ```
 
-## 🛡️ API 키 보안 원칙
+3. **파일 제외 확인**
+   - [ ] `node_modules/` 폴더 제외
+   - [ ] `build/`, `dist/` 폴더 제외
+   - [ ] 로그 파일 제외
+   - [ ] 데이터베이스 파일 제외
 
-### 1. 절대 하드코딩 금지
-```typescript
-// ❌ 잘못된 방법 - 절대 사용 금지
-const apiKey = 'AIzaSyDjHf_s-Tdr8gH8kb5spxDm_kg5XYD8pQs';
+### 🚨 절대 커밋하면 안 되는 것들
 
-// ✅ 올바른 방법
-const apiKey = process.env.REACT_APP_GEMINI_API_KEY;
-```
+- 실제 API 키 (OpenAI, Google AI, Anthropic 등)
+- 관리자 비밀번호
+- 데이터베이스 연결 정보
+- 실제 이메일 주소
+- 개인정보
+- 서버 설정 파일
 
-### 2. 환경 변수 사용
-```bash
-# .env 파일 (Git에 커밋하지 않음)
-REACT_APP_GEMINI_API_KEY=your_actual_api_key_here
-```
+### 🛡️ 보안 모범 사례
 
-### 3. .gitignore 설정
-```gitignore
-# 환경 변수 파일 제외
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+1. **환경변수 사용**
+   ```typescript
+   // ❌ 잘못된 방법
+   const apiKey = "sk-1234567890abcdef";
+   
+   // ✅ 올바른 방법
+   const apiKey = process.env.REACT_APP_API_KEY;
+   ```
 
-# API 키 관련 파일
-*.key
-*.pem
-secrets/
-```
+2. **예시 파일 사용**
+   ```bash
+   # env.example 파일에 예시 값만 포함
+   REACT_APP_API_KEY=your-api-key-here
+   REACT_APP_ADMIN_EMAIL=admin@example.com
+   ```
 
-## 🔧 개발 환경 설정
+3. **코드 검토**
+   - 커밋 전 코드 리뷰 수행
+   - 자동화된 보안 스캔 도구 사용
+   - 정기적인 의존성 업데이트
 
-### 1. 로컬 개발
-```bash
-# .env 파일 생성
-cp .env.example .env
+### 🔧 보안 도구 설정
 
-# .env 파일에 실제 API 키 입력
-echo "REACT_APP_GEMINI_API_KEY=your_actual_key" >> .env
-```
+1. **GitHub CodeQL 활성화**
+   - Repository Settings > Security > Code scanning
+   - 자동 보안 취약점 검사
 
-### 2. 프로덕션 배포
-- 환경 변수를 배포 플랫폼에서 설정
-- 절대 소스 코드에 API 키 포함하지 않음
+2. **Dependabot 활성화**
+   - Repository Settings > Security > Dependabot alerts
+   - 의존성 보안 업데이트 자동화
 
-## 🚫 금지사항
+3. **Branch Protection Rules**
+   - main 브랜치 보호 설정
+   - Pull Request 필수 검토
 
-### 1. 소스 코드에 API 키 포함
-- 하드코딩된 API 키
-- 주석에 API 키 포함
-- 설정 파일에 평문 API 키
+### 📋 긴급 상황 대응
 
-### 2. 공개 저장소에 민감 정보 업로드
-- GitHub 공개 저장소
-- 공개 웹사이트
-- 소셜 미디어
+만약 실수로 민감한 정보를 커밋했다면:
 
-### 3. API 키 공유
-- 이메일로 전송
-- 채팅 메시지
-- 화면 공유
+1. **즉시 조치**
+   ```bash
+   # 커밋 히스토리에서 파일 제거
+   git filter-branch --force --index-filter \
+   'git rm --cached --ignore-unmatch .env' \
+   --prune-empty --tag-name-filter cat -- --all
+   
+   # 강제 푸시 (주의: 팀원들과 협의 필요)
+   git push origin --force --all
+   ```
 
-## ✅ 권장사항
+2. **API 키 교체**
+   - 노출된 API 키 즉시 삭제/교체
+   - 새로운 API 키 생성 및 배포
 
-### 1. API 키 관리
-- 정기적인 키 로테이션
-- 사용하지 않는 키 삭제
-- API 키 제한사항 설정
+3. **팀 알림**
+   - 팀원들에게 보안 사고 알림
+   - 재발 방지 대책 수립
 
-### 2. 코드 리뷰
-- 모든 커밋에서 API 키 검사
-- 자동화된 보안 스캔 도구 사용
-- 팀원 간 코드 리뷰 필수
+### 📞 연락처
 
-### 3. 모니터링
-- Google Cloud Console에서 사용량 모니터링
-- 비정상적인 사용량 알림 설정
-- 정기적인 보안 감사
-
-## 🔍 보안 체크리스트
-
-### 개발 전
-- [ ] API 키가 환경 변수로 설정되어 있는가?
-- [ ] .env 파일이 .gitignore에 포함되어 있는가?
-- [ ] 소스 코드에 하드코딩된 키가 없는가?
-
-### 커밋 전
-- [ ] API 키가 포함된 파일이 없는가?
-- [ ] 민감한 정보가 주석에 없는가?
-- [ ] 설정 파일에 평문 키가 없는가?
-
-### 배포 전
-- [ ] 프로덕션 환경 변수가 설정되어 있는가?
-- [ ] API 키 제한사항이 설정되어 있는가?
-- [ ] 사용량 모니터링이 활성화되어 있는가?
-
-## 🆘 보안 사고 대응
-
-### 1. 즉시 조치
-1. **API 키 교체**: Google Cloud Console에서 새 키 생성
-2. **노출된 키 삭제**: 기존 키 즉시 삭제
-3. **코드 수정**: 소스 코드에서 키 제거
-4. **재배포**: 수정된 코드 즉시 배포
-
-### 2. 사후 조치
-1. **사용량 검토**: 비정상적인 사용량 확인
-2. **보안 감사**: 전체 코드베이스 보안 검사
-3. **팀 교육**: 보안 가이드라인 재교육
-4. **프로세스 개선**: 보안 프로세스 강화
-
-## 📞 연락처
-
-### 보안 문제 신고
-- **이메일**: security@star612.net
-- **긴급 연락**: 즉시 프로젝트 관리자에게 연락
-
-### Google Cloud 지원
-- **콘솔**: https://console.cloud.google.com/
-- **문서**: https://cloud.google.com/docs/security
-
----
-
-**⚠️ 주의**: 이 문서는 프로젝트의 모든 개발자가 숙지하고 준수해야 합니다. 보안 위반 시 심각한 결과를 초래할 수 있습니다.
-
-**최종 업데이트**: 2025년 1월 27일  
-**문서 버전**: 1.0  
-**작성자**: AI Assistant (Claude)
+보안 관련 문의: security@star612.net
+긴급 보안 사고: emergency@star612.net

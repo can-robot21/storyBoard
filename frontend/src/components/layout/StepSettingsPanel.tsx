@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { ChevronDown, ChevronUp, Settings, Sliders } from 'lucide-react';
+import { ChevronDown, ChevronUp, Settings, Sliders, Hash } from 'lucide-react';
+import { DEFAULT_SETTINGS } from '../../utils/constants';
 
 interface StepSettingsPanelProps {
   currentStep: string;
@@ -15,9 +16,9 @@ interface StepSettingsPanelProps {
   setSceneCutSettings: (settings: Partial<{ sceneCount: number; cutCount: number }>) => void;
   imageSettings?: {
     quality: 'standard' | 'high' | 'ultra';
-    aspectRatio: '16:9' | '9:16' | '2:3' | '1:1' | 'free';
+    aspectRatio: '16:9' | '4:3' | '1:1';
   };
-  setImageSettings?: (settings: Partial<{ quality: 'standard' | 'high' | 'ultra'; aspectRatio: '16:9' | '9:16' | '2:3' | '1:1' | 'free' }>) => void;
+  setImageSettings?: (settings: Partial<{ quality: 'standard' | 'high' | 'ultra'; aspectRatio: '16:9' | '4:3' | '1:1' }>) => void;
   videoSettings?: {
     quality: '720p' | '1080p' | '4k';
     duration: 'short' | 'medium' | 'long';
@@ -48,7 +49,7 @@ export const StepSettingsPanel: React.FC<StepSettingsPanelProps> = ({
     switch (currentStep) {
       case "프로젝트 개요":
         return (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {/* 프롬프트 길이 설정 */}
             <div className="space-y-2">
               <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
@@ -65,7 +66,6 @@ export const StepSettingsPanel: React.FC<StepSettingsPanelProps> = ({
                 <option value={50}>짧음 (50자)</option>
                 <option value={100}>보통 (100자)</option>
                 <option value={200}>김 (200자)</option>
-                <option value={0}>free (제약없음)</option>
               </select>
             </div>
 
@@ -84,14 +84,15 @@ export const StepSettingsPanel: React.FC<StepSettingsPanelProps> = ({
                 <option value={100}>짧음 (100자)</option>
                 <option value={200}>보통 (200자)</option>
                 <option value={300}>김 (300자)</option>
-                <option value={0}>free (제약없음)</option>
               </select>
             </div>
+
+            {/* 씬/컷 설정 제거됨 */}
           </div>
         );
 
-      case "TXT2IMG":
-      case "IMG2IMG":
+      case "이미지 생성":
+      case "이미지 생성/나노 바나나":
         return (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
@@ -110,14 +111,12 @@ export const StepSettingsPanel: React.FC<StepSettingsPanelProps> = ({
               <label className="text-sm font-medium text-gray-700">이미지 비율</label>
               <select
                 value={imageSettings?.aspectRatio || '16:9'}
-                onChange={(e) => setImageSettings?.({ aspectRatio: e.target.value as '16:9' | '9:16' | '2:3' | '1:1' | 'free' })}
+                onChange={(e) => setImageSettings?.({ aspectRatio: e.target.value as '16:9' | '4:3' | '1:1' })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
-                <option value="16:9">16:9 (가로)</option>
-                <option value="9:16">9:16 (세로)</option>
-                <option value="2:3">2:3 (세로)</option>
+                <option value="16:9">16:9 (와이드)</option>
+                <option value="4:3">4:3 (표준)</option>
                 <option value="1:1">1:1 (정사각형)</option>
-                <option value="free">free (제약없음)</option>
               </select>
             </div>
           </div>
@@ -129,7 +128,7 @@ export const StepSettingsPanel: React.FC<StepSettingsPanelProps> = ({
             <div className="space-y-2">
               <label className="text-sm font-medium text-gray-700">영상 품질</label>
               <select
-                value={videoSettings?.quality || '720p'}
+                value={videoSettings?.quality || '1080p'}
                 onChange={(e) => setVideoSettings?.({ quality: e.target.value as '720p' | '1080p' | '4k' })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >

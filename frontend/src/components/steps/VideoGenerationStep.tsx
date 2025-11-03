@@ -1,13 +1,16 @@
-import React, { useEffect, useMemo, useCallback, useState } from 'react';
+import React, { useEffect, useMemo, useCallback, useState, useRef } from 'react';
 import Button from '../common/Button';
 import { EpisodeStructureManager } from '../videoGeneration/EpisodeStructureManager';
 import { TextCardGenerator } from '../videoGeneration/TextCardGenerator';
 import { ImageGenerator } from '../videoGeneration/ImageGenerator';
 import { VideoGenerator } from '../videoGeneration/VideoGenerator';
+import FrameByFrameVideoGenerator from '../videoGeneration/FrameByFrameVideoGenerator';
+import VideoGenerationModal from '../common/VideoGenerationModal';
 import ResetWarningModal from '../common/ResetWarningModal';
 import { useVideoGeneration } from '../../hooks/useVideoGeneration';
 import { VideoGenerationStepProps } from '../../types/videoGeneration';
-import { SceneTextCard } from '../../types/videoGeneration';
+import { SceneTextCard, GeneratedVideo } from '../../types/videoGeneration';
+import { Zap } from 'lucide-react';
 
 export const VideoGenerationStep: React.FC<VideoGenerationStepProps> = ({
   generatedTextCards,
@@ -16,8 +19,6 @@ export const VideoGenerationStep: React.FC<VideoGenerationStepProps> = ({
   setGeneratedCharacterImages,
   generatedVideoBackgrounds,
   setGeneratedVideoBackgrounds,
-  generatedSettingCutImages,
-  setGeneratedSettingCutImages,
   generatedVideos,
   setGeneratedVideos,
   selectedTextCards,
@@ -40,11 +41,21 @@ export const VideoGenerationStep: React.FC<VideoGenerationStepProps> = ({
   setStory,
   characterList,
   setCharacterList,
+  generatedCharacters = [],
+  generatedBackgrounds = [],
+  generatedSettingCuts = [],
+  generatedAdvancedImages = [],
   onNext,
   canProceedToNext,
   onEditCard,
   onSetEditHandler
 }) => {
+  // 프레임-프레임 모드 상태
+  const [isFrameByFrameMode, setIsFrameByFrameMode] = useState(false);
+  
+  // 영상 생성 모달 상태
+  const [showVideoModal, setShowVideoModal] = useState(false);
+  
   const {
     commonInputsCompleted,
     episodes,
@@ -69,6 +80,7 @@ export const VideoGenerationStep: React.FC<VideoGenerationStepProps> = ({
   const [generatedSceneTextCards, setGeneratedSceneTextCards] = useState<SceneTextCard[]>([]);
 
   // 설정 컷 이미지 상태 (새로 추가)
+  const [generatedSettingCutImages, setGeneratedSettingCutImages] = useState<any[]>([]);
   const [selectedSettingCutImages, setSelectedSettingCutImages] = useState<Set<number>>(new Set());
 
   // JSON 영문 카드 생성 상태 추적
@@ -168,6 +180,9 @@ export const VideoGenerationStep: React.FC<VideoGenerationStepProps> = ({
       handleClearAllData();
     });
   }, [handleResetWithWarning, handleClearAllData]);
+
+  // 인라인 영상 생성 섹션 위치로 스크롤하기 위한 ref
+  const generationSectionRef = useRef<HTMLDivElement | null>(null);
 
   return (
     <div className="space-y-6">
@@ -358,10 +373,10 @@ export const VideoGenerationStep: React.FC<VideoGenerationStepProps> = ({
         story={story}
         characterList={characterList}
         finalScenario={finalScenario}
-        // 프로젝트 참조 이미지들
-        projectReferenceCharacters={generatedCharacterImages}
-        projectReferenceBackgrounds={generatedVideoBackgrounds}
-        projectReferenceSettingCuts={generatedSettingCutImages}
+        // 프로젝트 참조 이미지들 (이미지 생성 단계에서 생성한 이미지들)
+        projectReferenceCharacters={generatedCharacters}
+        projectReferenceBackgrounds={generatedBackgrounds}
+        projectReferenceSettingCuts={[...generatedSettingCuts, ...(generatedSettingCutImages || [])]}
         // 설정 컷 이미지 관련
         generatedSettingCutImages={generatedSettingCutImages}
         setGeneratedSettingCutImages={setGeneratedSettingCutImages}
@@ -370,27 +385,91 @@ export const VideoGenerationStep: React.FC<VideoGenerationStepProps> = ({
       />
 
       {/* 영상 생성 */}
-      <VideoGenerator
-        generatedVideos={generatedVideos}
-        setGeneratedVideos={setGeneratedVideos}
-        generatedTextCards={generatedTextCards}
-        setGeneratedTextCards={setGeneratedTextCards}
-        generatedCharacterImages={generatedCharacterImages}
-        generatedVideoBackgrounds={generatedVideoBackgrounds}
-        selectedTextCards={selectedTextCards}
-        setSelectedTextCards={setSelectedTextCards}
-        selectedCharacterImages={selectedCharacterImages}
-        selectedVideoBackgrounds={selectedVideoBackgrounds}
-        setSelectedVideoBackgrounds={setSelectedVideoBackgrounds}
-        selectedCuts={selectedCuts}
-        story={story}
-        characterList={characterList}
-        finalScenario={finalScenario}
-        generatedProjectData={generatedProjectData}
-        generatedSceneTextCards={generatedSceneTextCards}
-        episodes={episodes}
-        generatedSettingCutImages={generatedSettingCutImages}
-      />
+      <div className="bg-white border rounded-lg p-4 mb-6">
+        <h3 className="text-lg font-semibold text-gray-800 mb-4">🎬 AI 교정 생성</h3>
+        <div className="flex gap-4">
+          <button
+            onClick={() => {
+              // 간단 모드(인라인)로 전환 후 해당 섹션으로 스크롤
+              setIsFrameByFrameMode(false);
+              setTimeout(() => {
+                generationSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              }, 0);
+            }}
+            className="px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg font-medium hover:from-purple-700 hover:to-pink-700 transition-all duration-300 transform hover:scale-105 shadow-lg flex items-center gap-2"
+          >
+            <Zap className="w-5 h-5" />
+            AI 교정 생성
+          </button>
+          <button
+            onClick={() => setIsFrameByFrameMode(!isFrameByFrameMode)}
+            className={`px-6 py-3 rounded-lg font-medium transition-colors ${
+              isFrameByFrameMode
+                ? 'bg-blue-600 text-white'
+                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+            }`}
+          >
+            고급 프레임별 생성
+          </button>
+          <button
+            onClick={() => setShowVideoModal(true)}
+            className="px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg font-medium hover:from-blue-700 hover:to-purple-700 transition-all duration-300 transform hover:scale-105 shadow-lg flex items-center gap-2"
+          >
+            <Zap className="w-5 h-5" />
+            간단한 영상 생성
+          </button>
+        </div>
+        <p className="text-sm text-gray-600 mt-2">
+          AI 교정 생성: Veo 3.0/3.1 모델로 최적화된 영상 생성 | 간단한 생성: 이미지→영상, 프레임별, 이미지 참조, 영상 확장 기능
+        </p>
+      </div>
+
+      {/* 영상 생성 */}
+      <div ref={generationSectionRef} />
+      {isFrameByFrameMode ? (
+        <FrameByFrameVideoGenerator
+          onVideoGenerated={(videoUrl) => {
+            const newVideo: GeneratedVideo = {
+              id: Date.now(),
+              video: videoUrl,
+              videoUrl: videoUrl,
+              timestamp: new Date().toISOString(),
+              textCards: [],
+              characterImages: [],
+              backgrounds: [],
+              projectTexts: [],
+              aiReviewTexts: [],
+              sceneCommonSettings: [],
+              videoRatio: '16:9',
+              thumbnail: '',
+              duration: '8',
+              type: 'general'
+            };
+            setGeneratedVideos(prev => [...prev, newVideo]);
+          }}
+        />
+      ) : (
+        <VideoGenerator
+          generatedVideos={generatedVideos}
+          setGeneratedVideos={setGeneratedVideos}
+          generatedTextCards={generatedTextCards}
+          setGeneratedTextCards={setGeneratedTextCards}
+          generatedCharacterImages={generatedCharacterImages}
+          generatedVideoBackgrounds={generatedVideoBackgrounds}
+          selectedTextCards={selectedTextCards}
+          setSelectedTextCards={setSelectedTextCards}
+          selectedCharacterImages={selectedCharacterImages}
+          selectedVideoBackgrounds={selectedVideoBackgrounds}
+          setSelectedVideoBackgrounds={setSelectedVideoBackgrounds}
+          selectedCuts={selectedCuts}
+          story={story}
+          characterList={characterList}
+          finalScenario={finalScenario}
+          generatedProjectData={generatedProjectData}
+          generatedSceneTextCards={generatedSceneTextCards}
+          episodes={episodes}
+        />
+      )}
 
       {/* 데이터 관리 */}
       <div className="bg-gray-50 p-4 rounded-lg border">
@@ -451,6 +530,36 @@ export const VideoGenerationStep: React.FC<VideoGenerationStepProps> = ({
         message="JSON 영문 카드가 생성된 상태에서 수정하면 모든 프로젝트 텍스트가 초기화됩니다."
         confirmText="초기화하고 계속"
         cancelText="취소"
+      />
+
+      {/* 영상 생성 모달 */}
+      <VideoGenerationModal
+        isOpen={showVideoModal}
+        onClose={() => setShowVideoModal(false)}
+        onVideoGenerated={(videoUrl) => {
+          const newVideo: GeneratedVideo = {
+            id: Date.now(),
+            video: videoUrl,
+            videoUrl: videoUrl,
+            timestamp: new Date().toISOString(),
+            textCards: [],
+            characterImages: [],
+            backgrounds: [],
+            projectTexts: [],
+            aiReviewTexts: [],
+            sceneCommonSettings: [],
+            videoRatio: '16:9',
+            thumbnail: '',
+            duration: '8',
+            type: 'general'
+          };
+          setGeneratedVideos(prev => [...prev, newVideo]);
+        }}
+        generatedImages={generatedCharacterImages.map(img => ({
+          id: img.id.toString(),
+          url: img.image,
+          prompt: img.input
+        }))}
       />
     </div>
   );

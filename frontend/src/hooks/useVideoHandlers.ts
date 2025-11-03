@@ -1,6 +1,7 @@
 import { useUIStore } from '../stores/uiStore';
-import { googleAIService } from '../services/googleAIService';
+import { GoogleAIService } from '../services/googleAIService';
 import { downloadBase64Image, downloadText, downloadVideo } from '../utils/downloadUtils';
+import { getAPIKeyFromStorage } from '../utils/apiKeyUtils';
 
 export const useVideoHandlers = (
   generatedTextCards: any[],
@@ -15,6 +16,11 @@ export const useVideoHandlers = (
   onEditCard?: (cardId: number, currentText: string) => void // 편집 콜백 추가
 ) => {
   const { addNotification } = useUIStore();
+
+  // API 키 가져오기 (통합 유틸리티 사용)
+  const getAPIKey = (): string => {
+    return getAPIKeyFromStorage('google');
+  };
 
   const handleGenerateTextCard = async (storySceneInput: string) => {
     if (!storySceneInput.trim()) {
@@ -33,6 +39,11 @@ ${storySceneInput}
 
 컷별로 나누어 상세한 텍스트 카드를 만들어주세요.`;
 
+      const apiKey = getAPIKey();
+      if (!apiKey) {
+        throw new Error('Google AI API 키가 설정되지 않았습니다. 로그인 후 설정에서 API 키를 입력해주세요.');
+      }
+      const googleAIService = GoogleAIService.getInstance();
       const result = await googleAIService.generateText(prompt);
       
       const newTextCard = {
@@ -57,8 +68,9 @@ ${storySceneInput}
           errorMessage = 'Google AI API 키가 설정되지 않았습니다. 설정에서 API 키를 입력해주세요.';
         } else if (error.message.includes('사용량 한도')) {
           errorMessage = 'API 사용량 한도를 초과했습니다. 잠시 후 다시 시도해주세요.';
-        } else if (error.message.includes('안전 정책')) {
-          errorMessage = '입력 내용이 안전 정책에 위배됩니다. 다른 내용으로 시도해주세요.';
+        } else if (error.message.includes('안전 정책') || error.message.includes('미성년자')) {
+          // 콘텐츠 정책 위반 메시지는 그대로 사용
+          errorMessage = error.message;
         } else if (error.message.includes('503') || error.message.includes('UNAVAILABLE')) {
           errorMessage = 'Google AI 서비스가 일시적으로 사용할 수 없습니다. 잠시 후 다시 시도해주세요.';
         } else if (error.message.includes('이미지 생성 결과가 없습니다')) {
@@ -100,7 +112,7 @@ ${storySceneInput}
     });
   };
 
-  const handleGenerateCharacterImage = async (characterOutfitInput: string, attachedImages: File[]) => {
+  const handleGenerateCharacterImage = async (characterOutfitInput: string, attachedImages: File[] = []) => {
     if (!characterOutfitInput.trim() && attachedImages.length === 0) {
       addNotification({
         type: 'error',
@@ -111,6 +123,11 @@ ${storySceneInput}
     }
 
     try {
+      const apiKey = getAPIKey();
+      if (!apiKey) {
+        throw new Error('Google AI API 키가 설정되지 않았습니다. 로그인 후 설정에서 API 키를 입력해주세요.');
+      }
+      const googleAIService = GoogleAIService.getInstance();
       const imageResult = await googleAIService.generateCharacterImage(characterOutfitInput);
       
       const newCharacterImage = {
@@ -165,7 +182,7 @@ ${storySceneInput}
     });
   };
 
-  const handleGenerateVideoBackground = async (videoBackgroundInput: string, attachedImages: File[]) => {
+  const handleGenerateVideoBackground = async (videoBackgroundInput: string, attachedImages: File[] = []) => {
     if (!videoBackgroundInput.trim() && attachedImages.length === 0) {
       addNotification({
         type: 'error',
@@ -176,6 +193,11 @@ ${storySceneInput}
     }
 
     try {
+      const apiKey = getAPIKey();
+      if (!apiKey) {
+        throw new Error('Google AI API 키가 설정되지 않았습니다. 로그인 후 설정에서 API 키를 입력해주세요.');
+      }
+      const googleAIService = GoogleAIService.getInstance();
       const imageResult = await googleAIService.generateBackgroundImage(videoBackgroundInput);
       
       const newVideoBackground = {
@@ -208,6 +230,11 @@ ${storySceneInput}
       const background = generatedVideoBackgrounds.find(bg => bg.id === backgroundId);
       if (!background) return;
 
+      const apiKey = getAPIKey();
+      if (!apiKey) {
+        throw new Error('Google AI API 키가 설정되지 않았습니다. 로그인 후 설정에서 API 키를 입력해주세요.');
+      }
+      const googleAIService = GoogleAIService.getInstance();
       const imageResult = await googleAIService.generateBackgroundImage(background.description);
       
       setGeneratedVideoBackgrounds((prev: any[]) =>
@@ -271,6 +298,12 @@ ${storySceneInput}
 
     try {
       const newTextCards = [];
+      const apiKey = getAPIKey();
+      if (!apiKey) {
+        throw new Error('Google AI API 키가 설정되지 않았습니다. 로그인 후 설정에서 API 키를 입력해주세요.');
+      }
+      const googleAIService = GoogleAIService.getInstance();
+      
       for (const card of generatedTextCards) {
         const result = await googleAIService.generateText(card.generatedText);
         newTextCards.push({
@@ -307,6 +340,12 @@ ${storySceneInput}
 
     try {
       const newImages = [];
+      const apiKey = getAPIKey();
+      if (!apiKey) {
+        throw new Error('Google AI API 키가 설정되지 않았습니다. 로그인 후 설정에서 API 키를 입력해주세요.');
+      }
+      const googleAIService = GoogleAIService.getInstance();
+      
       for (const image of generatedCharacterImages) {
         const result = await googleAIService.generateCharacterImage(image.input);
         newImages.push({
@@ -343,6 +382,12 @@ ${storySceneInput}
 
     try {
       const newBackgrounds = [];
+      const apiKey = getAPIKey();
+      if (!apiKey) {
+        throw new Error('Google AI API 키가 설정되지 않았습니다. 로그인 후 설정에서 API 키를 입력해주세요.');
+      }
+      const googleAIService = GoogleAIService.getInstance();
+      
       for (const background of generatedVideoBackgrounds) {
         const result = await googleAIService.generateBackgroundImage(background.input);
         newBackgrounds.push({
@@ -379,6 +424,12 @@ ${storySceneInput}
 
     try {
       const newVideos = [];
+      const apiKey = getAPIKey();
+      if (!apiKey) {
+        throw new Error('Google AI API 키가 설정되지 않았습니다. 로그인 후 설정에서 API 키를 입력해주세요.');
+      }
+      const googleAIService = GoogleAIService.getInstance();
+      
       for (const video of generatedVideos) {
         const result = await googleAIService.generateVideo({
           prompt: video.projectTexts.join(' '),
@@ -412,6 +463,11 @@ ${storySceneInput}
     if (!card) return;
 
     try {
+      const apiKey = getAPIKey();
+      if (!apiKey) {
+        throw new Error('Google AI API 키가 설정되지 않았습니다. 로그인 후 설정에서 API 키를 입력해주세요.');
+      }
+      const googleAIService = GoogleAIService.getInstance();
       const result = await googleAIService.generateText(card.generatedText);
       setGeneratedTextCards(prev => prev.map(c => 
         c.id === id ? { ...c, generatedText: result, timestamp: new Date().toISOString() } : c
@@ -435,6 +491,11 @@ ${storySceneInput}
     if (!image) return;
 
     try {
+      const apiKey = getAPIKey();
+      if (!apiKey) {
+        throw new Error('Google AI API 키가 설정되지 않았습니다. 로그인 후 설정에서 API 키를 입력해주세요.');
+      }
+      const googleAIService = GoogleAIService.getInstance();
       const result = await googleAIService.generateCharacterImage(image.input);
       setGeneratedCharacterImages(prev => prev.map(i => 
         i.id === id ? { ...i, image: result, timestamp: new Date().toISOString() } : i
@@ -458,6 +519,11 @@ ${storySceneInput}
     if (!background) return;
 
     try {
+      const apiKey = getAPIKey();
+      if (!apiKey) {
+        throw new Error('Google AI API 키가 설정되지 않았습니다. 로그인 후 설정에서 API 키를 입력해주세요.');
+      }
+      const googleAIService = GoogleAIService.getInstance();
       const result = await googleAIService.generateBackgroundImage(background.input);
       setGeneratedVideoBackgrounds(prev => prev.map(b => 
         b.id === id ? { ...b, image: result, timestamp: new Date().toISOString() } : b
@@ -481,6 +547,11 @@ ${storySceneInput}
     if (!video) return;
 
     try {
+      const apiKey = getAPIKey();
+      if (!apiKey) {
+        throw new Error('Google AI API 키가 설정되지 않았습니다. 로그인 후 설정에서 API 키를 입력해주세요.');
+      }
+      const googleAIService = GoogleAIService.getInstance();
       const result = await googleAIService.generateVideo({
         prompt: video.projectTexts.join(' '),
         ratio: video.videoRatio
@@ -807,12 +878,14 @@ ${storySceneInput}
     handleGenerateTextCard,
     handleDeleteTextCardOld,
     handleEditCard,
+    handleEditTextCard: handleEditCard, // 별칭 추가
     handleDeleteCard,
     handleGenerateCharacterImage,
     handleGenerateCharacterVideo,
     handleRegenerateCharacterVideo,
     handleDeleteCharacterVideo,
     handleGenerateVideoBackground,
+    handleGenerateVideo: handleGenerateAIVideo, // handleGenerateVideo로 매핑
     handleRegenerateVideoBackgroundOld,
     handleDeleteVideoBackgroundOld,
     handleGenerateVideoThumbnail,

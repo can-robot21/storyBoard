@@ -91,66 +91,13 @@ export const useVideoGeneration = () => {
     });
   };
 
-  // 데이터 저장/로드 (이미지/영상 파일 제외, 메타데이터만)
+  // 데이터 저장/로드
   const handleExportData = () => {
     const data = {
       episodes,
       videoTitle,
       videoDescription,
       videoNotes,
-      // 생성된 이미지 리스트 (메타데이터만) - localStorage에서 가져오기
-      generatedImagesList: (() => {
-        try {
-          const images = localStorage.getItem('generatedImages');
-          return images ? JSON.parse(images).map((img: any) => ({
-            id: img.id,
-            description: img.description,
-            prompt: img.prompt,
-            timestamp: img.timestamp,
-            type: img.type,
-            hasImage: !!img.image
-          })) : [];
-        } catch {
-          return [];
-        }
-      })(),
-      // 생성된 영상 리스트 (메타데이터만) - localStorage에서 가져오기
-      generatedVideosList: (() => {
-        try {
-          const videos = localStorage.getItem('generatedVideos');
-          return videos ? JSON.parse(videos).map((video: any) => ({
-            id: video.id,
-            prompt: video.prompt,
-            englishPrompt: video.englishPrompt,
-            koreanPrompt: video.koreanPrompt,
-            timestamp: video.timestamp,
-            duration: video.duration,
-            ratio: video.ratio,
-            model: video.model,
-            hasVideo: !!video.video
-          })) : [];
-        } catch {
-          return [];
-        }
-      })(),
-      // 프롬프트 템플릿
-      promptTemplates: localStorage.getItem('promptTemplates') ? JSON.parse(localStorage.getItem('promptTemplates')!) : [],
-      // 도구 및 설정 정보
-      toolsAndSettings: {
-        aiSettings: {
-          selectedProvider: localStorage.getItem('selectedAIProvider'),
-          apiKeysConfigured: {
-            google: !!localStorage.getItem('user_api_keys')?.includes('google'),
-            openai: !!localStorage.getItem('user_api_keys')?.includes('openai'),
-            anthropic: !!localStorage.getItem('user_api_keys')?.includes('anthropic')
-          }
-        },
-        projectSettings: {
-          imageSettings: localStorage.getItem('imageSettings'),
-          videoSettings: localStorage.getItem('videoSettings'),
-          sceneCutSettings: localStorage.getItem('sceneCutSettings')
-        }
-      },
       timestamp: new Date().toISOString()
     };
 
@@ -158,7 +105,7 @@ export const useVideoGeneration = () => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `video-generation-metadata-${new Date().toISOString().split('T')[0]}.json`;
+    a.download = `video-generation-data-${new Date().toISOString().split('T')[0]}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -167,7 +114,7 @@ export const useVideoGeneration = () => {
     addNotification({
       type: 'success',
       title: '내보내기 완료',
-      message: '프롬프트, 도구, 생성 리스트가 성공적으로 내보내졌습니다. (이미지/영상 파일 제외)',
+      message: '데이터가 성공적으로 내보내졌습니다.',
     });
   };
 

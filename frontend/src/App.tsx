@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
+import { HelmetProvider } from 'react-helmet-async';
 import { useUIStore } from './stores/uiStore';
 import { Header } from './components/layout/Header';
 import { ImprovedMainLayout } from './components/layout/ImprovedMainLayout';
 import { AISettingsModal } from './components/common/AISettingsModal';
-import { LoginOverlay } from './components/common/LoginOverlay';
 import { useProjectHandlers } from './hooks/useProjectHandlers';
 import { useImageHandlers } from './hooks/useImageHandlers';
 import { useVideoHandlers } from './hooks/useVideoHandlers';
@@ -14,11 +14,12 @@ import {
   GeneratedBackground, 
   GeneratedSettingCut,
   GeneratedTextCard,
-  GeneratedImage,
-  GeneratedVideo,
-  GeneratedProjectData
+  GeneratedImage
 } from './types/project';
-import { AIProvider } from './types/ai';
+import type { GeneratedProjectData } from './types/projectOverview';
+import type { GeneratedVideo } from './types/videoGeneration';
+import { AIProvider, FunctionBasedAIProviders } from './types/ai';
+import { AIProviderSettings } from './utils/aiProviderSettings';
 import { User } from './types/auth';
 import { UserMigrationModal } from './components/common/UserMigrationModal';
 import { MigrationResult } from './services/userMigrationService';
@@ -36,8 +37,10 @@ import { userPermissionService } from './services/userPermissionService';
 import { ActivityLogManagerModal } from './components/common/ActivityLogManagerModal';
 import { userActivityLogService } from './services/userActivityLogService';
 import { ManagementModal } from './components/common/ManagementModal';
-import IntroPage from './components/pages/IntroPage';
-import DescriptionPage from './components/pages/DescriptionPage';
+import IntroPage from './components/common/IntroPage';
+import GuidePage from './components/common/GuidePage';
+import StoryboardGenerator from './components/storyboard/StoryboardGenerator';
+import WelcomeModal from './components/common/WelcomeModal';
 
 // const mainSteps = [
 //   "프로젝트 개요",
@@ -48,13 +51,42 @@ import DescriptionPage from './components/pages/DescriptionPage';
 export default function App() {
   const { addNotification } = useUIStore();
   const [currentStep, setCurrentStep] = useState("프로젝트 개요");
+  const [showStoryboardGenerator, setShowStoryboardGenerator] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   
-  // 페이지 라우팅 상태
-  const [currentPage, setCurrentPage] = useState<'intro' | 'description' | 'main'>('intro');
+  // 기능별 AI Provider 설정
+  const [functionBasedProviders, setFunctionBasedProviders] = useState<FunctionBasedAIProviders>(
+    AIProviderSettings.load()
+  );
+  
+  // 진전형 레이아웃 상태
+  // 초기값을 intro로 설정 (인증 확인 후 로그인된 경우에만 main으로 변경)
+  const [currentPage, setCurrentPage] = useState<'intro' | 'guide' | 'main'>('intro');
+  const [isFirstVisit, setIsFirstVisit] = useState(false);
+  
+  // 페이지 전환 함수들
+  const goToGuide = () => setCurrentPage('guide');
+  const goToMain = () => {
+    setCurrentPage('main');
+    setCurrentStep('프로젝트 개요');
+    // 스토리보드 생성기를 닫고 메인 페이지로 이동
+    setShowStoryboardGenerator(false);
+  };
+  const goToIntro = () => {
+    setCurrentPage('intro');
+    // intro 페이지로 이동 시 스토리보드 생성기도 닫기
+    setShowStoryboardGenerator(false);
+  };
+
+  // 관리자 권한 체크 함수
+  const isAdmin = () => {
+    return currentUser?.email === 'star612.net@gmail.com';
+  };
+  
   const [showAISettings, setShowAISettings] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [showWelcomeModal, setShowWelcomeModal] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<'login' | 'register' | 'profile'>('login');
   const [AuthModal, setAuthModal] = useState<React.ComponentType<any> | null>(null);
   const [showMigrationModal, setShowMigrationModal] = useState(false);
@@ -68,18 +100,6 @@ export default function App() {
   const [showPermissionManager, setShowPermissionManager] = useState(false);
   const [showActivityLogManager, setShowActivityLogManager] = useState(false);
   const [showManagementModal, setShowManagementModal] = useState(false);
-
-  // 일주일간 감추기 상태
-  const [dontShowLoginOverlayWeek, setDontShowLoginOverlayWeek] = useState(() => {
-    const now = new Date();
-    const savedWeekDate = localStorage.getItem('dontShowLoginOverlayWeek');
-    if (savedWeekDate) {
-      const savedDate = new Date(savedWeekDate);
-      const weekLater = new Date(savedDate.getTime() + 7 * 24 * 60 * 60 * 1000);
-      return now < weekLater;
-    }
-    return false;
-  });
 
   // 인증 서비스 초기화
   useEffect(() => {
@@ -96,9 +116,23 @@ export default function App() {
           if (session) {
             console.log('세션 복원됨:', session.sessionId);
           }
+          
+          // 로그인된 상태면 메인 페이지로 이동 (프로젝트 개요)
+          setCurrentPage('main');
+          setCurrentStep('프로젝트 개요');
+          // 스토리보드 생성기 초기화
+          setShowStoryboardGenerator(false);
+        } else {
+          // 로그인되지 않은 상태면 intro 페이지로 이동
+          setCurrentPage('intro');
+          // 스토리보드 생성기 초기화
+          setShowStoryboardGenerator(false);
         }
       } catch (error) {
         console.error('Auth initialization error:', error);
+        // 에러 발생 시에도 로그인 안된 상태로 간주하고 intro 페이지로
+        setCurrentPage('intro');
+        setShowStoryboardGenerator(false);
       }
     };
 
@@ -228,8 +262,16 @@ export default function App() {
     setShowAuthModal(true);
   };
 
-  const handleAuthModeChange = (mode: 'login' | 'register' | 'profile') => {
-    setAuthModalMode(mode);
+  const handleWelcomeLogin = () => {
+    setShowWelcomeModal(false);
+    setAuthModalMode('login');
+    setShowAuthModal(true);
+  };
+
+  const handleWelcomeRegister = () => {
+    setShowWelcomeModal(false);
+    setAuthModalMode('register');
+    setShowAuthModal(true);
   };
 
   const handleLoginSuccess = async (user: User, needsMigration?: boolean) => {
@@ -244,6 +286,13 @@ export default function App() {
     setIsLoggedIn(true);
     setShowAuthModal(false);
     
+    // 스토리보드 생성기 초기화
+    setShowStoryboardGenerator(false);
+    
+    // 로그인 성공 시 메인 페이지로 이동하고 프로젝트 개요 페이지로 설정
+    setCurrentPage('main');
+    setCurrentStep('프로젝트 개요');
+    
     // 세션 시작
     try {
       sessionManagementService.startSession(user, {
@@ -257,9 +306,10 @@ export default function App() {
     // 로그인 시 자동 동기화 (비활성화됨)
     // dataSyncService 관련 코드 제거됨
     
-    // 관리자 계정인 경우 환경 변수 키값 자동 적용
+    // 모든 사용자(관리자 포함)가 개인 API 키를 입력해야 함
+    // 관리자도 환경변수 API 키 사용 안함
     if (AuthService.isAdminUser(user.email)) {
-      console.log('🎉 관리자 계정으로 로그인 - 환경 변수 키값 자동 적용');
+      console.log('🎉 관리자 계정으로 로그인 - 개인 API 키 입력 필요');
     }
     
     addNotification({
@@ -302,6 +352,12 @@ export default function App() {
       setCurrentUser(null);
       setIsLoggedIn(false);
       setShowLogoutConfirmation(false);
+      
+      // 스토리보드 생성기 초기화
+      setShowStoryboardGenerator(false);
+      
+      // 로그아웃 시 intro 페이지로 이동
+      goToIntro();
     } catch (error) {
       console.error('로그아웃 처리 실패:', error);
       addNotification({
@@ -353,6 +409,13 @@ export default function App() {
       setCurrentUser(pendingMigrationUser);
       setIsLoggedIn(true);
       setShowMigrationModal(false);
+      
+      // 스토리보드 생성기 초기화
+      setShowStoryboardGenerator(false);
+      
+      // 마이그레이션 완료 시 메인 페이지로 이동하고 프로젝트 개요 페이지로 설정
+      setCurrentPage('main');
+      setCurrentStep('프로젝트 개요');
       setPendingMigrationUser(null);
       
       addNotification({
@@ -436,6 +499,7 @@ export default function App() {
   }, [storySummary]);
 
   const handleAuthModalClose = () => {
+    // 모든 모드에서 닫기 허용
     setShowAuthModal(false);
   };
 
@@ -459,59 +523,58 @@ export default function App() {
     });
   };
 
-  // 일주일간 감추기 핸들러
-  const handleDontShowWeek = () => {
-    const now = new Date();
-    localStorage.setItem('dontShowLoginOverlayWeek', now.toISOString());
-    setDontShowLoginOverlayWeek(true);
-  };
-
-  // 로그인 오버레이 닫기 핸들러
-  const handleCloseLoginOverlay = () => {
-    // 일주일간 감추기 상태로 설정하여 모달 숨김
-    handleDontShowWeek();
-  };
-
-  // 페이지 라우팅 핸들러
-  const handlePageNavigation = {
-    toIntro: () => setCurrentPage('intro'),
-    toDescription: () => setCurrentPage('description'),
-    toMain: () => setCurrentPage('main')
-  };
-
-  // 페이지별 렌더링
-  if (currentPage === 'intro') {
-    return <IntroPage onStart={handlePageNavigation.toDescription} />;
-  }
-
-  if (currentPage === 'description') {
-    return (
-      <DescriptionPage 
-        onBack={handlePageNavigation.toIntro}
-        onNext={handlePageNavigation.toMain}
-      />
-    );
-  }
-
-  // 메인 애플리케이션 (기존 코드)
   return (
-    <div className="h-screen flex flex-col bg-gray-50 overflow-hidden">
-      {/* 상단 헤더 - 고정 */}
-      <div className="flex-shrink-0">
+    <HelmetProvider>
+      <div className="h-screen flex flex-col bg-gray-50 overflow-hidden">
+      {/* 상단 헤더 - 메인 페이지와 스토리보드 생성기에서 표시 */}
+      {(currentPage === 'main' || showStoryboardGenerator) && (
         <Header
           isLoggedIn={isLoggedIn}
           onLogin={handleLogin}
           onLogout={handleLogout}
           onProfileClick={handleProfile}
           onRegister={handleRegister}
-          onTitleClick={handlePageNavigation.toIntro}
+          onGoToIntro={goToIntro}
+          onGoToMain={goToMain}
+          onGoToGuide={goToGuide}
           currentUser={currentUser}
         />
-      </div>
+      )}
       
-      {/* 메인 콘텐츠 영역 - 스크롤 가능 */}
-      <div className="flex-1 overflow-hidden">
-        <ImprovedMainLayout
+      {/* 진전형 레이아웃: 인트로 → 안내 → 사용 */}
+      {currentPage === 'intro' ? (
+        <div className="flex-1 overflow-hidden">
+          <IntroPage onNext={goToGuide} />
+        </div>
+      ) : currentPage === 'guide' ? (
+        <div className="flex-1 overflow-hidden">
+          <GuidePage 
+            onNext={() => {
+              // 메인 페이지로 먼저 이동
+              setCurrentPage('main');
+              // 로그인되지 않은 경우 웰컴 모달 열기
+              if (!isLoggedIn) {
+                // 일주일간 감추기 체크
+                const hideUntil = localStorage.getItem('welcomeModalHideUntil');
+                if (hideUntil) {
+                  const hideDate = new Date(hideUntil);
+                  const now = new Date();
+                  if (now < hideDate) {
+                    // 아직 감추기 기간이면 모달을 표시하지 않음
+                    return;
+                  }
+                }
+                setShowWelcomeModal(true);
+              }
+            }} 
+            onBack={goToIntro} 
+          />
+        </div>
+      ) : showStoryboardGenerator ? (
+        <StoryboardGenerator onBack={() => setShowStoryboardGenerator(false)} />
+      ) : (
+        <div className="flex-1 overflow-hidden">
+          <ImprovedMainLayout
         currentStep={currentStep}
         setCurrentStep={setCurrentStep}
         onShowSecurityCheck={() => setShowSecurityCheck(true)}
@@ -521,6 +584,8 @@ export default function App() {
         onShowPermissionManager={() => setShowPermissionManager(true)}
         onShowActivityLogManager={() => setShowActivityLogManager(true)}
         onShowManagementModal={() => setShowManagementModal(true)}
+        onShowStoryboardGenerator={() => setShowStoryboardGenerator(true)}
+        isAdmin={isAdmin()}
         // 프로젝트 개요 props
         story={story}
         setStory={setStory}
@@ -573,22 +638,24 @@ export default function App() {
         setStepStatus={setStepStatus}
         // AI 설정
         selectedAIProvider={selectedProvider}
+        functionBasedProviders={functionBasedProviders}
         onAISettingsClick={handleAISettingsClick}
-        currentUser={currentUser}
+        currentUser={currentUser ?? undefined}
         videoStepEditHandlerRef={videoStepEditHandlerRef}
         />
-      </div>
-      
-      {/* 미로그인 상태에서 로그인 오버레이 표시 (일주일간 감추기 체크 안된 경우만) */}
-      {!isLoggedIn && !dontShowLoginOverlayWeek && (
-        <LoginOverlay
-          onLogin={handleLogin}
-          onRegister={handleRegister}
-          onDontShowWeek={handleDontShowWeek}
-          onClose={handleCloseLoginOverlay}
-        />
+        </div>
       )}
       
+      {/* 미로그인 상태에서 로그인 오버레이 표시 - 제거됨 (안내 페이지로 대체) */}
+      
+      {/* 웰컴 모달 */}
+      <WelcomeModal
+        isOpen={showWelcomeModal}
+        onClose={() => setShowWelcomeModal(false)}
+        onLogin={handleWelcomeLogin}
+        onRegister={handleWelcomeRegister}
+      />
+
       {/* AI 설정 모달 */}
       <AISettingsModal
         isOpen={showAISettings}
@@ -596,6 +663,16 @@ export default function App() {
         selectedProvider={selectedProvider}
         onProviderChange={handleAIProviderChange}
         onSave={handleAISettingsSave}
+        functionBasedProviders={functionBasedProviders}
+        onFunctionBasedProvidersChange={(providers) => {
+          setFunctionBasedProviders(providers);
+          AIProviderSettings.save(providers);
+          addNotification({
+            type: 'success',
+            title: '설정 저장 완료',
+            message: '기능별 AI 서비스 설정이 저장되었습니다.'
+          });
+        }}
       />
       
       {/* 인증 모달 */}
@@ -607,7 +684,7 @@ export default function App() {
           onSuccess={handleLoginSuccess}
           currentUser={currentUser}
           onAccountDeletion={handleAccountDeletion}
-          onModeChange={handleAuthModeChange}
+          onModeChange={setAuthModalMode}
         />
       )}
 
@@ -729,5 +806,6 @@ export default function App() {
         onActivityLogManager={() => setShowActivityLogManager(true)}
       />
     </div>
+    </HelmetProvider>
   );
 }

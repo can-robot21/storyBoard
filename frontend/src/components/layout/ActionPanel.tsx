@@ -1,10 +1,9 @@
 import React from 'react';
 import {
-  Settings,
   HelpCircle,
   FileText,
-  Download,
-  Wrench
+  Wrench,
+  Film,
 } from 'lucide-react';
 import Button from '../common/Button';
 
@@ -12,9 +11,8 @@ interface ActionPanelProps {
   currentStep: string;
   onHelpClick?: () => void;
   onProjectReferenceClick?: () => void;
-  onExportClick?: () => void;
-  onToggleSettings?: () => void;
   onManagementToolsClick?: () => void;
+  onStoryboardGeneratorClick?: () => void;
   // 단계별 액션 핸들러들
   projectHandlers?: any;
   imageHandlers?: any;
@@ -22,89 +20,78 @@ interface ActionPanelProps {
   // 상태 정보
   stepStatus?: any;
   canProceedToNext?: boolean;
-  // ActionPanel 표시/숨김 상태
-  isActionPanelVisible?: boolean;
-  onToggleActionPanel?: () => void;
+  isAdmin?: boolean;
+  isLoggedIn?: boolean;
 }
 
 export const ActionPanel: React.FC<ActionPanelProps> = ({
   currentStep,
   onHelpClick,
   onProjectReferenceClick,
-  onExportClick,
-  onToggleSettings,
   onManagementToolsClick,
+  onStoryboardGeneratorClick,
   projectHandlers,
   imageHandlers,
   videoHandlers,
   stepStatus,
   canProceedToNext = false,
-  isActionPanelVisible = true,
-  onToggleActionPanel
+  isAdmin = false,
+  isLoggedIn = false
 }) => {
-
   return (
-    <>
-      {isActionPanelVisible && (
-        <div className="bg-gradient-to-r from-blue-50 to-purple-50 border-t border-gray-200 shadow-lg">
-          <div className="px-6 py-4">
-            <div className="flex items-center justify-center">
-              {/* 핵심 도구 버튼들만 중앙에 배치 */}
-              <div className="flex items-center gap-3">
-                <Button
-                  onClick={onToggleSettings}
-                  variant="outline"
-                  size="lg"
-                  className="flex items-center gap-2"
-                >
-                  <Settings className="w-5 h-5" />
-                  설정
-                </Button>
+    <div className="bg-white border-t border-gray-200 shadow-lg">
+      {/* 메인 버튼 영역 */}
+      <div className="px-6 py-4">
+        <div className="flex items-center justify-center">
+          {/* 핵심 도구 버튼들만 중앙에 배치 */}
+          <div className="flex items-center gap-3">
+            <Button
+              onClick={onHelpClick}
+              variant="outline"
+              size="lg"
+              className="flex items-center gap-2"
+            >
+              <HelpCircle className="w-5 h-5" />
+              도움말
+            </Button>
 
-                <Button
-                  onClick={onHelpClick}
-                  variant="outline"
-                  size="lg"
-                  className="flex items-center gap-2"
-                >
-                  <HelpCircle className="w-5 h-5" />
-                  도움말
-                </Button>
+            <Button
+              onClick={onProjectReferenceClick}
+              variant="outline"
+              size="lg"
+              className="flex items-center gap-2"
+            >
+              <FileText className="w-5 h-5" />
+              프로젝트 참조
+            </Button>
 
-                <Button
-                  onClick={onProjectReferenceClick}
-                  variant="outline"
-                  size="lg"
-                  className="flex items-center gap-2"
-                >
-                  <FileText className="w-5 h-5" />
-                  프로젝트 참조
-                </Button>
+            <Button
+              onClick={onManagementToolsClick}
+              variant="outline"
+              size="lg"
+              className="flex items-center gap-2 bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-700"
+            >
+              <Wrench className="w-5 h-5" />
+              관리 도구
+            </Button>
 
-                <Button
-                  onClick={onManagementToolsClick}
-                  variant="outline"
-                  size="lg"
-                  className="flex items-center gap-2 bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-700"
-                >
-                  <Wrench className="w-5 h-5" />
-                  관리 도구
-                </Button>
+            {/* 스토리보드 생성 버튼 (로그인 상태에서만 표시) - StepProgressPanel과 동일하게 동작 */}
+            {onStoryboardGeneratorClick && isLoggedIn && (
+              <Button
+                onClick={onStoryboardGeneratorClick}
+                variant="outline"
+                size="lg"
+                className="flex items-center gap-2 bg-purple-50 hover:bg-purple-100 border-purple-200 text-purple-700"
+              >
+                <Film className="w-5 h-5" />
+                스토리보드 생성
+              </Button>
+            )}
 
-                <Button
-                  onClick={onExportClick}
-                  variant="outline"
-                  size="lg"
-                  className="flex items-center gap-2"
-                >
-                  <Download className="w-5 h-5" />
-                  내보내기
-                </Button>
-              </div>
-            </div>
+            {/* 내보내기 버튼 제거 */}
           </div>
         </div>
-      )}
-    </>
+      </div>
+    </div>
   );
 };

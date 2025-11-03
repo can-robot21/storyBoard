@@ -1,13 +1,15 @@
 import { GoogleGenAI, HarmCategory, HarmBlockThreshold, Type, PersonGeneration } from '@google/genai';
 import TokenCalculator from '../utils/tokenCalculator';
+import { validateContentPolicy } from '../utils/contentPolicyValidator';
 
 // Google AI 서비스 클래스
 export class GoogleAIService {
-  private ai: GoogleGenAI;
+  private static instance: GoogleAIService | null = null;
+  private ai: GoogleGenAI | null;
   private apiKeyInUse: string;
   private tokenCalculator: TokenCalculator;
 
-  constructor() {
+  private constructor() {
     this.tokenCalculator = TokenCalculator.getInstance();
     const getCurrentUser = () => {
       try {
@@ -19,56 +21,150 @@ export class GoogleAIService {
       }
     };
     const user = getCurrentUser();
-    const adminEmail = process.env.REACT_APP_ADMIN_EMAIL || 'star612.net@gmail.com';
-    const isAdmin = !!(user && user.email === adminEmail);
 
+    // API 키 로드 함수 (로그인 사용자 우선, localStorage 직접 확인 포함)
     const getLocalApiKey = (): string => {
       try {
         if (typeof window === 'undefined') return '';
+        
+        // 1순위: localStorage의 user_api_keys에서 직접 확인 (로그인 여부와 무관)
         const localKeysRaw = localStorage.getItem('user_api_keys');
         if (localKeysRaw) {
           const localKeys = JSON.parse(localKeysRaw);
-          if (localKeys?.google) return localKeys.google as string;
+          if (localKeys?.google && localKeys.google.trim() !== '' && localKeys.google !== 'your-gemini-api-key') {
+            console.log('✅ localStorage에서 Google API 키 로드 성공');
+            return localKeys.google as string;
+          }
         }
-        if (user?.apiKeys?.google) return user.apiKeys.google as string;
-      } catch {}
-      return '';
+        
+        // 2순위: 로그인한 사용자의 API 키
+        if (user?.apiKeys?.google && user.apiKeys.google.trim() !== '' && user.apiKeys.google !== 'your-gemini-api-key') {
+          console.log('✅ 사용자 객체에서 Google API 키 로드 성공');
+          return user.apiKeys.google as string;
+        }
+        
+        return '';
+      } catch (error) {
+        console.error('❌ API 키 로드 중 오류:', error);
+        return '';
+      }
     };
 
-    // 환경 변수 사용 중단 - 보안상 클라이언트에 API 키 노출 방지
-    this.apiKeyInUse = getLocalApiKey() || '';
-
-    this.ai = new GoogleGenAI({
-      apiKey: this.apiKeyInUse || ''
-    });
+    // API 키 로드 시도
+    this.apiKeyInUse = getLocalApiKey();
+    
+    if (this.apiKeyInUse) {
+      console.log('🔑 사용자 API 키 로딩: 설정됨', this.apiKeyInUse.substring(0, 10) + '...');
+      this.ai = new GoogleGenAI({
+        apiKey: this.apiKeyInUse
+      });
+    } else {
+      // API 키가 없는 경우
+      if (!user) {
+        console.log('🔑 사용자 API 키 로딩: 미설정 (로그인하지 않음 또는 API 키 없음)');
+      } else {
+        console.log('🔑 사용자 API 키 로딩: 미설정 (API 키가 localStorage나 사용자 객체에 없음)');
+      }
+      this.apiKeyInUse = '';
+      this.ai = null; // API 키 없이는 서비스 사용 불가
+      return;
+    }
   }
 
-  // API 키 검증
-  private validateApiKey(): void {
-    if (!this.apiKeyInUse || this.apiKeyInUse.trim() === '') {
-      throw new Error('Google AI API 키가 설정되지 않았습니다. 설정에서 API 키를 입력해주세요.');
+  // 싱글톤 인스턴스 가져오기
+  static getInstance(): GoogleAIService {
+    if (!GoogleAIService.instance) {
+      GoogleAIService.instance = new GoogleAIService();
+    }
+    return GoogleAIService.instance;
+  }
+
+  // 인스턴스 무효화 (로그아웃 시 호출)
+  static invalidateInstance(): void {
+    if (GoogleAIService.instance) {
+      GoogleAIService.instance.ai = null;
+      GoogleAIService.instance.apiKeyInUse = '';
+      GoogleAIService.instance = null;
+      console.log('🔑 GoogleAIService 인스턴스 무효화 완료');
+    }
+  }
+
+  // 현재 인스턴스가 유효한지 확인
+  isInitialized(): boolean {
+    return this.ai !== null && this.apiKeyInUse !== '';
+  }
+
+  // 인스턴스 재초기화 (로그인 후 호출)
+  static reinitializeInstance(): GoogleAIService {
+    // 기존 인스턴스 무효화
+    GoogleAIService.invalidateInstance();
+    
+    // 디버깅: API 키 상태 확인
+    try {
+      if (typeof window !== 'undefined') {
+        const currentUserRaw = localStorage.getItem('storyboard_current_user');
+        const localKeysRaw = localStorage.getItem('user_api_keys');
+        
+        console.log('🔄 API 키 재초기화 시도:', {
+          hasCurrentUser: !!currentUserRaw,
+          hasLocalKeys: !!localKeysRaw,
+          localKeys: localKeysRaw ? JSON.parse(localKeysRaw) : null
+        });
+        
+        if (localKeysRaw) {
+          const localKeys = JSON.parse(localKeysRaw);
+          if (localKeys?.google && localKeys.google.trim() !== '') {
+            console.log('✅ localStorage에 Google API 키 존재:', localKeys.google.substring(0, 10) + '...');
+          } else {
+            console.warn('⚠️ localStorage에 Google API 키가 없음');
+          }
+        }
+        
+        if (currentUserRaw) {
+          const currentUser = JSON.parse(currentUserRaw);
+          if (currentUser?.apiKeys?.google && currentUser.apiKeys.google.trim() !== '') {
+            console.log('✅ 사용자 객체에 Google API 키 존재:', currentUser.apiKeys.google.substring(0, 10) + '...');
+          }
+        }
+      }
+    } catch (error) {
+      console.error('❌ API 키 상태 확인 중 오류:', error);
     }
     
-    if (!this.apiKeyInUse.startsWith('AIza')) {
-      throw new Error('유효하지 않은 Google AI API 키 형식입니다. 올바른 API 키를 입력해주세요.');
+    // 새 인스턴스 생성
+    const instance = GoogleAIService.getInstance();
+    
+    // 재초기화 후 상태 확인
+    if (!instance.isInitialized()) {
+      console.warn('⚠️ 재초기화 후에도 API 키가 설정되지 않음');
+    } else {
+      console.log('✅ API 키 재초기화 완료 - 서비스 사용 가능');
     }
+    
+    return instance;
   }
 
   // 텍스트 생성 (프로젝트 개요용)
   async generateText(prompt: string, model: string = 'gemini-2.5-flash', retryCount: number = 0): Promise<string> {
-    this.validateApiKey(); // API 키 검증
+    if (!this.isInitialized()) {
+      throw new Error('Google AI API 키가 설정되지 않았습니다. 로그인 후 설정에서 API 키를 입력해주세요.');
+    }
     
     const maxRetries = 3;
     const retryDelay = 2000; // 2초
 
     try {
+      // API 키 검증
+      if (!this.apiKeyInUse || this.apiKeyInUse === 'your-gemini-api-key') {
+        throw new Error('Google AI API 키가 설정되지 않았습니다. 설정에서 API 키를 입력해주세요.');
+      }
 
       // 프롬프트 검증
       if (!prompt || prompt.trim().length === 0) {
         throw new Error('프롬프트가 비어있습니다.');
       }
 
-      const response = await this.ai.models.generateContent({
+      const response = await this.ai!.models.generateContent({
         model,
         contents: [{ parts: [{ text: prompt }] }], // 올바른 형식으로 수정
         config: {
@@ -226,20 +322,16 @@ STYLE GUIDELINES:
   }
 
   // 이미지 생성 제한 및 검증
-  private validateImageGeneration(prompt: string, type: 'character' | 'background' | 'setting'): void {
+  private validateImageGeneration(prompt: string, type: 'character' | 'background' | 'setting', personGeneration?: string): void {
     // 프롬프트 길이 제한
     if (prompt.length > 1000) {
       throw new Error('프롬프트가 너무 깁니다. 1000자 이내로 작성해주세요.');
     }
 
-    // 금지된 키워드 검사
-    const forbiddenKeywords = ['nude', 'naked', 'explicit', 'adult', 'nsfw'];
-    const lowerPrompt = prompt.toLowerCase();
-    
-    for (const keyword of forbiddenKeywords) {
-      if (lowerPrompt.includes(keyword)) {
-        throw new Error('부적절한 내용이 포함되어 있습니다. 다른 내용으로 시도해주세요.');
-      }
+    // 콘텐츠 정책 검증 (금지 항목 확인) - personGeneration 옵션 전달
+    const validation = validateContentPolicy(prompt, personGeneration);
+    if (!validation.isValid) {
+      throw new Error(validation.message);
     }
 
     // 캐릭터 프롬프트 특별 검증
@@ -270,71 +362,19 @@ STYLE GUIDELINES:
     }
   }
 
-  // 한국 캐릭터 생성을 위한 프롬프트 강화
-  private enhanceKoreanCharacterPrompt(prompt: string): string {
-    const lowerPrompt = prompt.toLowerCase();
-    
-    // 한국 관련 키워드가 있는지 확인
-    const hasKoreanKeywords = lowerPrompt.includes('한국') || 
-                             lowerPrompt.includes('korean') || 
-                             lowerPrompt.includes('한국인') ||
-                             lowerPrompt.includes('아시아') ||
-                             lowerPrompt.includes('asian');
-    
-    if (hasKoreanKeywords) {
-      console.log('🇰🇷 한국 캐릭터 감지 - 프롬프트 강화 적용');
-      
-      // 한국 캐릭터 특징 강화
-      let enhancedPrompt = prompt;
-      
-      // 성별 구분 추가
-      if (lowerPrompt.includes('여성') || lowerPrompt.includes('여자') || lowerPrompt.includes('female')) {
-        enhancedPrompt += ', Korean woman with East Asian features';
-      } else if (lowerPrompt.includes('남성') || lowerPrompt.includes('남자') || lowerPrompt.includes('male')) {
-        enhancedPrompt += ', Korean man with East Asian features';
-      } else {
-        enhancedPrompt += ', Korean person with East Asian features';
-      }
-      
-      // 아시아인 특징 추가
-      enhancedPrompt += ', distinctive Asian facial features, natural Korean appearance';
-      
-      // 한국 전통 의상이 언급된 경우
-      if (lowerPrompt.includes('전통') || lowerPrompt.includes('한복') || lowerPrompt.includes('traditional')) {
-        enhancedPrompt += ', wearing traditional Korean clothing (hanbok)';
-      }
-      
-      // 현대 한국인 특징 추가
-      enhancedPrompt += ', contemporary Korean style, authentic Korean characteristics';
-      
-      console.log('✅ 한국 캐릭터 프롬프트 강화 완료');
-      return enhancedPrompt;
-    }
-    
-    return prompt;
-  }
-
   // 이미지 생성 (캐릭터용) - 여러 이미지 반환
-  async generateMultipleCharacterImages(prompt: string, aspectRatio: string = '1:1', numberOfImages: number = 1): Promise<string[]> {
+  async generateMultipleCharacterImages(prompt: string, aspectRatio: string = '1:1', numberOfImages: number = 1, personGeneration?: string): Promise<string[]> {
     try {
-      // API 키 검증
-      if (!this.apiKeyInUse || this.apiKeyInUse === 'your-gemini-api-key') {
-        throw new Error('Google AI API 키가 설정되지 않았습니다. 설정에서 API 키를 입력해주세요.');
-      }
-
-      // 이미지 생성 제한 및 검증
-      this.validateImageGeneration(prompt, 'character');
+      // 이미지 생성 제한 및 검증 (personGeneration 전달)
+      this.validateImageGeneration(prompt, 'character', personGeneration);
       
       // 프롬프트 검증 및 강화
       const validatedPrompt = this.validateAndEnhancePrompt(prompt, 'character');
       
-      // 한국 캐릭터 생성을 위한 프롬프트 강화
-      const enhancedPrompt = this.enhanceKoreanCharacterPrompt(validatedPrompt);
-      
       // 스토리보드 연계를 위한 상세한 프롬프트 생성
       const detailedPrompt = `Create a detailed character image for video production:
 
-${enhancedPrompt}
+${validatedPrompt}
 
 Technical specifications:
 - High quality, professional character design
@@ -350,30 +390,173 @@ Style requirements:
 - Clear visual hierarchy and focal points
 - Appropriate color palette for video integration`;
 
-      const response = await this.ai.models.generateImages({
+      // personGeneration 문자열을 PersonGeneration enum으로 변환
+      let personGenerationEnum = PersonGeneration.ALLOW_ADULT; // 기본값
+      if (personGeneration === 'allow_adult') {
+        personGenerationEnum = PersonGeneration.ALLOW_ADULT;
+      } else if (personGeneration === 'allow_all') {
+        personGenerationEnum = PersonGeneration.ALLOW_ALL;
+      } else if (personGeneration === 'dont_allow') {
+        personGenerationEnum = PersonGeneration.DONT_ALLOW;
+      }
+      
+      // personGeneration 옵션 적용 로깅 (개발 환경)
+      if (process.env.NODE_ENV === 'development') {
+        console.log('🔧 캐릭터 생성 personGeneration 옵션 변환:', {
+          입력값: personGeneration,
+          변환된Enum값: personGenerationEnum,
+          enum비교: {
+            'allow_adult': PersonGeneration.ALLOW_ADULT,
+            'allow_all': PersonGeneration.ALLOW_ALL,
+            'dont_allow': PersonGeneration.DONT_ALLOW
+          },
+          최종적용: personGenerationEnum === PersonGeneration.ALLOW_ALL ? '✅ 모든 연령 허용' :
+                   personGenerationEnum === PersonGeneration.ALLOW_ADULT ? '✅ 성인만 허용' :
+                   personGenerationEnum === PersonGeneration.DONT_ALLOW ? '❌ 사람 생성 차단' : '❓ 알 수 없음'
+        });
+      }
+
+      const response = await this.ai!.models.generateImages({
         model: 'models/imagen-4.0-generate-001',
         prompt: detailedPrompt,
         config: {
           numberOfImages: numberOfImages,
           outputMimeType: 'image/jpeg',
-          personGeneration: PersonGeneration.ALLOW_ALL,
-          aspectRatio: aspectRatio || '1:1',
+          personGeneration: personGenerationEnum,
+          aspectRatio: aspectRatio || '16:9',
           imageSize: '1K'
         }
       });
 
-      console.log('Imagen API 응답:', response); // 디버깅용
+      // API 응답 상세 로깅 (개발 환경에서만)
+      if (process.env.NODE_ENV === 'development') {
+        const httpResponse = response?.sdkHttpResponse as any;
+        console.log('📊 Imagen API 응답:', {
+          generatedImages: response?.generatedImages?.length || 0,
+          sdkHttpResponse: httpResponse ? {
+            status: httpResponse.status,
+            statusText: httpResponse.statusText,
+            headers: httpResponse.headers ? Object.fromEntries(
+              Object.entries(httpResponse.headers).slice(0, 5)
+            ) : null
+          } : null,
+          personGeneration,
+          aspectRatio: aspectRatio || '16:9',
+          numberOfImages,
+          fullResponse: response
+        });
+        
+        console.log('📊 Imagen API 응답 요약 (캐릭터):', {
+          generatedImagesCount: response?.generatedImages?.length || 0,
+          hasResponse: !!response,
+          personGeneration,
+          aspectRatio: aspectRatio || '16:9',
+          numberOfImages
+        });
+        
+        // 각 이미지의 안전 속성 정보 로깅
+        if (response?.generatedImages && response.generatedImages.length > 0) {
+          response.generatedImages.forEach((img: any, index: number) => {
+            const safetyAttrs = img.safetyAttributes || img.image?.safetyAttributes;
+            if (safetyAttrs) {
+              console.log(`🛡️ 캐릭터 이미지 ${index + 1} 안전 속성:`, {
+                blocked: safetyAttrs.blocked,
+                categories: safetyAttrs.categories || safetyAttrs.harmCategories || 'N/A',
+                scores: safetyAttrs.scores || safetyAttrs.harmProbabilityScores || 'N/A',
+                personGeneration,
+                fullSafetyAttributes: safetyAttrs
+              });
+            } else {
+              console.log(`⚠️ 캐릭터 이미지 ${index + 1}: 안전 속성 정보 없음`);
+              console.log(`📸 캐릭터 이미지 ${index + 1} 상세:`, {
+                hasImage: !!img.image,
+                hasImageBytes: !!img.image?.imageBytes,
+                imageSize: img.image?.imageBytes ? `${(img.image.imageBytes.length / 1024).toFixed(2)}KB` : 'N/A',
+                fullImageData: img
+              });
+            }
+          });
+        }
+      }
 
       // 빈 응답 처리
       if (!response || !response.generatedImages || response.generatedImages.length === 0) {
-        console.warn('이미지 생성 API가 빈 응답을 반환했습니다. 프롬프트를 수정하거나 다른 모델을 시도해보세요.');
-        throw new Error('이미지 생성 결과가 없습니다. 프롬프트를 수정하거나 잠시 후 다시 시도해주세요.');
+        if (process.env.NODE_ENV === 'development') {
+          console.warn('이미지 생성 API가 빈 응답을 반환했습니다.', {
+            hasResponse: !!response,
+            generatedImagesLength: response?.generatedImages?.length || 0,
+            personGeneration,
+            prompt: detailedPrompt.substring(0, 100)
+          });
+        }
+        
+        // personGeneration 옵션에 따른 에러 메시지 분기
+        let errorMessage = '이미지 생성 결과가 없습니다. 프롬프트를 수정하거나 잠시 후 다시 시도해주세요.';
+        
+        if (personGeneration === 'allow_adult') {
+          errorMessage = '이미지 생성 결과가 없습니다. AI 서비스의 안전 정책에 의해 이미지가 생성되지 않았을 수 있습니다.\n\n다음을 시도해보세요:\n• 프롬프트를 더 명확하고 구체적으로 작성\n• "사람 생성" 옵션에서 "모든 연령 허용" 선택\n• 프롬프트에서 미성년자 관련 표현 제거하고 "성인 여성", "성인 남성" 등으로 명시\n• 잠시 후 다시 시도';
+        } else if (personGeneration === 'allow_all') {
+          errorMessage = '이미지 생성 결과가 없습니다. "모든 연령 허용" 옵션을 사용했지만 AI 서비스의 안전 정책에 의해 이미지가 생성되지 않았을 수 있습니다.\n\n다음을 시도해보세요:\n• 프롬프트를 더 명확하고 구체적으로 작성\n• 프롬프트에서 미성년자 관련 표현을 명확한 성인 표현으로 변경 ("성인 여성", "성인 남성" 등)\n• 잠시 후 다시 시도\n• 다른 프롬프트로 시도';
+        } else if (personGeneration === 'dont_allow') {
+          errorMessage = '이미지 생성 결과가 없습니다. "사람 생성 차단" 옵션이 설정되어 있어 사람 이미지가 생성되지 않았을 수 있습니다.\n\n다음을 시도해보세요:\n• "사람 생성" 옵션을 "성인만 허용" 또는 "모든 연령 허용"으로 변경\n• 프롬프트를 사람이 아닌 객체/배경 중심으로 수정';
+        }
+        
+        if (process.env.NODE_ENV === 'development') {
+          console.warn('❌ 이미지 생성 실패:', {
+            personGeneration,
+            에러타입: personGeneration === 'allow_all' ? '모든 연령 허용 선택했지만 빈 응답' : 
+                     personGeneration === 'allow_adult' ? '성인만 허용 선택했지만 빈 응답' : 
+                     personGeneration === 'dont_allow' ? '사람 생성 차단 선택' : '알 수 없음',
+            promptPreview: detailedPrompt.substring(0, 100)
+          });
+        }
+        
+        throw new Error(errorMessage);
       }
 
-      // 모든 생성된 이미지 반환
+      // 모든 생성된 이미지와 메타데이터 반환
       const images: string[] = [];
+      const metadataList: Array<import('../types/project').ImageGenerationMetadata> = [];
+      const responseTimestamp = new Date().toISOString();
+      
       for (const generatedImage of response.generatedImages) {
         const imageData = generatedImage as any;
+        
+        // 안전 속성 확인 및 로깅
+        const safetyAttrs = imageData.safetyAttributes || imageData.image?.safetyAttributes;
+        if (process.env.NODE_ENV === 'development') {
+          if (safetyAttrs) {
+            console.log(`🔍 캐릭터 이미지 ${images.length + 1} 안전 속성 상세:`, {
+              blocked: safetyAttrs.blocked,
+              categories: safetyAttrs.categories || safetyAttrs.harmCategories,
+              scores: safetyAttrs.scores || safetyAttrs.harmProbabilityScores,
+              personGeneration,
+              imageIndex: images.length + 1,
+              fullSafetyAttributes: safetyAttrs
+            });
+          } else {
+            console.log(`⚠️ 캐릭터 이미지 ${images.length + 1}: 안전 속성 정보 없음`);
+          }
+        }
+        
+        // 메타데이터 생성
+        const metadata: import('../types/project').ImageGenerationMetadata = {
+          personGeneration: personGeneration as 'allow_adult' | 'allow_all' | 'dont_allow' | undefined,
+          aspectRatio: aspectRatio || '16:9',
+          imageSize: '1K',
+          numberOfImages,
+          apiResponse: {
+            generatedCount: response.generatedImages.length,
+            requestedCount: numberOfImages,
+            timestamp: responseTimestamp
+          },
+          safetyAttributes: safetyAttrs ? {
+            blocked: safetyAttrs.blocked || false,
+            categories: safetyAttrs.categories || safetyAttrs.harmCategories,
+            scores: safetyAttrs.scores || safetyAttrs.harmProbabilityScores
+          } : undefined
+        };
+        metadataList.push(metadata);
         
         // 응답 구조 1: image.imageBytes
         if (imageData?.image?.imageBytes) {
@@ -395,36 +578,40 @@ Style requirements:
         }
       }
 
-      console.log(`✅ 캐릭터 이미지 ${images.length}개 생성 성공`);
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`✅ 캐릭터 이미지 ${images.length}개 생성 성공`, {
+          personGeneration,
+          aspectRatio: aspectRatio || '16:9',
+          imageSize: '1K',
+          numberOfImages: numberOfImages,
+          metadataCount: metadataList.length
+        });
+      }
+      
+      // 메타데이터를 이미지 배열과 함께 저장 (임시로 함수에 저장)
+      // 실제로는 반환 타입을 변경하거나 Map을 사용해야 하지만,
+      // 기존 호환성을 위해 (images as any).__metadata로 저장
+      (images as any).__metadata = metadataList;
       return images;
     } catch (error) {
       console.error('Google AI 이미지 생성 오류:', error);
       
-      // API 키 관련 오류 처리
+      // 에러 메시지가 이미 상세한 경우 그대로 사용
       if (error instanceof Error) {
-        if (error.message.includes('API key expired') || error.message.includes('API_KEY_INVALID')) {
-          throw new Error('Google AI API 키가 만료되었습니다. 설정에서 새로운 API 키를 입력해주세요.');
-        } else if (error.message.includes('API key is missing')) {
-          throw new Error('Google AI API 키가 설정되지 않았습니다. 우측 상단 설정 버튼을 클릭하여 API 키를 입력해주세요.');
-        } else if (error.message.includes('API key') || error.message.includes('INVALID_ARGUMENT')) {
-          throw new Error('Google AI API 키가 유효하지 않습니다. 설정에서 올바른 API 키를 입력해주세요.');
-        } else if (error.message.includes('quota') || error.message.includes('QUOTA_EXCEEDED')) {
-          throw new Error('API 사용량 한도를 초과했습니다. 잠시 후 다시 시도해주세요.');
-        } else if (error.message.includes('permission') || error.message.includes('PERMISSION_DENIED')) {
-          throw new Error('Imagen API 사용 권한이 없습니다. Google AI Studio에서 Imagen API를 활성화해주세요.');
-        } else if (error.message.includes('safety') || error.message.includes('SAFETY')) {
-          throw new Error('안전 정책에 위배되는 내용이 감지되었습니다. 프롬프트를 수정해주세요.');
-        } else if (error.message.includes('network') || error.message.includes('fetch')) {
-          throw new Error('네트워크 연결에 문제가 있습니다. 인터넷 연결을 확인해주세요.');
-        }
+        throw error;
       }
       
+      // 알 수 없는 에러의 경우 기본 메시지
       throw new Error('이미지 생성에 실패했습니다.');
     }
   }
 
   // 이미지 생성 (캐릭터용) - 단일 이미지 반환
   async generateCharacterImage(prompt: string, aspectRatio: string = '1:1', numberOfImages: number = 1): Promise<string> {
+    if (!this.isInitialized()) {
+      throw new Error('Google AI API 키가 설정되지 않았습니다. 로그인 후 설정에서 API 키를 입력해주세요.');
+    }
+    
     try {
       // 이미지 생성 제한 및 검증
       this.validateImageGeneration(prompt, 'character');
@@ -432,13 +619,10 @@ Style requirements:
       // 프롬프트 검증 및 강화
       const validatedPrompt = this.validateAndEnhancePrompt(prompt, 'character');
       
-      // 한국 캐릭터 생성을 위한 프롬프트 강화
-      const enhancedPrompt = this.enhanceKoreanCharacterPrompt(validatedPrompt);
-      
       // 스토리보드 연계를 위한 상세한 프롬프트 생성
       const detailedPrompt = `Create a detailed character image for video production:
 
-${enhancedPrompt}
+${validatedPrompt}
 
 Technical specifications:
 - High quality, professional character design
@@ -454,14 +638,14 @@ Style requirements:
 - Clear visual hierarchy and focal points
 - Appropriate color palette for video integration`;
 
-      const response = await this.ai.models.generateImages({
+      const response = await this.ai!.models.generateImages({
         model: 'models/imagen-4.0-generate-001',
         prompt: detailedPrompt,
         config: {
           numberOfImages: numberOfImages,
           outputMimeType: 'image/jpeg',
           personGeneration: PersonGeneration.ALLOW_ALL,
-          aspectRatio: aspectRatio || '1:1',
+          aspectRatio: aspectRatio || '16:9',
           imageSize: '1K'
         }
       });
@@ -519,48 +703,118 @@ Style requirements:
       throw new Error('이미지 데이터 형식을 인식할 수 없습니다. API 응답 구조가 변경되었을 수 있습니다.');
     } catch (error) {
       console.error('Google AI 이미지 생성 오류:', error);
-      
-      // API 키 관련 에러 처리
-      if (error instanceof Error) {
-        if (error.message.includes('API key expired') || error.message.includes('API_KEY_INVALID')) {
-          throw new Error('Google AI API 키가 만료되었습니다. 설정에서 새로운 API 키를 입력해주세요.');
-        } else if (error.message.includes('API key is missing')) {
-          throw new Error('Google AI API 키가 설정되지 않았습니다. 우측 상단 설정 버튼을 클릭하여 API 키를 입력해주세요.');
-        } else if (error.message.includes('quota') || error.message.includes('QUOTA_EXCEEDED')) {
-          throw new Error('API 사용량 한도를 초과했습니다. 잠시 후 다시 시도해주세요.');
-        } else if (error.message.includes('permission') || error.message.includes('PERMISSION_DENIED')) {
-          throw new Error('Imagen API 사용 권한이 없습니다. Google AI Studio에서 Imagen API를 활성화해주세요.');
-        } else if (error.message.includes('safety') || error.message.includes('SAFETY')) {
-          throw new Error('안전 정책에 위배되는 내용이 감지되었습니다. 프롬프트를 수정해주세요.');
-        } else if (error.message.includes('network') || error.message.includes('fetch')) {
-          throw new Error('네트워크 연결에 문제가 있습니다. 인터넷 연결을 확인해주세요.');
-        }
-      }
-      
       throw new Error('이미지 생성에 실패했습니다.');
     }
   }
 
   // 배경 이미지 생성 - 여러 이미지 반환
-  async generateMultipleBackgroundImages(prompt: string, aspectRatio: string = '16:9', numberOfImages: number = 1): Promise<string[]> {
+  async generateMultipleBackgroundImages(prompt: string, aspectRatio: string = '16:9', numberOfImages: number = 1, personGeneration?: string): Promise<string[]> {
     try {
-      const response = await this.ai.models.generateImages({
+      // personGeneration 문자열을 PersonGeneration enum으로 변환
+      let personGenerationEnum = PersonGeneration.ALLOW_ADULT; // 기본값
+      if (personGeneration === 'allow_adult') {
+        personGenerationEnum = PersonGeneration.ALLOW_ADULT;
+      } else if (personGeneration === 'allow_all') {
+        personGenerationEnum = PersonGeneration.ALLOW_ALL;
+      } else if (personGeneration === 'dont_allow') {
+        personGenerationEnum = PersonGeneration.DONT_ALLOW;
+      }
+
+      const response = await this.ai!.models.generateImages({
         model: 'models/imagen-4.0-generate-001',
         prompt: prompt,
         config: {
           numberOfImages: numberOfImages,
           outputMimeType: 'image/jpeg',
-          personGeneration: PersonGeneration.ALLOW_ALL,
+          personGeneration: personGenerationEnum,
           aspectRatio: aspectRatio,
           imageSize: '1K'
         }
       });
 
-      // 모든 생성된 이미지 반환
+      // API 응답 상세 로깅 (개발 환경에서만)
+      if (process.env.NODE_ENV === 'development') {
+        console.log('📊 Imagen API 응답 요약 (배경):', {
+          generatedImagesCount: response?.generatedImages?.length || 0,
+          hasResponse: !!response,
+          personGeneration,
+          aspectRatio,
+          numberOfImages
+        });
+        
+        if (response?.generatedImages && response.generatedImages.length > 0) {
+          response.generatedImages.forEach((img: any, index: number) => {
+            const safetyAttrs = img.safetyAttributes || img.image?.safetyAttributes;
+            if (safetyAttrs) {
+              console.log(`🛡️ 배경 이미지 ${index + 1} 안전 속성:`, {
+                blocked: safetyAttrs.blocked,
+                categories: safetyAttrs.categories || safetyAttrs.harmCategories || 'N/A',
+                scores: safetyAttrs.scores || safetyAttrs.harmProbabilityScores || 'N/A',
+                personGeneration,
+                fullSafetyAttributes: safetyAttrs
+              });
+            }
+          });
+        }
+      }
+
+      // 빈 응답 처리
+      if (!response || !response.generatedImages || response.generatedImages.length === 0) {
+        if (process.env.NODE_ENV === 'development') {
+          console.warn('이미지 생성 API가 빈 응답을 반환했습니다.', {
+            hasResponse: !!response,
+            generatedImagesLength: response?.generatedImages?.length || 0,
+            personGeneration,
+            prompt: prompt.substring(0, 100)
+          });
+        }
+        
+        const errorMessage = personGeneration === 'allow_adult' 
+          ? '이미지 생성 결과가 없습니다. AI 서비스의 안전 정책에 의해 이미지가 생성되지 않았을 수 있습니다.\n\n다음을 시도해보세요:\n• 프롬프트를 더 명확하고 구체적으로 작성\n• "사람 생성" 옵션에서 "모든 연령 허용" 선택\n• 잠시 후 다시 시도'
+          : '이미지 생성 결과가 없습니다. 프롬프트를 수정하거나 잠시 후 다시 시도해주세요.';
+        
+        throw new Error(errorMessage);
+      }
+
+      // 모든 생성된 이미지와 메타데이터 반환
       const images: string[] = [];
+      const metadataList: Array<import('../types/project').ImageGenerationMetadata> = [];
+      const responseTimestamp = new Date().toISOString();
+      
       if (response.generatedImages && response.generatedImages.length > 0) {
         for (const generatedImage of response.generatedImages) {
           const imageData = generatedImage as any;
+          
+          // 안전 속성 확인 및 로깅
+          const safetyAttrs = imageData.safetyAttributes || imageData.image?.safetyAttributes;
+          if (process.env.NODE_ENV === 'development' && safetyAttrs) {
+            console.log('🔍 배경 이미지 안전 속성 상세:', {
+              blocked: safetyAttrs.blocked,
+              categories: safetyAttrs.categories || safetyAttrs.harmCategories,
+              scores: safetyAttrs.scores || safetyAttrs.harmProbabilityScores,
+              personGeneration,
+              imageIndex: images.length + 1
+            });
+          }
+          
+          // 메타데이터 생성
+          const metadata: import('../types/project').ImageGenerationMetadata = {
+            personGeneration: personGeneration as 'allow_adult' | 'allow_all' | 'dont_allow' | undefined,
+            aspectRatio: aspectRatio || '16:9',
+            imageSize: '1K',
+            numberOfImages,
+            apiResponse: {
+              generatedCount: response.generatedImages.length,
+              requestedCount: numberOfImages,
+              timestamp: responseTimestamp
+            },
+            safetyAttributes: safetyAttrs ? {
+              blocked: safetyAttrs.blocked || false,
+              categories: safetyAttrs.categories || safetyAttrs.harmCategories,
+              scores: safetyAttrs.scores || safetyAttrs.harmProbabilityScores
+            } : undefined
+          };
+          metadataList.push(metadata);
           
           if (imageData?.image?.imageBytes) {
             images.push(`data:image/jpeg;base64,${imageData.image.imageBytes}`);
@@ -574,24 +828,28 @@ Style requirements:
         }
       }
 
-      console.log(`✅ 배경 이미지 ${images.length}개 생성 성공`);
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`✅ 배경 이미지 ${images.length}개 생성 성공`, {
+          metadataCount: metadataList.length
+        });
+      }
+      
+      (images as any).__metadata = metadataList;
       return images;
     } catch (error) {
       console.error('Google AI 배경 이미지 생성 오류:', error);
-      
-      // API 키 관련 에러인 경우 더 명확한 메시지 제공
-      if (error instanceof Error && error.message.includes('API key is missing')) {
-        throw new Error('Google AI API 키가 설정되지 않았습니다. 우측 상단 설정 버튼을 클릭하여 API 키를 입력해주세요.');
-      }
-      
       throw new Error('배경 이미지 생성에 실패했습니다.');
     }
   }
 
   // 배경 이미지 생성 - 단일 이미지 반환
   async generateBackgroundImage(prompt: string, aspectRatio: string = '16:9', numberOfImages: number = 1): Promise<string> {
+    if (!this.isInitialized()) {
+      throw new Error('Google AI API 키가 설정되지 않았습니다. 로그인 후 설정에서 API 키를 입력해주세요.');
+    }
+    
     try {
-      const response = await this.ai.models.generateImages({
+      const response = await this.ai!.models.generateImages({
         model: 'models/imagen-4.0-generate-001',
         prompt: prompt,
         config: {
@@ -633,48 +891,118 @@ Style requirements:
       throw new Error('배경 이미지 생성 결과가 없습니다.');
     } catch (error) {
       console.error('Google AI 배경 이미지 생성 오류:', error);
-      
-      // API 키 관련 에러 처리
-      if (error instanceof Error) {
-        if (error.message.includes('API key expired') || error.message.includes('API_KEY_INVALID')) {
-          throw new Error('Google AI API 키가 만료되었습니다. 설정에서 새로운 API 키를 입력해주세요.');
-        } else if (error.message.includes('API key is missing')) {
-          throw new Error('Google AI API 키가 설정되지 않았습니다. 우측 상단 설정 버튼을 클릭하여 API 키를 입력해주세요.');
-        } else if (error.message.includes('quota') || error.message.includes('QUOTA_EXCEEDED')) {
-          throw new Error('API 사용량 한도를 초과했습니다. 잠시 후 다시 시도해주세요.');
-        } else if (error.message.includes('permission') || error.message.includes('PERMISSION_DENIED')) {
-          throw new Error('Imagen API 사용 권한이 없습니다. Google AI Studio에서 Imagen API를 활성화해주세요.');
-        } else if (error.message.includes('safety') || error.message.includes('SAFETY')) {
-          throw new Error('안전 정책에 위배되는 내용이 감지되었습니다. 프롬프트를 수정해주세요.');
-        } else if (error.message.includes('network') || error.message.includes('fetch')) {
-          throw new Error('네트워크 연결에 문제가 있습니다. 인터넷 연결을 확인해주세요.');
-        }
-      }
-      
       throw new Error('배경 이미지 생성에 실패했습니다.');
     }
   }
 
   // 설정 컷 이미지 생성 - 여러 이미지 반환
-  async generateMultipleSettingCutImages(prompt: string, aspectRatio: string = '16:9', numberOfImages: number = 1): Promise<string[]> {
+  async generateMultipleSettingCutImages(prompt: string, aspectRatio: string = '16:9', numberOfImages: number = 1, personGeneration?: string): Promise<string[]> {
     try {
-      const response = await this.ai.models.generateImages({
+      // personGeneration 문자열을 PersonGeneration enum으로 변환
+      let personGenerationEnum = PersonGeneration.ALLOW_ADULT; // 기본값
+      if (personGeneration === 'allow_adult') {
+        personGenerationEnum = PersonGeneration.ALLOW_ADULT;
+      } else if (personGeneration === 'allow_all') {
+        personGenerationEnum = PersonGeneration.ALLOW_ALL;
+      } else if (personGeneration === 'dont_allow') {
+        personGenerationEnum = PersonGeneration.DONT_ALLOW;
+      }
+
+      const response = await this.ai!.models.generateImages({
         model: 'models/imagen-4.0-generate-001',
         prompt: prompt,
         config: {
           numberOfImages: numberOfImages,
           outputMimeType: 'image/jpeg',
-          personGeneration: PersonGeneration.ALLOW_ALL,
+          personGeneration: personGenerationEnum,
           aspectRatio: aspectRatio,
           imageSize: '1K'
         }
       });
 
-      // 모든 생성된 이미지 반환
+      // API 응답 상세 로깅 (개발 환경에서만)
+      if (process.env.NODE_ENV === 'development') {
+        console.log('📊 Imagen API 응답 요약 (설정 컷):', {
+          generatedImagesCount: response?.generatedImages?.length || 0,
+          hasResponse: !!response,
+          personGeneration,
+          aspectRatio,
+          numberOfImages
+        });
+        
+        if (response?.generatedImages && response.generatedImages.length > 0) {
+          response.generatedImages.forEach((img: any, index: number) => {
+            const safetyAttrs = img.safetyAttributes || img.image?.safetyAttributes;
+            if (safetyAttrs) {
+              console.log(`🛡️ 설정 컷 이미지 ${index + 1} 안전 속성:`, {
+                blocked: safetyAttrs.blocked,
+                categories: safetyAttrs.categories || safetyAttrs.harmCategories || 'N/A',
+                scores: safetyAttrs.scores || safetyAttrs.harmProbabilityScores || 'N/A',
+                personGeneration,
+                fullSafetyAttributes: safetyAttrs
+              });
+            }
+          });
+        }
+      }
+
+      // 빈 응답 처리
+      if (!response || !response.generatedImages || response.generatedImages.length === 0) {
+        if (process.env.NODE_ENV === 'development') {
+          console.warn('이미지 생성 API가 빈 응답을 반환했습니다.', {
+            hasResponse: !!response,
+            generatedImagesLength: response?.generatedImages?.length || 0,
+            personGeneration,
+            prompt: prompt.substring(0, 100)
+          });
+        }
+        
+        const errorMessage = personGeneration === 'allow_adult' 
+          ? '이미지 생성 결과가 없습니다. AI 서비스의 안전 정책에 의해 이미지가 생성되지 않았을 수 있습니다.\n\n다음을 시도해보세요:\n• 프롬프트를 더 명확하고 구체적으로 작성\n• "사람 생성" 옵션에서 "모든 연령 허용" 선택\n• 잠시 후 다시 시도'
+          : '이미지 생성 결과가 없습니다. 프롬프트를 수정하거나 잠시 후 다시 시도해주세요.';
+        
+        throw new Error(errorMessage);
+      }
+
+      // 모든 생성된 이미지와 메타데이터 반환
       const images: string[] = [];
+      const metadataList: Array<import('../types/project').ImageGenerationMetadata> = [];
+      const responseTimestamp = new Date().toISOString();
+      
       if (response.generatedImages && response.generatedImages.length > 0) {
         for (const generatedImage of response.generatedImages) {
           const imageData = generatedImage as any;
+          
+          // 안전 속성 확인 및 로깅
+          const safetyAttrs = imageData.safetyAttributes || imageData.image?.safetyAttributes;
+          if (process.env.NODE_ENV === 'development' && safetyAttrs) {
+            console.log('🔍 설정 컷 이미지 안전 속성 상세:', {
+              blocked: safetyAttrs.blocked,
+              categories: safetyAttrs.categories || safetyAttrs.harmCategories,
+              scores: safetyAttrs.scores || safetyAttrs.harmProbabilityScores,
+              personGeneration,
+              imageIndex: images.length + 1
+            });
+          }
+          
+          // 메타데이터 생성
+          const metadata: import('../types/project').ImageGenerationMetadata = {
+            personGeneration: personGeneration as 'allow_adult' | 'allow_all' | 'dont_allow' | undefined,
+            aspectRatio: aspectRatio || '16:9',
+            imageSize: '1K',
+            numberOfImages,
+            apiResponse: {
+              generatedCount: response.generatedImages.length,
+              requestedCount: numberOfImages,
+              timestamp: responseTimestamp
+            },
+            safetyAttributes: safetyAttrs ? {
+              blocked: safetyAttrs.blocked || false,
+              categories: safetyAttrs.categories || safetyAttrs.harmCategories,
+              scores: safetyAttrs.scores || safetyAttrs.harmProbabilityScores
+            } : undefined
+          };
+          metadataList.push(metadata);
           
           if (imageData?.image?.imageBytes) {
             images.push(`data:image/jpeg;base64,${imageData.image.imageBytes}`);
@@ -688,7 +1016,13 @@ Style requirements:
         }
       }
 
-      console.log(`✅ 설정 컷 이미지 ${images.length}개 생성 성공`);
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`✅ 설정 컷 이미지 ${images.length}개 생성 성공`, {
+          metadataCount: metadataList.length
+        });
+      }
+      
+      (images as any).__metadata = metadataList;
       return images;
     } catch (error) {
       console.error('Google AI 설정 컷 이미지 생성 오류:', error);
@@ -699,7 +1033,7 @@ Style requirements:
   // 설정 컷 이미지 생성 - 단일 이미지 반환
   async generateSettingCutImage(prompt: string, aspectRatio: string = '16:9', numberOfImages: number = 1): Promise<string> {
     try {
-      const response = await this.ai.models.generateImages({
+      const response = await this.ai!.models.generateImages({
         model: 'models/imagen-4.0-generate-001',
         prompt: prompt,
         config: {
@@ -745,26 +1079,26 @@ Style requirements:
     }
   }
 
-  // 비디오 생성 - 최신 Veo API 사용
+  // 비디오 생성 - Veo 3.0/3.1 API 사용
   async generateVideo(options: {
     prompt: string;
     ratio?: string;
     model?: string;
     duration?: string;
     referenceImages?: string[];
+    lastFrame?: string;
+    negativePrompt?: string;
     abortSignal?: AbortSignal;
-    mode?: 'TEXT_TO_VIDEO' | 'FRAMES_TO_VIDEO' | 'REFERENCES_TO_VIDEO' | 'EXTEND_VIDEO';
-    startFrame?: { file: File; base64: string } | null;
-    endFrame?: { file: File; base64: string } | null;
-    styleImage?: { file: File; base64: string } | null;
-    inputVideoObject?: any;
-    isLooping?: boolean;
-  }): Promise<{ videoUrl: string; thumbnail?: string; duration?: string; videoObject?: any }> {
+  }): Promise<{ videoUrl: string; thumbnail?: string; duration?: string }> {
+    if (!this.isInitialized()) {
+      throw new Error('Google AI API 키가 설정되지 않았습니다. 로그인 후 설정에서 API 키를 입력해주세요.');
+    }
+    
     try {
       console.log('🎬 Veo API를 사용하여 실제 영상을 생성합니다.');
       console.log('📝 프롬프트:', options.prompt.substring(0, 100) + '...');
       console.log('🖼️ 참조 이미지 개수:', options.referenceImages?.length || 0);
-      console.log('⚙️ 모델:', options.model || 'veo-3.0-generate-001');
+      console.log('⚙️ 모델:', options.model || 'veo-3.1-generate-preview');
       console.log('📐 비율:', options.ratio || '16:9');
       
       // API 키 확인
@@ -779,107 +1113,35 @@ Style requirements:
       
       console.log('✨ 최적화된 프롬프트:', veoOptimizedPrompt.substring(0, 200) + '...');
       
-      // Veo API 호출 설정 (Veo API는 4-8초만 지원)
+      // Veo API 호출 설정
       const requestedDuration = parseInt(options.duration || '8');
       const veoDuration = Math.min(Math.max(requestedDuration, 4), 8); // 4-8초 범위로 제한
       
       const videoConfig: any = {
         numberOfVideos: 1,
         aspectRatio: options.ratio || '16:9',
-        durationSeconds: veoDuration, // Veo API 제한에 맞춤
+        durationSeconds: veoDuration,
         personGeneration: PersonGeneration.ALLOW_ALL,
       };
 
-      // 모드별 처리
-      if (options.mode === 'FRAMES_TO_VIDEO') {
-        if (options.startFrame) {
-          videoConfig.image = {
-            imageBytes: options.startFrame.base64,
-            mimeType: options.startFrame.file.type,
-          };
-          console.log(`시작 프레임 사용: ${options.startFrame.file.name}`);
-        }
+      // 부정 프롬프트 추가 (Veo 3.1 지원)
+      if (options.negativePrompt) {
+        videoConfig.negativePrompt = options.negativePrompt;
+        console.log('🚫 부정 프롬프트 추가:', options.negativePrompt.substring(0, 100) + '...');
+      }
 
-        const finalEndFrame = options.isLooping ? options.startFrame : options.endFrame;
-        if (finalEndFrame) {
-          videoConfig.lastFrame = {
-            imageBytes: finalEndFrame.base64,
-            mimeType: finalEndFrame.file.type,
-          };
-          if (options.isLooping) {
-            console.log(`루핑 영상 생성: ${finalEndFrame.file.name}`);
-          } else {
-            console.log(`종료 프레임 사용: ${finalEndFrame.file.name}`);
-          }
-        }
-      } else if (options.mode === 'REFERENCES_TO_VIDEO') {
-        const referenceImagesPayload: any[] = [];
-
-        if (options.referenceImages) {
-          for (const imageUrl of options.referenceImages) {
-            try {
-              // Base64 이미지를 Blob으로 변환
-              const response = await fetch(imageUrl);
-              const blob = await response.blob();
-              
-              // Blob을 Base64로 변환
-              const reader = new FileReader();
-              const base64Promise = new Promise<string>((resolve, reject) => {
-                reader.onload = () => {
-                  const result = reader.result as string;
-                  const base64 = result.split(',')[1];
-                  resolve(base64);
-                };
-                reader.onerror = reject;
-              });
-              reader.readAsDataURL(blob);
-              const base64 = await base64Promise;
-              
-              referenceImagesPayload.push({
-                image: {
-                  imageBytes: base64,
-                  mimeType: 'image/jpeg'
-                },
-                referenceType: 'ASSET'
-              });
-              console.log(`참조 이미지 추가: ${imageUrl}`);
-            } catch (error) {
-              console.warn('참조 이미지 처리 실패:', error);
-            }
-          }
-        }
-
-        if (options.styleImage) {
-          referenceImagesPayload.push({
-            image: {
-              imageBytes: options.styleImage.base64,
-              mimeType: options.styleImage.file.type,
-            },
-            referenceType: 'STYLE',
-          });
-          console.log(`스타일 이미지 추가: ${options.styleImage.file.name}`);
-        }
-
-        if (referenceImagesPayload.length > 0) {
-          videoConfig.referenceImages = referenceImagesPayload;
-        }
-      } else if (options.mode === 'EXTEND_VIDEO') {
-        if (options.inputVideoObject) {
-          // 영상 확장을 위한 설정
-          videoConfig.inputVideo = options.inputVideoObject;
-          console.log('입력 영상 객체로 확장 생성');
-        } else {
-          throw new Error('영상 확장을 위해서는 입력 영상 객체가 필요합니다.');
-        }
-      } else {
-        // 기본 TEXT_TO_VIDEO 모드 - 기존 참조 이미지 처리
-        if (options.referenceImages && options.referenceImages.length > 0) {
-          console.log('🖼️ 참조 이미지 처리 중...');
+      // 참조 이미지 처리
+      if (options.referenceImages && options.referenceImages.length > 0) {
+        console.log('🖼️ 참조 이미지 처리 중...');
+        
+        // Veo 3.1은 최대 3개의 참조 이미지 지원
+        const maxReferenceImages = options.model?.includes('3.1') ? 3 : 1;
+        const imagesToUse = options.referenceImages.slice(0, maxReferenceImages);
+        
+        if (imagesToUse.length === 1) {
+          // 단일 이미지 (이미지-영상 변환)
+          const referenceImage = imagesToUse[0];
           
-          // 첫 번째 이미지를 참조 이미지로 사용 (Veo API는 하나의 이미지만 지원)
-          const referenceImage = options.referenceImages[0];
-          
-          // Base64 이미지를 처리
           if (referenceImage.startsWith('data:')) {
             const [header, data] = referenceImage.split(',');
             const mimeType = header.match(/data:([^;]+)/)?.[1] || 'image/jpeg';
@@ -890,24 +1152,56 @@ Style requirements:
             };
             
             console.log('✅ 참조 이미지가 Veo API에 추가되었습니다:', mimeType);
-          } else {
-            console.warn('⚠️ 지원되지 않는 이미지 형식:', referenceImage.substring(0, 50));
           }
-        } else {
-          console.log('📝 참조 이미지 없음 - 텍스트 프롬프트만 사용');
+        } else if (imagesToUse.length > 1 && options.model?.includes('3.1')) {
+          // 다중 참조 이미지 (Veo 3.1만 지원)
+          videoConfig.referenceImages = imagesToUse.map(img => {
+            if (img.startsWith('data:')) {
+              const [header, data] = img.split(',');
+              const mimeType = header.match(/data:([^;]+)/)?.[1] || 'image/jpeg';
+              
+              return {
+                image: {
+                  imageBytes: data,
+                  mimeType: mimeType,
+                },
+                referenceType: 'asset'
+              };
+            }
+            return null;
+          }).filter(Boolean);
+          
+          console.log('✅ 다중 참조 이미지가 Veo 3.1 API에 추가되었습니다:', imagesToUse.length);
+        }
+      }
+
+      // 프레임 보간 (Veo 3.1만 지원)
+      if (options.lastFrame && options.model?.includes('3.1')) {
+        console.log('🎞️ 프레임 보간 설정 중...');
+        
+        if (options.lastFrame.startsWith('data:')) {
+          const [header, data] = options.lastFrame.split(',');
+          const mimeType = header.match(/data:([^;]+)/)?.[1] || 'image/jpeg';
+          
+          videoConfig.lastFrame = {
+            imageBytes: data,
+            mimeType: mimeType,
+          };
+          
+          console.log('✅ 마지막 프레임이 Veo 3.1 API에 추가되었습니다:', mimeType);
         }
       }
 
       // Veo API 호출
       console.log('🚀 Veo API 호출 시작...');
-      let operation = await this.ai.models.generateVideos({
-        model: options.model || 'veo-3.0-generate-001',
+      let operation = await this.ai!.models.generateVideos({
+        model: options.model || 'veo-3.1-generate-preview',
         prompt: veoOptimizedPrompt,
         config: videoConfig,
       });
 
       console.log(`🎬 Video generation started: ${operation.name}`);
-      console.log(`⚙️ Using model: ${options.model || 'veo-3.0-generate-001'}`);
+      console.log(`⚙️ Using model: ${options.model || 'veo-3.1-generate-preview'}`);
 
       // 비디오 생성 완료까지 대기 (최대 5분)
       let attempts = 0;
@@ -926,7 +1220,7 @@ Style requirements:
         await new Promise((resolve) => setTimeout(resolve, 10000)); // 10초마다 체크
         
         try {
-          operation = await this.ai.operations.getVideosOperation({
+          operation = await this.ai!.operations.getVideosOperation({
             operation: operation,
           });
         } catch (pollError) {
@@ -961,8 +1255,7 @@ Style requirements:
           return {
             videoUrl: finalVideoUrl,
             thumbnail: (generatedVideo as any).thumbnail?.uri || '',
-            duration: '8:00', // 기본값
-            videoObject: generatedVideo.video // 확장을 위한 영상 객체 반환
+            duration: '8:00' // 기본값
           };
         }
       }
@@ -1136,6 +1429,10 @@ Veo API 최적화 요구사항:
 
   // 멀티모달 입력 처리 (이미지 + 텍스트) - 캐릭터 이미지 생성용
   async generateWithImage(imageFile: File, textPrompt: string, aspectRatio: string = '1:1'): Promise<string> {
+    if (!this.isInitialized()) {
+      throw new Error('Google AI API 키가 설정되지 않았습니다. 로그인 후 설정에서 API 키를 입력해주세요.');
+    }
+    
     try {
       const imageData = await this.fileToBase64(imageFile);
       
@@ -1167,7 +1464,7 @@ Veo API 최적화 요구사항:
         },
       ];
 
-      const response = await this.ai.models.generateContentStream({
+      const response = await this.ai!.models.generateContentStream({
         model,
         config,
         contents,
@@ -1243,7 +1540,7 @@ Veo API 최적화 요구사항:
         },
       ];
 
-      const response = await this.ai.models.generateContentStream({
+      const response = await this.ai!.models.generateContentStream({
         model,
         config,
         contents,
@@ -1323,7 +1620,7 @@ Veo API 최적화 요구사항:
         },
       ];
 
-      const response = await this.ai.models.generateContentStream({
+      const response = await this.ai!.models.generateContentStream({
         model,
         config,
         contents,
@@ -1403,7 +1700,7 @@ Veo API 최적화 요구사항:
         },
       ];
 
-      const response = await this.ai.models.generateContentStream({
+      const response = await this.ai!.models.generateContentStream({
         model,
         config,
         contents,
@@ -1473,7 +1770,7 @@ Veo API 최적화 요구사항:
         },
       ];
 
-      const response = await this.ai.models.generateContentStream({
+      const response = await this.ai!.models.generateContentStream({
         model,
         config,
         contents,
@@ -1539,7 +1836,7 @@ Veo API 최적화 요구사항:
         },
       ];
 
-      const response = await this.ai.models.generateContentStream({
+      const response = await this.ai!.models.generateContentStream({
         model,
         config,
         contents,
@@ -1588,7 +1885,7 @@ Veo API 최적화 요구사항:
   // 스트리밍 응답 (실시간 생성)
   async generateStream(prompt: string, onChunk: (chunk: string) => void): Promise<void> {
     try {
-      const responseStream = await this.ai.models.generateContentStream({
+      const responseStream = await this.ai!.models.generateContentStream({
         model: 'gemini-2.5-flash',
         contents: [{ parts: [{ text: prompt }] }]
       });
@@ -1607,7 +1904,7 @@ Veo API 최적화 요구사항:
   // 구조화된 출력 (JSON 형태)
   async generateStructuredOutput(prompt: string, schema: any): Promise<any> {
     try {
-      const response = await this.ai.models.generateContent({
+      const response = await this.ai!.models.generateContent({
         model: 'gemini-2.5-flash',
         contents: [{ parts: [{ text: prompt }] }],
         config: {
@@ -1629,13 +1926,13 @@ Veo API 최적화 요구사항:
 
   // 채팅 세션 생성 (멀티턴 대화)
   createChatSession() {
-    return this.ai.chats.create({ model: "gemini-2.5-flash" });
+    return this.ai!.chats.create({ model: "gemini-2.5-flash" });
   }
 
   // 안전 설정이 포함된 텍스트 생성
   async generateTextWithSafety(prompt: string, safetySettings?: any[]): Promise<string> {
     try {
-      const response = await this.ai.models.generateContent({
+      const response = await this.ai!.models.generateContent({
         model: 'gemini-2.5-flash',
         contents: [{ parts: [{ text: prompt }] }],
         config: {
@@ -1841,59 +2138,4 @@ Veo API 최적화 요구사항:
   }
 }
 
-// 싱글톤 인스턴스
-export const googleAIService = new GoogleAIService();
-
-// Runtime override to ensure non-admin users can use locally saved keys
-// and avoid strict .env dependency in text generation.
-// Admin users continue to use .env via constructor resolution.
-(googleAIService as any).generateText = async function(
-  prompt: string,
-  model: string = 'gemini-2.5-flash',
-  retryCount: number = 0
-): Promise<string> {
-  const maxRetries = 3;
-  const retryDelay = 2000;
-
-  try {
-    if (!this.apiKeyInUse || this.apiKeyInUse === 'your-gemini-api-key') {
-      throw new Error('Google AI API 키가 설정되어 있지 않습니다. 설정 또는 프로필에서 API 키를 저장해주세요.');
-    }
-
-    if (!prompt || prompt.trim().length === 0) {
-      throw new Error('프롬프트가 비어있습니다.');
-    }
-
-    const response = await this.ai.models.generateContent({
-      model,
-      contents: [{ parts: [{ text: prompt }] }],
-      config: {
-        systemInstruction:
-          '당신은 스토리보드-영상 제작을 돕는 조력자입니다. 주어진 요청을 간결하고 일관되게 정리하세요.'
-      }
-    });
-
-    if (!response || !response.text) {
-      throw new Error('AI 응답이 비어있습니다.');
-    }
-
-    return response.text;
-  } catch (error: any) {
-    if (error?.message?.includes('503') && retryCount < maxRetries) {
-      await new Promise((r) => setTimeout(r, retryDelay * (retryCount + 1)));
-      return (googleAIService as any).generateText(prompt, model, retryCount + 1);
-    }
-    if (error instanceof Error) {
-      if (error.message.includes('API key')) {
-        throw new Error('Google AI API 키가 유효하지 않습니다. 키를 확인해주세요.');
-      } else if (error.message.includes('quota')) {
-        throw new Error('API 쿼터를 초과했습니다. 잠시 후 다시 시도하세요.');
-      } else if (error.message.includes('safety')) {
-        throw new Error('안전 정책에 의해 거부되었습니다. 프롬프트를 수정하세요.');
-      } else if (error.message.includes('network') || error.message.includes('fetch')) {
-        throw new Error('네트워크 오류가 발생했습니다. 연결을 확인하세요.');
-      }
-    }
-    throw new Error(`텍스트 생성 중 오류: ${error instanceof Error ? error.message : 'Unknown error'}`);
-  }
-};
+// 싱글톤 인스턴스 제거 - 로그인 후 동적 생성 필요

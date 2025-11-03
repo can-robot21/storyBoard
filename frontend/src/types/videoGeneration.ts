@@ -1,130 +1,82 @@
-// Google Veo API 최신 타입 정의
-export enum GenerationMode {
-  TEXT_TO_VIDEO = 'TEXT_TO_VIDEO',
-  FRAMES_TO_VIDEO = 'FRAMES_TO_VIDEO', 
-  REFERENCES_TO_VIDEO = 'REFERENCES_TO_VIDEO',
-  EXTEND_VIDEO = 'EXTEND_VIDEO'
-}
+// 영상 생성 관련 타입 정의
 
-export enum VeoModel {
-  VEO = 'veo-3.0-generate-001',
-  VEO_FAST = 'veo-3.0-fast',
-  VEO_STANDARD = 'veo-3.0-standard'
-}
+import { Episode, Scene } from './projectOverview';
 
-export enum AspectRatio {
-  LANDSCAPE = '16:9',
-  PORTRAIT = '9:16'
-}
-
-export enum Resolution {
-  P720 = '720p',
-  P1080 = '1080p'
-}
-
-export interface ImageFile {
-  file: File;
-  base64: string;
-}
-
-export interface VideoFile {
-  file: File;
-  base64: string;
-}
-
-export interface GenerateVideoParams {
-  prompt?: string;
-  model: VeoModel;
-  aspectRatio: AspectRatio;
-  resolution: Resolution;
-  mode: GenerationMode;
-  startFrame?: ImageFile | null;
-  endFrame?: ImageFile | null;
-  referenceImages?: ImageFile[];
-  styleImage?: ImageFile | null;
-  inputVideo?: VideoFile | null;
-  inputVideoObject?: any; // Video object from Google API
-  isLooping?: boolean;
-}
-
-// 기존 타입들 유지
-export interface GeneratedVideo {
-  id: number;
-  title: string;
-  description: string;
-  videoUrl: string;
-  thumbnail?: string;
-  duration?: string;
-  timestamp: string;
-  prompt: string;
-  model: string;
-  ratio: string;
-  quality: string;
-  referenceImages?: string[];
-  videoObject?: any; // 영상 확장을 위한 객체
-  
-  // 기존 속성들 (하위 호환성)
-  videoRatio?: string;
-  type?: string;
-  projectTexts?: string[];
-  characterImages?: GeneratedImage[];
-  backgrounds?: GeneratedImage[];
-  textCards?: any[];
-  aiReviewTexts?: any[];
-  sceneCommonSettings?: any[];
-  video?: string;
-}
-
-export interface GeneratedTextCard {
-  id: number;
-  title: string;
-  content: string;
-  timestamp: string;
-  type: 'korean' | 'english';
-  episodeId?: number;
-  sceneId?: number;
-  cutId?: number;
-  
-  // 하위 호환성을 위한 추가 속성들
-  generatedText?: string;
-}
-
-export interface GeneratedImage {
-  id: number;
-  description: string;
-  image: string;
-  timestamp: string;
-  type: 'character' | 'background' | 'settingCut';
-  input?: string; // 하위 호환성
-  source?: string; // 하위 호환성
-}
+// Episode와 Scene 타입을 다시 export
+export type { Episode, Scene };
 
 export interface SceneTextCard {
   id: number;
-  title: string;
-  description: string;
-  cuts: CutTextCard[];
-  timestamp: string;
-  
-  // 하위 호환성을 위한 추가 속성들
-  sceneId?: number;
-  sceneTitle?: string;
-  sceneDescription?: string;
+  sceneId: number;
+  sceneTitle: string;
+  sceneDescription: string;
   sceneCommonSettings?: string;
-  showScene?: boolean;
+  cuts: CutTextCard[];
+  showScene: boolean;
+  timestamp: string;
 }
 
 export interface CutTextCard {
   id: number;
-  title: string;
-  content: string;
+  cutNumber: number;
+  text: string;
+  selected: boolean;
   timestamp: string;
-  type: 'korean' | 'english';
-  
-  // 하위 호환성을 위한 추가 속성들
-  text?: string;
-  selected?: boolean;
-  cutNumber?: number;
+}
+
+export interface GeneratedTextCard {
+  id: number;
+  generatedText: string;
+  timestamp: string;
+  sceneCommon?: string;
+  originalSceneCommon?: string;
+  story?: string;
+  cutCount?: number;
+}
+
+export interface GeneratedImage {
+  id: number;
+  input: string;
+  image: string;
+  timestamp: string;
+  description?: string;
+  source?: string;
+}
+
+export interface GeneratedVideo {
+  id: number;
+  textCards: GeneratedTextCard[];
+  characterImages: GeneratedImage[];
+  backgrounds: GeneratedImage[];
+  projectTexts: string[];
+  aiReviewTexts: string[];
+  sceneCommonSettings: string[];
+  video: string;
+  videoRatio: string;
+  timestamp: string;
+  // 에피소드 영상 생성을 위한 추가 필드
+  title?: string;
+  description?: string;
+  videoUrl?: string;
+  thumbnail?: string;
+  duration?: string;
+  type?: 'general' | 'episode';
+  episodeId?: number;
+}
+
+export interface VideoSettings {
+  quality: string;
+  duration: string;
+  framerate: string;
+  englishPrompt: string;
+}
+
+export interface VideoSettingsEnabled {
+  style: boolean;
+  quality: boolean;
+  duration: boolean;
+  framerate: boolean;
+  englishPrompt: boolean;
 }
 
 export interface ErrorModalState {
@@ -144,42 +96,46 @@ export interface ConfirmModalState {
   onConfirm: () => void;
 }
 
-// VideoGenerationStep Props 타입 추가
 export interface VideoGenerationStepProps {
-  generatedVideos: GeneratedVideo[];
-  setGeneratedVideos: React.Dispatch<React.SetStateAction<GeneratedVideo[]>>;
   generatedTextCards: GeneratedTextCard[];
   setGeneratedTextCards: React.Dispatch<React.SetStateAction<GeneratedTextCard[]>>;
   generatedCharacterImages: GeneratedImage[];
   setGeneratedCharacterImages: React.Dispatch<React.SetStateAction<GeneratedImage[]>>;
   generatedVideoBackgrounds: GeneratedImage[];
   setGeneratedVideoBackgrounds: React.Dispatch<React.SetStateAction<GeneratedImage[]>>;
-  generatedSettingCutImages: GeneratedImage[];
-  setGeneratedSettingCutImages: React.Dispatch<React.SetStateAction<GeneratedImage[]>>;
+  generatedVideos: GeneratedVideo[];
+  setGeneratedVideos: React.Dispatch<React.SetStateAction<GeneratedVideo[]>>;
+  // 선택 상태
   selectedTextCards: Set<number>;
   setSelectedTextCards: React.Dispatch<React.SetStateAction<Set<number>>>;
   selectedCharacterImages: Set<number>;
   setSelectedCharacterImages: React.Dispatch<React.SetStateAction<Set<number>>>;
   selectedVideoBackgrounds: Set<number>;
   setSelectedVideoBackgrounds: React.Dispatch<React.SetStateAction<Set<number>>>;
-  cutTextCardSelections: any;
+  // 컷별 텍스트카드 선택 상태
+  cutTextCardSelections: {[key: string]: Set<number>};
+  // 선택된 컷들 (영상 생성용)
   selectedCuts: Set<string>;
   characterPrompt: string;
   scenarioPrompt: string;
   storySummary: string;
   setStorySummary: (summary: string) => void;
+  finalScenario: string;
+  generatedProjectData: any;
   showTextResults: boolean;
   setShowTextResults: (show: boolean) => void;
+  // 프로젝트 개요 데이터
   story: string;
   setStory: (story: string) => void;
   characterList: any[];
-  setCharacterList: (characters: { id: number; name: string; description: string; }[]) => void;
-  finalScenario: string;
-  generatedProjectData: any;
-  generatedSceneTextCards?: SceneTextCard[];
-  episodes?: any[];
+  setCharacterList: (characters: any[]) => void;
+  // 이미지 생성 단계에서 생성한 이미지들 (프로젝트 참조용)
+  generatedCharacters?: any[];
+  generatedBackgrounds?: any[];
+  generatedSettingCuts?: any[];
+  generatedAdvancedImages?: any[];
   onNext: () => void;
-  canProceedToNext: () => any;
-  onEditCard?: (cardId: number, cardData: any) => void;
-  onSetEditHandler?: (handler: any) => void;
+  canProceedToNext?: () => boolean;
+  onEditCard?: (cardId: number, currentText: string) => void;
+  onSetEditHandler?: (handler: (cardId: number, currentText: string) => void) => void;
 }

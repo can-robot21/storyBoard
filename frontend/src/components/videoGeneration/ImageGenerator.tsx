@@ -1,9 +1,29 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback, startTransition } from 'react';
 import Button from '../common/Button';
 import { GeneratedImage } from '../../types/videoGeneration';
 import { useUIStore } from '../../stores/uiStore';
-import { googleAIService } from '../../services/googleAIService';
+import { GoogleAIService } from '../../services/googleAIService';
+import { getAPIKeyFromStorage } from '../../utils/apiKeyUtils';
+import type { Character, GeneratedCharacter, GeneratedBackground, GeneratedSettingCut } from '../../types/project';
 import { Trash2, Edit3, Check, X, Download } from 'lucide-react';
+
+// 프로젝트 참조 이미지 타입 정의
+interface ProjectReferenceImage {
+  image: string;
+  imageUrl?: string;
+  description: string;
+  prompt?: string;
+  timestamp: string;
+  id: number;
+  source?: string;
+}
+
+interface ProjectReferenceData {
+  characters: ProjectReferenceImage[];
+  backgrounds: ProjectReferenceImage[];
+  settingCuts: ProjectReferenceImage[];
+  advanced: ProjectReferenceImage[];
+}
 
 interface ImageGeneratorProps {
   generatedCharacterImages: GeneratedImage[];
@@ -15,12 +35,12 @@ interface ImageGeneratorProps {
   selectedVideoBackgrounds: Set<number>;
   setSelectedVideoBackgrounds: React.Dispatch<React.SetStateAction<Set<number>>>;
   story: string;
-  characterList: any[];
+  characterList: Character[];
   finalScenario: string;
   // 프로젝트 참조에서 가져올 이미지들
-  projectReferenceCharacters?: any[];
-  projectReferenceBackgrounds?: any[];
-  projectReferenceSettingCuts?: any[];
+  projectReferenceCharacters?: GeneratedCharacter[];
+  projectReferenceBackgrounds?: GeneratedBackground[];
+  projectReferenceSettingCuts?: GeneratedSettingCut[];
   // 설정 컷 이미지 관련 (새로 추가)
   generatedSettingCutImages?: GeneratedImage[];
   setGeneratedSettingCutImages?: React.Dispatch<React.SetStateAction<GeneratedImage[]>>;
@@ -50,6 +70,11 @@ export const ImageGenerator: React.FC<ImageGeneratorProps> = ({
 }) => {
   const { addNotification } = useUIStore();
   
+  // API 키 가져오기 (통합 유틸리티 사용)
+  const getAPIKey = useCallback((): string => {
+    return getAPIKeyFromStorage('google');
+  }, []);
+  
   // 상태 관리
   const [isGeneratingCharacterImage, setIsGeneratingCharacterImage] = useState(false);
   const [isGeneratingBackgroundImage, setIsGeneratingBackgroundImage] = useState(false);
@@ -69,28 +94,385 @@ export const ImageGenerator: React.FC<ImageGeneratorProps> = ({
   const [customPrompt, setCustomPrompt] = useState<string>('');
   
   // 프로젝트 참조 데이터 상태
-  const [projectReferenceData, setProjectReferenceData] = useState<any>(null);
+  const [projectReferenceData, setProjectReferenceData] = useState<ProjectReferenceData | null>(null);
+  
+  // 프로젝트 참조 모달에서 선택된 이미지 상태
+  const [selectedProjectImages, setSelectedProjectImages] = useState<Set<string>>(new Set());
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const backgroundFileInputRef = useRef<HTMLInputElement>(null);
+  // 중복 호출 방지를 위한 ref
+  const processingImagesRef = useRef<Set<string>>(new Set());
 
-  // 프로젝트 참조 데이터 로드
+  // 프로젝트 참조 데이터 로드 (localStorage + 현재 프로젝트 props 병합)
   useEffect(() => {
     const loadProjectReferenceData = () => {
       try {
-        const savedData = localStorage.getItem('projectReferenceData');
-        if (savedData) {
-          const data = JSON.parse(savedData);
-          setProjectReferenceData(data);
-          console.log('프로젝트 참조 데이터 로드됨:', data);
+        // localStorage에서 각 이미지 타입별로 데이터 로드
+        const storedCharacterImages = JSON.parse(localStorage.getItem('generatedCharacters') || '[]');
+        const storedBackgroundImages = JSON.parse(localStorage.getItem('generatedBackgrounds') || '[]');
+        const storedSettingCutImages = JSON.parse(localStorage.getItem('generatedSettingCuts') || '[]');
+        const storedAdvancedImages = JSON.parse(localStorage.getItem('generatedAdvancedImages') || '[]');
+        
+        // 고급 이미지가 없는 경우 다른 키에서도 확인
+        const storedAdvancedImagesAlt = storedAdvancedImages.length === 0 
+          ? JSON.parse(localStorage.getItem('advanced_images') || '[]')
+          : storedAdvancedImages;
+        
+        // 프로젝트 이미지도 확인
+        const projectImages = JSON.parse(localStorage.getItem('project_images') || '[]');
+        
+        // 각 이미지 배열이 존재하는지 확인
+        const validStoredCharacters = Array.isArray(storedCharacterImages) ? storedCharacterImages : [];
+        const validStoredBackgrounds = Array.isArray(storedBackgroundImages) ? storedBackgroundImages : [];
+        const validStoredSettingCuts = Array.isArray(storedSettingCutImages) ? storedSettingCutImages : [];
+        const validStoredAdvanced = Array.isArray(storedAdvancedImagesAlt) ? storedAdvancedImagesAlt : [];
+        const validProjectImages = Array.isArray(projectImages) ? projectImages : [];
+        
+        // props로 받은 현재 프로젝트 이미지들을 형식 변환
+        const currentProjectCharacters = (projectReferenceCharacters || []).map((img: GeneratedCharacter): ProjectReferenceImage => ({
+          image: img.image,
+          imageUrl: img.image,
+          description: img.description,
+          prompt: img.description,
+          timestamp: img.timestamp,
+          id: img.id,
+          source: 'current_project'
+        }));
+        
+        const currentProjectBackgrounds = (projectReferenceBackgrounds || []).map((img: GeneratedBackground): ProjectReferenceImage => ({
+          image: img.image,
+          imageUrl: img.image,
+          description: img.description,
+          prompt: img.description,
+          timestamp: img.timestamp,
+          id: img.id,
+          source: 'current_project'
+        }));
+        
+        const currentProjectSettingCuts = (projectReferenceSettingCuts || []).map((img: GeneratedSettingCut): ProjectReferenceImage => ({
+          image: img.image,
+          imageUrl: img.image,
+          description: img.description,
+          prompt: img.description,
+          timestamp: img.timestamp,
+          id: img.id,
+          source: 'current_project'
+        }));
+        
+        // 중복 제거를 위한 Set 사용 (image URL 기준)
+        const seenCharacterUrls = new Set<string>();
+        const seenBackgroundUrls = new Set<string>();
+        const seenSettingCutUrls = new Set<string>();
+        const seenAdvancedUrls = new Set<string>();
+        
+        // 중복 제거 헬퍼 함수
+        const filterUniqueImages = (images: ProjectReferenceImage[], seenUrls: Set<string>): ProjectReferenceImage[] => {
+          return images.filter((img) => {
+            const url = img.image || img.imageUrl || '';
+            if (seenUrls.has(url)) return false;
+            seenUrls.add(url);
+            return true;
+          });
+        };
+
+        // localStorage 이미지를 ProjectReferenceImage 형식으로 변환
+        const convertToProjectReferenceImage = (img: unknown): ProjectReferenceImage | null => {
+          if (typeof img !== 'object' || img === null) return null;
+          const obj = img as Record<string, unknown>;
+          return {
+            image: String(obj.image || obj.imageUrl || ''),
+            imageUrl: obj.imageUrl ? String(obj.imageUrl) : undefined,
+            description: String(obj.description || obj.prompt || ''),
+            prompt: obj.prompt ? String(obj.prompt) : undefined,
+            timestamp: String(obj.timestamp || new Date().toISOString()),
+            id: typeof obj.id === 'number' ? obj.id : Date.now(),
+            source: obj.source ? String(obj.source) : undefined
+          };
+        };
+
+        // localStorage 이미지 배열 변환
+        const storedCharsAsRefImages = validStoredCharacters
+          .map(convertToProjectReferenceImage)
+          .filter((img): img is ProjectReferenceImage => img !== null);
+        const storedBgsAsRefImages = validStoredBackgrounds
+          .map(convertToProjectReferenceImage)
+          .filter((img): img is ProjectReferenceImage => img !== null);
+        const storedCutsAsRefImages = validStoredSettingCuts
+          .map(convertToProjectReferenceImage)
+          .filter((img): img is ProjectReferenceImage => img !== null);
+        const storedAdvancedAsRefImages = validStoredAdvanced
+          .map(convertToProjectReferenceImage)
+          .filter((img): img is ProjectReferenceImage => img !== null);
+        const projectImgsAsRefImages = validProjectImages
+          .map(convertToProjectReferenceImage)
+          .filter((img): img is ProjectReferenceImage => img !== null);
+
+        // 현재 프로젝트 이미지를 우선으로 하고, localStorage 이미지를 추가 (중복 제거)
+        const mergedCharacters = [
+          ...filterUniqueImages(currentProjectCharacters, seenCharacterUrls),
+          ...filterUniqueImages(storedCharsAsRefImages, seenCharacterUrls),
+          ...filterUniqueImages(
+            projectImgsAsRefImages.filter(img => {
+              // 타입 확인은 localStorage에서 가져온 데이터의 구조에 따라 다를 수 있음
+              return true; // character 타입 필터링은 상위에서 처리
+            }),
+            seenCharacterUrls
+          )
+        ];
+        
+        const mergedBackgrounds = [
+          ...filterUniqueImages(currentProjectBackgrounds, seenBackgroundUrls),
+          ...filterUniqueImages(storedBgsAsRefImages, seenBackgroundUrls),
+          ...filterUniqueImages(projectImgsAsRefImages, seenBackgroundUrls)
+        ];
+        
+        const mergedSettingCuts = [
+          ...filterUniqueImages(currentProjectSettingCuts, seenSettingCutUrls),
+          ...filterUniqueImages(storedCutsAsRefImages, seenSettingCutUrls),
+          ...filterUniqueImages(projectImgsAsRefImages, seenSettingCutUrls)
+        ];
+        
+        const mergedAdvanced = [
+          ...filterUniqueImages(storedAdvancedAsRefImages, seenAdvancedUrls),
+          ...filterUniqueImages(projectImgsAsRefImages, seenAdvancedUrls)
+        ];
+        
+        const data: ProjectReferenceData = {
+          characters: mergedCharacters,
+          backgrounds: mergedBackgrounds,
+          settingCuts: mergedSettingCuts,
+          advanced: mergedAdvanced
+        };
+        
+        // 데이터가 있는지 확인
+        const hasAnyData = data.characters.length > 0 || 
+                          data.backgrounds.length > 0 || 
+                          data.settingCuts.length > 0 || 
+                          data.advanced.length > 0;
+        
+        // 기존 데이터와 비교하여 실제로 변경되었는지 확인 (무한 루프 방지)
+        const currentDataStr = JSON.stringify(projectReferenceData);
+        const newDataStr = JSON.stringify(data);
+        
+        // 데이터가 변경되었을 때만 상태 업데이트 (렌더링 중 setState 방지)
+        if (currentDataStr !== newDataStr) {
+          startTransition(() => {
+            if (hasAnyData) {
+              setProjectReferenceData(data);
+              // 디버그 로그는 개발 환경에서만 출력 (무한 로그 방지)
+              if (process.env.NODE_ENV === 'development') {
+                console.log('✅ 프로젝트 참조 데이터 로드됨 (변경 감지):', {
+                  캐릭터: `${currentProjectCharacters.length}(현재) + ${validStoredCharacters.length}(저장) = ${data.characters.length}(병합)`,
+                  배경: `${currentProjectBackgrounds.length}(현재) + ${validStoredBackgrounds.length}(저장) = ${data.backgrounds.length}(병합)`,
+                  설정컷: `${currentProjectSettingCuts.length}(현재) + ${validStoredSettingCuts.length}(저장) = ${data.settingCuts.length}(병합)`,
+                  고급: `${validStoredAdvanced.length}(저장) = ${data.advanced.length}(병합)`
+                });
+              }
+            } else {
+              setProjectReferenceData({ characters: [], backgrounds: [], settingCuts: [], advanced: [] });
+            }
+          });
         }
       } catch (error) {
-        console.error('프로젝트 참조 데이터 로드 오류:', error);
+        if (process.env.NODE_ENV === 'development') {
+          console.error('프로젝트 참조 데이터 로드 오류:', error);
+        }
+        startTransition(() => {
+          setProjectReferenceData({ characters: [], backgrounds: [], settingCuts: [], advanced: [] });
+        });
       }
     };
 
-    loadProjectReferenceData();
-  }, []);
+    // 모달이 열릴 때만 데이터 로드 (props 변경으로 인한 무한 루프 방지)
+    if (showProjectReferenceModal) {
+      loadProjectReferenceData();
+    }
+    
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showProjectReferenceModal]);
+  
+  // props 변경을 별도로 감지 (실제 데이터 변경만, debounce 적용)
+  const prevPropsRef = useRef({
+    characters: JSON.stringify(projectReferenceCharacters),
+    backgrounds: JSON.stringify(projectReferenceBackgrounds),
+    settingCuts: JSON.stringify(projectReferenceSettingCuts)
+  });
+  
+  useEffect(() => {
+    if (!showProjectReferenceModal) return;
+    
+    const currentCharacters = JSON.stringify(projectReferenceCharacters);
+    const currentBackgrounds = JSON.stringify(projectReferenceBackgrounds);
+    const currentSettingCuts = JSON.stringify(projectReferenceSettingCuts);
+    
+    // props가 실제로 변경되었는지 확인
+    const hasChanged = 
+      prevPropsRef.current.characters !== currentCharacters ||
+      prevPropsRef.current.backgrounds !== currentBackgrounds ||
+      prevPropsRef.current.settingCuts !== currentSettingCuts;
+    
+    if (hasChanged) {
+      // debounce 적용 (300ms)
+      const timeoutId = setTimeout(() => {
+        prevPropsRef.current = {
+          characters: currentCharacters,
+          backgrounds: currentBackgrounds,
+          settingCuts: currentSettingCuts
+        };
+        
+        // 데이터 재로드
+        try {
+          const storedCharacterImages = JSON.parse(localStorage.getItem('generatedCharacters') || '[]');
+          const storedBackgroundImages = JSON.parse(localStorage.getItem('generatedBackgrounds') || '[]');
+          const storedSettingCutImages = JSON.parse(localStorage.getItem('generatedSettingCuts') || '[]');
+          const storedAdvancedImages = JSON.parse(localStorage.getItem('generatedAdvancedImages') || '[]');
+          const storedAdvancedImagesAlt = storedAdvancedImages.length === 0 
+            ? JSON.parse(localStorage.getItem('advanced_images') || '[]')
+            : storedAdvancedImages;
+          const projectImages = JSON.parse(localStorage.getItem('project_images') || '[]');
+          
+          const validStoredCharacters = Array.isArray(storedCharacterImages) ? storedCharacterImages : [];
+          const validStoredBackgrounds = Array.isArray(storedBackgroundImages) ? storedBackgroundImages : [];
+          const validStoredSettingCuts = Array.isArray(storedSettingCutImages) ? storedSettingCutImages : [];
+          const validStoredAdvanced = Array.isArray(storedAdvancedImagesAlt) ? storedAdvancedImagesAlt : [];
+          const validProjectImages = Array.isArray(projectImages) ? projectImages : [];
+          
+          const currentProjectCharacters = (projectReferenceCharacters || []).map((img: GeneratedCharacter): ProjectReferenceImage => ({
+            image: img.image,
+            imageUrl: img.image,
+            description: img.description,
+            prompt: img.description,
+            timestamp: img.timestamp,
+            id: img.id,
+            source: 'current_project'
+          }));
+          
+          const currentProjectBackgrounds = (projectReferenceBackgrounds || []).map((img: GeneratedBackground): ProjectReferenceImage => ({
+            image: img.image,
+            imageUrl: img.image,
+            description: img.description,
+            prompt: img.description,
+            timestamp: img.timestamp,
+            id: img.id,
+            source: 'current_project'
+          }));
+          
+          const currentProjectSettingCuts = (projectReferenceSettingCuts || []).map((img: GeneratedSettingCut): ProjectReferenceImage => ({
+            image: img.image,
+            imageUrl: img.image,
+            description: img.description,
+            prompt: img.description,
+            timestamp: img.timestamp,
+            id: img.id,
+            source: 'current_project'
+          }));
+          
+          const seenCharacterUrls = new Set<string>();
+          const seenBackgroundUrls = new Set<string>();
+          const seenSettingCutUrls = new Set<string>();
+          const seenAdvancedUrls = new Set<string>();
+          
+          // 중복 제거 헬퍼 함수 (로컬 스코프)
+          const filterUniqueImagesLocal = (images: ProjectReferenceImage[], seenUrls: Set<string>): ProjectReferenceImage[] => {
+            return images.filter((img) => {
+              const url = img.image || img.imageUrl || '';
+              if (seenUrls.has(url)) return false;
+              seenUrls.add(url);
+              return true;
+            });
+          };
+
+          // localStorage 이미지를 ProjectReferenceImage 형식으로 변환 (로컬 스코프)
+          const convertToProjectReferenceImageLocal = (img: unknown): ProjectReferenceImage | null => {
+            if (typeof img !== 'object' || img === null) return null;
+            const obj = img as Record<string, unknown>;
+            return {
+              image: String(obj.image || obj.imageUrl || ''),
+              imageUrl: obj.imageUrl ? String(obj.imageUrl) : undefined,
+              description: String(obj.description || obj.prompt || ''),
+              prompt: obj.prompt ? String(obj.prompt) : undefined,
+              timestamp: String(obj.timestamp || new Date().toISOString()),
+              id: typeof obj.id === 'number' ? obj.id : Date.now(),
+              source: obj.source ? String(obj.source) : undefined
+            };
+          };
+
+          // localStorage 이미지 배열 변환
+          const storedCharsAsRefImagesLocal = validStoredCharacters
+            .map(convertToProjectReferenceImageLocal)
+            .filter((img): img is ProjectReferenceImage => img !== null);
+          const storedBgsAsRefImagesLocal = validStoredBackgrounds
+            .map(convertToProjectReferenceImageLocal)
+            .filter((img): img is ProjectReferenceImage => img !== null);
+          const storedCutsAsRefImagesLocal = validStoredSettingCuts
+            .map(convertToProjectReferenceImageLocal)
+            .filter((img): img is ProjectReferenceImage => img !== null);
+          const storedAdvancedAsRefImagesLocal = validStoredAdvanced
+            .map(convertToProjectReferenceImageLocal)
+            .filter((img): img is ProjectReferenceImage => img !== null);
+          const projectImgsAsRefImagesLocal = validProjectImages
+            .map(convertToProjectReferenceImageLocal)
+            .filter((img): img is ProjectReferenceImage => img !== null);
+
+          const mergedCharacters = [
+            ...filterUniqueImagesLocal(currentProjectCharacters, seenCharacterUrls),
+            ...filterUniqueImagesLocal(storedCharsAsRefImagesLocal, seenCharacterUrls),
+            ...filterUniqueImagesLocal(projectImgsAsRefImagesLocal, seenCharacterUrls)
+          ];
+          
+          const mergedBackgrounds = [
+            ...filterUniqueImagesLocal(currentProjectBackgrounds, seenBackgroundUrls),
+            ...filterUniqueImagesLocal(storedBgsAsRefImagesLocal, seenBackgroundUrls),
+            ...filterUniqueImagesLocal(projectImgsAsRefImagesLocal, seenBackgroundUrls)
+          ];
+          
+          const mergedSettingCuts = [
+            ...filterUniqueImagesLocal(currentProjectSettingCuts, seenSettingCutUrls),
+            ...filterUniqueImagesLocal(storedCutsAsRefImagesLocal, seenSettingCutUrls),
+            ...filterUniqueImagesLocal(projectImgsAsRefImagesLocal, seenSettingCutUrls)
+          ];
+          
+          const mergedAdvanced = [
+            ...filterUniqueImagesLocal(storedAdvancedAsRefImagesLocal, seenAdvancedUrls),
+            ...filterUniqueImagesLocal(projectImgsAsRefImagesLocal, seenAdvancedUrls)
+          ];
+          
+          const newData: ProjectReferenceData = {
+            characters: mergedCharacters,
+            backgrounds: mergedBackgrounds,
+            settingCuts: mergedSettingCuts,
+            advanced: mergedAdvanced
+          };
+          
+          const hasAnyData = newData.characters.length > 0 || 
+                            newData.backgrounds.length > 0 || 
+                            newData.settingCuts.length > 0 || 
+                            newData.advanced.length > 0;
+          
+          const currentDataStr = JSON.stringify(projectReferenceData);
+          const newDataStr = JSON.stringify(newData);
+          
+          if (currentDataStr !== newDataStr) {
+            startTransition(() => {
+              if (hasAnyData) {
+                setProjectReferenceData(newData);
+              } else {
+                setProjectReferenceData({ characters: [], backgrounds: [], settingCuts: [], advanced: [] });
+              }
+            });
+          }
+        } catch (error) {
+          if (process.env.NODE_ENV === 'development') {
+          console.error('프로젝트 참조 데이터 로드 오류:', error);
+        }
+        }
+      }, 300);
+      
+      return () => clearTimeout(timeoutId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showProjectReferenceModal, JSON.stringify(projectReferenceCharacters), JSON.stringify(projectReferenceBackgrounds), JSON.stringify(projectReferenceSettingCuts)]);
 
   // 텍스트 편집 시작
   const handleStartEdit = (imageId: number, currentText: string) => {
@@ -240,48 +622,186 @@ export const ImageGenerator: React.FC<ImageGeneratorProps> = ({
   const handleSelectFromProjectReference = (type: 'character' | 'background' | 'settingCut') => {
     setReferenceModalType(type);
     setShowProjectReferenceModal(true);
+    setSelectedProjectImages(new Set()); // 모달 열 때 선택 상태 초기화
   };
 
-  const handleProjectReferenceImageSelect = (image: any, type: 'character' | 'background' | 'settingCut') => {
-    const newImage: GeneratedImage = {
-      id: Date.now(),
-      input: image.description || image.prompt || '프로젝트 참조에서 선택된 이미지',
-      description: image.description || image.prompt || '프로젝트 참조에서 선택된 이미지',
-      image: image.image,
-      timestamp: new Date().toISOString(),
-      type: type,
-      source: 'project_reference'
-    };
-
-    if (type === 'character') {
-      setGeneratedCharacterImages(prev => [...prev, newImage]);
-      addNotification({
-        type: 'success',
-        title: '캐릭터 이미지 추가',
-        message: '프로젝트 참조에서 캐릭터 이미지를 선택했습니다.',
-      });
-    } else if (type === 'background') {
-      setGeneratedVideoBackgrounds(prev => [...prev, newImage]);
-      addNotification({
-        type: 'success',
-        title: '배경 이미지 추가',
-        message: '프로젝트 참조에서 배경 이미지를 선택했습니다.',
-      });
-    } else if (type === 'settingCut') {
-      // 설정 컷 이미지도 추가
-      if (setGeneratedSettingCutImages) {
-        setGeneratedSettingCutImages(prev => [...prev, newImage]);
-        addNotification({
-          type: 'success',
-          title: '설정 컷 이미지 추가',
-          message: '프로젝트 참조에서 설정 컷 이미지를 선택했습니다.',
-        });
-      }
+  // 이미지 URL을 기반으로 고유한 ID 생성 (중복 방지)
+  const generateImageId = (image: any, type: string): string => {
+    const imageUrl = image.image || image.imageUrl || '';
+    // 이미지 URL을 기반으로 해시 생성하여 고유 ID 생성
+    let hash = 0;
+    for (let i = 0; i < imageUrl.length; i++) {
+      const char = imageUrl.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32bit integer
     }
-
-    setShowProjectReferenceModal(false);
-    setReferenceModalType(null);
+    return `${type}-${Math.abs(hash)}`;
   };
+
+  // 프로젝트 참조 이미지 체크박스 토글 핸들러 (렌더링 중 setState 방지 및 중복 호출 방지)
+  const handleToggleProjectImageSelection = useCallback((imageId: string, image: any, type: 'character' | 'background' | 'settingCut') => {
+    // 이미 처리 중인 요청인지 확인 (중복 호출 방지)
+    const processingKey = `${imageId}-${type}`;
+    if (processingImagesRef.current.has(processingKey)) {
+      console.log('⚠️ 중복 호출 방지:', processingKey);
+      return; // 이미 처리 중이면 무시
+    }
+    
+    processingImagesRef.current.add(processingKey);
+    const imageUrl = image.image || image.imageUrl || '';
+    
+    // 렌더링 완료 후 실행되도록 setTimeout 사용 (이중 보호)
+    setTimeout(() => {
+      startTransition(() => {
+        setSelectedProjectImages(prev => {
+          const newSet = new Set(prev);
+          
+          if (newSet.has(imageId)) {
+            newSet.delete(imageId);
+            // 체크박스 해제 시 이미지 URL 기준으로 제거
+            switch (type) {
+              case 'character':
+                startTransition(() => {
+                  setGeneratedCharacterImages(prev => prev.filter(img => {
+                    const imgUrl = img.image?.trim() || '';
+                    const targetUrl = imageUrl.trim();
+                    return imgUrl !== targetUrl;
+                  }));
+                });
+                break;
+              case 'background':
+                startTransition(() => {
+                  setGeneratedVideoBackgrounds(prev => prev.filter(img => {
+                    const imgUrl = img.image?.trim() || '';
+                    const targetUrl = imageUrl.trim();
+                    return imgUrl !== targetUrl;
+                  }));
+                });
+                break;
+              case 'settingCut':
+                if (setGeneratedSettingCutImages) {
+                  startTransition(() => {
+                    setGeneratedSettingCutImages(prev => prev.filter(img => {
+                      const imgUrl = img.image?.trim() || '';
+                      const targetUrl = imageUrl.trim();
+                      return imgUrl !== targetUrl;
+                    }));
+                  });
+                }
+                break;
+            }
+            // 처리 완료 후 제거
+            setTimeout(() => {
+              processingImagesRef.current.delete(processingKey);
+            }, 100);
+          } else {
+            newSet.add(imageId);
+            // 이미지 URL + 타입 + 타임스탬프 + 랜덤으로 고유한 ID 생성 (중복 방지)
+            // 고유성 보장을 위해 타임스탬프 + 랜덤 + 타입 조합
+            const timestamp = Date.now();
+            const random = Math.floor(Math.random() * 1000000);
+            const uniqueId = timestamp + random;
+            
+            // 체크박스 클릭 시 즉시 이미지 첨부 (이미지 URL 기준 중복 확인 강화)
+            const newImage: GeneratedImage = {
+              id: uniqueId,
+              input: image.description || image.prompt || '프로젝트 참조에서 선택된 이미지',
+              description: image.description || image.prompt || '프로젝트 참조에서 선택된 이미지',
+              image: imageUrl,
+              timestamp: new Date().toISOString(),
+              source: 'project_reference'
+            };
+
+            switch (type) {
+              case 'character':
+                // 함수형 업데이트로 현재 상태를 안전하게 참조하며 중복 확인
+                startTransition(() => {
+                  setGeneratedCharacterImages(prev => {
+                    const existingUrl = imageUrl.trim();
+                    const isDuplicate = prev.some(existing => {
+                      const existingImageUrl = existing.image?.trim() || '';
+                      return existingImageUrl && existingImageUrl === existingUrl;
+                    });
+                    if (!isDuplicate) {
+                      // 알림은 상태 업데이트 외부에서 호출
+                      setTimeout(() => {
+                        addNotification({
+                          type: 'success',
+                          title: '캐릭터 이미지 추가',
+                          message: '프로젝트 참조에서 캐릭터 이미지를 선택했습니다.',
+                        });
+                      }, 0);
+                      return [...prev, newImage];
+                    }
+                    return prev;
+                  });
+                });
+                break;
+              case 'background':
+                startTransition(() => {
+                  setGeneratedVideoBackgrounds(prev => {
+                    const existingUrl = imageUrl.trim();
+                    const isDuplicate = prev.some(existing => {
+                      const existingImageUrl = existing.image?.trim() || '';
+                      return existingImageUrl && existingImageUrl === existingUrl;
+                    });
+                    if (!isDuplicate) {
+                      setTimeout(() => {
+                        addNotification({
+                          type: 'success',
+                          title: '배경 이미지 추가',
+                          message: '프로젝트 참조에서 배경 이미지를 선택했습니다.',
+                        });
+                      }, 0);
+                      return [...prev, newImage];
+                    }
+                    return prev;
+                  });
+                });
+                break;
+              case 'settingCut':
+                if (setGeneratedSettingCutImages) {
+                  startTransition(() => {
+                    setGeneratedSettingCutImages(prev => {
+                      const existingUrl = imageUrl.trim();
+                      const isDuplicate = prev.some(existing => {
+                        const existingImageUrl = existing.image?.trim() || '';
+                        return existingImageUrl && existingImageUrl === existingUrl;
+                      });
+                      if (!isDuplicate) {
+                        setTimeout(() => {
+                          addNotification({
+                            type: 'success',
+                            title: '설정 컷 이미지 추가',
+                            message: '프로젝트 참조에서 설정 컷 이미지를 선택했습니다.',
+                          });
+                        }, 0);
+                        return [...prev, newImage];
+                      }
+                      return prev;
+                    });
+                  });
+                }
+                break;
+            }
+            // 처리 완료 후 제거
+            setTimeout(() => {
+              processingImagesRef.current.delete(processingKey);
+            }, 100);
+          }
+          return newSet;
+        });
+      });
+    }, 0); // 즉시 실행하지만 이벤트 루프의 다음 틱에서 실행
+  }, [setGeneratedSettingCutImages, addNotification, setGeneratedCharacterImages, setGeneratedVideoBackgrounds]);
+
+  // 기존 handleProjectReferenceImageSelect는 호환성을 위해 유지 (이미지 클릭 시에도 작동)
+  // 단, 체크박스와 중복 호출을 방지하기 위해 별도 처리
+  const handleProjectReferenceImageSelect = useCallback((image: any, type: 'character' | 'background' | 'settingCut') => {
+    // 이미지 클릭은 체크박스 토글만 수행 (이벤트 전파 방지)
+    const imageId = generateImageId(image, type);
+    handleToggleProjectImageSelection(imageId, image, type);
+  }, [handleToggleProjectImageSelection]);
 
   // 캐릭터 이미지 생성 프롬프트 입력 모달 열기
   const handleOpenCharacterPromptModal = () => {
@@ -305,6 +825,11 @@ export const ImageGenerator: React.FC<ImageGeneratorProps> = ({
 
     setIsGeneratingCharacterImage(true);
     try {
+      const apiKey = getAPIKey();
+      if (!apiKey) {
+        throw new Error('Google AI API 키가 설정되지 않았습니다. 로그인 후 설정에서 API 키를 입력해주세요.');
+      }
+      const googleAIService = GoogleAIService.getInstance();
       const result = await googleAIService.generateCharacterImage(finalPrompt);
 
       if (result) {
@@ -314,7 +839,6 @@ export const ImageGenerator: React.FC<ImageGeneratorProps> = ({
           image: result,
           timestamp: new Date().toISOString(),
           description: `캐릭터 이미지 - ${characterList.map(c => c.name).join(', ')}`,
-          type: 'character',
           source: 'generated'
         };
 
@@ -362,6 +886,11 @@ export const ImageGenerator: React.FC<ImageGeneratorProps> = ({
     setIsGeneratingSettingCutImage(true);
 
     try {
+      const apiKey = getAPIKey();
+      if (!apiKey) {
+        throw new Error('Google AI API 키가 설정되지 않았습니다. 로그인 후 설정에서 API 키를 입력해주세요.');
+      }
+      const googleAIService = GoogleAIService.getInstance();
       const result = await googleAIService.generateSettingCutImage(finalPrompt);
 
       if (result) {
@@ -371,7 +900,6 @@ export const ImageGenerator: React.FC<ImageGeneratorProps> = ({
           description: finalPrompt,
           image: result,
           timestamp: new Date().toISOString(),
-          type: 'settingCut',
           source: 'ai_generated'
         };
 
@@ -419,6 +947,11 @@ export const ImageGenerator: React.FC<ImageGeneratorProps> = ({
 
     setIsGeneratingBackgroundImage(true);
     try {
+      const apiKey = getAPIKey();
+      if (!apiKey) {
+        throw new Error('Google AI API 키가 설정되지 않았습니다. 로그인 후 설정에서 API 키를 입력해주세요.');
+      }
+      const googleAIService = GoogleAIService.getInstance();
       const result = await googleAIService.generateCharacterImage(finalPrompt);
 
       if (result) {
@@ -428,7 +961,6 @@ export const ImageGenerator: React.FC<ImageGeneratorProps> = ({
           image: result,
           timestamp: new Date().toISOString(),
           description: '배경 이미지',
-          type: 'background',
           source: 'generated'
         };
 
@@ -474,7 +1006,6 @@ export const ImageGenerator: React.FC<ImageGeneratorProps> = ({
         image: imageData,
         timestamp: new Date().toISOString(),
         description: `업로드된 ${type === 'character' ? '캐릭터' : type === 'background' ? '배경' : '설정 컷'} 이미지`,
-        type: type,
         source: 'uploaded'
       };
 
@@ -534,34 +1065,35 @@ export const ImageGenerator: React.FC<ImageGeneratorProps> = ({
     <div className="space-y-6">
       {/* 캐릭터 이미지 생성 */}
       <div className="bg-purple-50 p-4 rounded-lg border">
-        <h3 className="text-lg font-semibold text-purple-800 mb-4">👤 캐릭터 이미지 생성</h3>
-        
-        <div className="flex gap-2 mb-4">
-          <Button
-            onClick={handleOpenCharacterPromptModal}
-            disabled={isGeneratingCharacterImage}
-            className={`px-4 py-2 ${
-              isGeneratingCharacterImage
-                ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                : 'bg-purple-600 hover:bg-purple-700 text-white'
-            }`}
-          >
-            {isGeneratingCharacterImage ? '생성 중...' : 'AI로 캐릭터 이미지 생성'}
-          </Button>
-          
-          <Button
-            onClick={handleAddCharacterImageFromFile}
-            className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white"
-          >
-            파일에서 추가
-          </Button>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-purple-800">👤 캐릭터 이미지 생성</h3>
+          <div className="flex gap-2">
+            <Button
+              onClick={handleOpenCharacterPromptModal}
+              disabled={isGeneratingCharacterImage}
+              className={`px-4 py-2 ${
+                isGeneratingCharacterImage
+                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  : 'bg-purple-600 hover:bg-purple-700 text-white'
+              }`}
+            >
+              {isGeneratingCharacterImage ? '생성 중...' : 'AI로 캐릭터 이미지 생성'}
+            </Button>
+            
+            <Button
+              onClick={handleAddCharacterImageFromFile}
+              className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white"
+            >
+              파일에서 추가
+            </Button>
 
-          <Button
-            onClick={() => handleSelectFromProjectReference('character')}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white"
-          >
-            📋 프로젝트 참조에서 선택
-          </Button>
+            <Button
+              onClick={() => handleSelectFromProjectReference('character')}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              📋 프로젝트 참조에서 선택
+            </Button>
+          </div>
         </div>
 
         <input
@@ -579,8 +1111,13 @@ export const ImageGenerator: React.FC<ImageGeneratorProps> = ({
               생성된 캐릭터 이미지 ({generatedCharacterImages.length}개)
             </h4>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-              {generatedCharacterImages.map((image) => (
-                <div key={image.id} className="bg-white p-3 rounded-lg border">
+              {generatedCharacterImages.map((image, index) => {
+                // 고유한 key 생성 (이미지 URL 해시 + 인덱스)
+                const imageKey = image.image ? 
+                  `character-${generateImageId({ image: image.image }, 'char')}-${index}` : 
+                  `character-${image.id}-${index}`;
+                return (
+                <div key={imageKey} className="bg-white p-3 rounded-lg border">
                   <div className="flex items-center justify-between mb-2">
                     <input
                       type="checkbox"
@@ -615,7 +1152,7 @@ export const ImageGenerator: React.FC<ImageGeneratorProps> = ({
                   <img
                     src={image.image}
                     alt={image.description}
-                    className="w-full h-32 object-cover rounded"
+                    className="w-full h-24 object-cover rounded"
                   />
                   {editingImageId === image.id ? (
                     <div className="mt-2">
@@ -644,7 +1181,8 @@ export const ImageGenerator: React.FC<ImageGeneratorProps> = ({
                     <p className="text-xs text-gray-600 mt-2">{image.description}</p>
                   )}
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
@@ -652,34 +1190,35 @@ export const ImageGenerator: React.FC<ImageGeneratorProps> = ({
 
       {/* 배경 이미지 생성 */}
       <div className="bg-orange-50 p-4 rounded-lg border">
-        <h3 className="text-lg font-semibold text-orange-800 mb-4">🏞️ 배경 이미지 생성</h3>
-        
-        <div className="flex gap-2 mb-4">
-          <Button
-            onClick={handleOpenBackgroundPromptModal}
-            disabled={isGeneratingBackgroundImage}
-            className={`px-4 py-2 ${
-              isGeneratingBackgroundImage
-                ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                : 'bg-orange-600 hover:bg-orange-700 text-white'
-            }`}
-          >
-            {isGeneratingBackgroundImage ? '생성 중...' : 'AI로 배경 이미지 생성'}
-          </Button>
-          
-          <Button
-            onClick={handleAddBackgroundImageFromFile}
-            className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white"
-          >
-            파일에서 추가
-          </Button>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-orange-800">🏞️ 배경 이미지 생성</h3>
+          <div className="flex gap-2">
+            <Button
+              onClick={handleOpenBackgroundPromptModal}
+              disabled={isGeneratingBackgroundImage}
+              className={`px-4 py-2 ${
+                isGeneratingBackgroundImage
+                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  : 'bg-orange-600 hover:bg-orange-700 text-white'
+              }`}
+            >
+              {isGeneratingBackgroundImage ? '생성 중...' : 'AI로 배경 이미지 생성'}
+            </Button>
+            
+            <Button
+              onClick={handleAddBackgroundImageFromFile}
+              className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white"
+            >
+              파일에서 추가
+            </Button>
 
-          <Button
-            onClick={() => handleSelectFromProjectReference('background')}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white"
-          >
-            📋 프로젝트 참조에서 선택
-          </Button>
+            <Button
+              onClick={() => handleSelectFromProjectReference('background')}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              📋 프로젝트 참조에서 선택
+            </Button>
+          </div>
         </div>
 
         <input
@@ -697,8 +1236,13 @@ export const ImageGenerator: React.FC<ImageGeneratorProps> = ({
               생성된 배경 이미지 ({generatedVideoBackgrounds.length}개)
             </h4>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-              {generatedVideoBackgrounds.map((image) => (
-                <div key={image.id} className="bg-white p-3 rounded-lg border">
+              {generatedVideoBackgrounds.map((image, index) => {
+                // 고유한 key 생성 (이미지 URL 해시 + 인덱스)
+                const imageKey = image.image ? 
+                  `background-${generateImageId({ image: image.image }, 'bg')}-${index}` : 
+                  `background-${image.id}-${index}`;
+                return (
+                <div key={imageKey} className="bg-white p-3 rounded-lg border">
                   <div className="flex items-center justify-between mb-2">
                     <input
                       type="checkbox"
@@ -733,7 +1277,7 @@ export const ImageGenerator: React.FC<ImageGeneratorProps> = ({
                   <img
                     src={image.image}
                     alt={image.description}
-                    className="w-full h-32 object-cover rounded"
+                    className="w-full h-24 object-cover rounded"
                   />
                   {editingImageId === image.id ? (
                     <div className="mt-2">
@@ -762,7 +1306,8 @@ export const ImageGenerator: React.FC<ImageGeneratorProps> = ({
                     <p className="text-xs text-gray-600 mt-2">{image.description}</p>
                   )}
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
@@ -770,45 +1315,46 @@ export const ImageGenerator: React.FC<ImageGeneratorProps> = ({
 
       {/* 설정 컷 이미지 생성 */}
       <div className="bg-green-50 p-4 rounded-lg border">
-        <h3 className="text-lg font-semibold text-green-800 mb-4">🎬 설정 컷 이미지 생성</h3>
-        
-        <div className="flex gap-2 mb-4">
-          <Button
-            onClick={handleOpenSettingCutPromptModal}
-            disabled={isGeneratingSettingCutImage}
-            className={`px-4 py-2 ${
-              isGeneratingSettingCutImage
-                ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                : 'bg-green-600 hover:bg-green-700 text-white'
-            }`}
-          >
-            {isGeneratingSettingCutImage ? '생성 중...' : 'AI로 설정 컷 이미지 생성'}
-          </Button>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-green-800">🎬 설정 컷 이미지 생성</h3>
+          <div className="flex gap-2">
+            <Button
+              onClick={handleOpenSettingCutPromptModal}
+              disabled={isGeneratingSettingCutImage}
+              className={`px-4 py-2 ${
+                isGeneratingSettingCutImage
+                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  : 'bg-green-600 hover:bg-green-700 text-white'
+              }`}
+            >
+              {isGeneratingSettingCutImage ? '생성 중...' : 'AI로 설정 컷 이미지 생성'}
+            </Button>
 
-          <Button
-            onClick={() => {
-              const input = document.createElement('input');
-              input.type = 'file';
-              input.accept = 'image/*';
-              input.onchange = (e) => {
-                const file = (e.target as HTMLInputElement).files?.[0];
-                if (file) {
-                  handleFileUpload({ target: { files: [file] } } as any, 'settingCut');
-                }
-              };
-              input.click();
-            }}
-            className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white"
-          >
-            파일에서 추가
-          </Button>
+            <Button
+              onClick={() => {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = 'image/*';
+                input.onchange = (e) => {
+                  const file = (e.target as HTMLInputElement).files?.[0];
+                  if (file) {
+                    handleFileUpload({ target: { files: [file] } } as any, 'settingCut');
+                  }
+                };
+                input.click();
+              }}
+              className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white"
+            >
+              파일에서 추가
+            </Button>
 
-          <Button
-            onClick={() => handleSelectFromProjectReference('settingCut')}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white"
-          >
-            📋 프로젝트 참조에서 선택
-          </Button>
+            <Button
+              onClick={() => handleSelectFromProjectReference('settingCut')}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              📋 프로젝트 참조에서 선택
+            </Button>
+          </div>
         </div>
 
         {/* 설정 컷 이미지 목록 */}
@@ -816,8 +1362,8 @@ export const ImageGenerator: React.FC<ImageGeneratorProps> = ({
           <div className="mt-4">
             <h4 className="text-md font-medium text-green-700 mb-2">생성된 설정 컷 이미지</h4>
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-              {generatedSettingCutImages.map((image) => (
-                <div key={image.id} className="bg-white p-3 rounded border">
+              {generatedSettingCutImages.map((image, index) => (
+                <div key={`settingCut-${image.image || image.id}-${index}`} className="bg-white p-3 rounded border">
                   <div className="flex items-center justify-between mb-2">
                     <input
                       type="checkbox"
@@ -852,7 +1398,7 @@ export const ImageGenerator: React.FC<ImageGeneratorProps> = ({
                   <img
                     src={image.image}
                     alt={image.description}
-                    className="w-full h-32 object-cover rounded"
+                    className="w-full h-24 object-cover rounded"
                   />
                   {editingImageId === image.id ? (
                     <div className="mt-2">
@@ -908,18 +1454,25 @@ export const ImageGenerator: React.FC<ImageGeneratorProps> = ({
                 {projectReferenceData ? (
                   <>
                     {/* 캐릭터 이미지 */}
-                    {projectReferenceData.characterImages && projectReferenceData.characterImages.length > 0 && (
+                    {projectReferenceData.characters && projectReferenceData.characters.length > 0 && (
                       <div>
                         <h3 className="text-sm font-medium text-gray-700 mb-2">캐릭터 이미지</h3>
                         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                          {projectReferenceData.characterImages.map((image: any, index: number) => (
-                            <div key={`char-${index}`} className="bg-gray-50 p-3 rounded border hover:bg-gray-100">
+                          {projectReferenceData.characters.map((image: ProjectReferenceImage, index: number) => {
+                            const imageId = generateImageId(image, 'character');
+                            const isSelected = selectedProjectImages.has(imageId);
+                            return (
+                            <div key={imageId} className="bg-gray-50 p-3 rounded border hover:bg-gray-100">
                               <div className="relative">
                                 <img
                                   src={image.image}
                                   alt={image.description || image.prompt}
                                   className="w-full h-32 object-cover rounded cursor-pointer"
-                                  onClick={() => handleProjectReferenceImageSelect(image, 'character')}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    // 이미지 클릭 시에도 체크박스 토글 (중복 방지 로직 내장)
+                                    handleProjectReferenceImageSelect(image, 'character');
+                                  }}
                                 />
                                 <button
                                   onClick={(e) => {
@@ -933,80 +1486,184 @@ export const ImageGenerator: React.FC<ImageGeneratorProps> = ({
                                 </button>
                               </div>
                               <p className="text-xs text-gray-600 mt-2">{image.description || image.prompt}</p>
+                              {/* 캐릭터 이미지에도 체크박스 추가 */}
+                              <div className="mt-2 flex items-center">
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={(e) => {
+                                      e.stopPropagation();
+                                      handleToggleProjectImageSelection(imageId, image, 'character');
+                                    }}
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
+                                  />
+                                <span className="ml-2 text-xs text-gray-600">선택</span>
+                              </div>
                             </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       </div>
                     )}
 
                     {/* 배경 이미지 */}
-                    {projectReferenceData.backgroundImages && projectReferenceData.backgroundImages.length > 0 && (
+                    {projectReferenceData.backgrounds && projectReferenceData.backgrounds.length > 0 && (
                       <div>
                         <h3 className="text-sm font-medium text-gray-700 mb-2">배경 이미지</h3>
-                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                          {projectReferenceData.backgroundImages.map((image: any, index: number) => (
-                            <div key={`bg-${index}`} className="bg-gray-50 p-3 rounded border hover:bg-gray-100">
-                              <div className="relative">
-                                <img
-                                  src={image.image}
-                                  alt={image.description || image.prompt}
-                                  className="w-full h-32 object-cover rounded cursor-pointer"
-                                  onClick={() => handleProjectReferenceImageSelect(image, 'background')}
-                                />
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                          {projectReferenceData.backgrounds.map((image: ProjectReferenceImage, index: number) => {
+                            const imageId = generateImageId(image, 'background');
+                            const isSelected = selectedProjectImages.has(imageId);
+                            return (
+                              <div key={imageId} className="relative group">
+                                <div className="aspect-square bg-gray-100 rounded-lg overflow-hidden">
+                                  <img
+                                    src={image.image}
+                                    alt={image.description || image.prompt}
+                                    className="w-full h-full object-cover"
+                                  />
+                                </div>
+                                <div className="mt-2 text-sm">
+                                  <div className="font-medium truncate">{image.description || image.prompt}</div>
+                                </div>
+                                <div className="absolute top-1 left-1 flex items-center gap-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={(e) => {
+                                      e.stopPropagation();
+                                      handleToggleProjectImageSelection(imageId, image, 'background');
+                                    }}
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
+                                  />
+                                </div>
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     handleDownloadImage(image.image, image.description || image.prompt || '배경 이미지');
                                   }}
-                                  className="absolute top-2 right-2 p-1 bg-black bg-opacity-50 text-white rounded hover:bg-opacity-70 transition-colors"
-                                  title="다운로드"
+                                  className="absolute top-1 right-1 p-1 bg-black bg-opacity-50 text-white rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                                  title="이미지 다운로드"
                                 >
                                   <Download className="w-3 h-3" />
                                 </button>
                               </div>
-                              <p className="text-xs text-gray-600 mt-2">{image.description || image.prompt}</p>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       </div>
                     )}
 
                     {/* 설정 컷 이미지 */}
-                    {projectReferenceData.settingCutImages && projectReferenceData.settingCutImages.length > 0 && (
+                    {projectReferenceData.settingCuts && projectReferenceData.settingCuts.length > 0 && (
                       <div>
                         <h3 className="text-sm font-medium text-gray-700 mb-2">설정 컷 이미지</h3>
-                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                          {projectReferenceData.settingCutImages.map((image: any, index: number) => (
-                            <div key={`cut-${index}`} className="bg-gray-50 p-3 rounded border hover:bg-gray-100">
-                              <div className="relative">
-                                <img
-                                  src={image.image}
-                                  alt={image.description || image.prompt}
-                                  className="w-full h-32 object-cover rounded cursor-pointer"
-                                  onClick={() => handleProjectReferenceImageSelect(image, 'settingCut')}
-                                />
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                          {projectReferenceData.settingCuts.map((image: ProjectReferenceImage, index: number) => {
+                            const imageId = generateImageId(image, 'settingCut');
+                            const isSelected = selectedProjectImages.has(imageId);
+                            return (
+                              <div key={imageId} className="relative group">
+                                <div className="aspect-square bg-gray-100 rounded-lg overflow-hidden">
+                                  <img
+                                    src={image.image}
+                                    alt={image.description || image.prompt}
+                                    className="w-full h-full object-cover"
+                                  />
+                                </div>
+                                <div className="mt-2 text-sm">
+                                  <div className="font-medium truncate">{image.description || image.prompt}</div>
+                                </div>
+                                <div className="absolute top-1 left-1 flex items-center gap-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={(e) => {
+                                      e.stopPropagation();
+                                      handleToggleProjectImageSelection(imageId, image, 'settingCut');
+                                    }}
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
+                                  />
+                                </div>
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     handleDownloadImage(image.image, image.description || image.prompt || '설정 컷 이미지');
                                   }}
-                                  className="absolute top-2 right-2 p-1 bg-black bg-opacity-50 text-white rounded hover:bg-opacity-70 transition-colors"
-                                  title="다운로드"
+                                  className="absolute top-1 right-1 p-1 bg-black bg-opacity-50 text-white rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                                  title="이미지 다운로드"
                                 >
                                   <Download className="w-3 h-3" />
                                 </button>
                               </div>
-                              <p className="text-xs text-gray-600 mt-2">{image.description || image.prompt}</p>
-                            </div>
-                          ))}
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 고급 이미지 */}
+                    {projectReferenceData.advanced && projectReferenceData.advanced.length > 0 && (
+                      <div>
+                        <h3 className="text-sm font-medium text-gray-700 mb-2">고급 이미지</h3>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                          {projectReferenceData.advanced.map((image: ProjectReferenceImage, index: number) => {
+                            const imageId = generateImageId(image, 'advanced');
+                            const isSelected = selectedProjectImages.has(imageId);
+                            return (
+                              <div key={imageId} className="relative group">
+                                <div className="aspect-square bg-gray-100 rounded-lg overflow-hidden">
+                                  <img
+                                    src={image.image}
+                                    alt={image.description || image.prompt}
+                                    className="w-full h-full object-cover"
+                                  />
+                                </div>
+                                <div className="mt-2 text-sm">
+                                  <div className="font-medium truncate">{image.description || image.prompt}</div>
+                                  {image.timestamp && (
+                                    <div className="text-xs text-gray-500 mt-1">
+                                      {new Date(image.timestamp).toLocaleString()}
+                                    </div>
+                                  )}
+                                </div>
+                                <div className="absolute top-1 left-1 flex items-center gap-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={(e) => {
+                                      e.stopPropagation();
+                                      handleToggleProjectImageSelection(imageId, image, referenceModalType || 'character');
+                                    }}
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
+                                  />
+                                </div>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDownloadImage(image.image, image.description || image.prompt || '고급 이미지');
+                                  }}
+                                  className="absolute top-1 right-1 p-1 bg-black bg-opacity-50 text-white rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                                  title="이미지 다운로드"
+                                >
+                                  <Download className="w-3 h-3" />
+                                </button>
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
                     )}
 
                     {/* 전체 이미지가 없는 경우 */}
-                    {(!projectReferenceData.characterImages || projectReferenceData.characterImages.length === 0) && 
-                     (!projectReferenceData.backgroundImages || projectReferenceData.backgroundImages.length === 0) && 
-                     (!projectReferenceData.settingCutImages || projectReferenceData.settingCutImages.length === 0) && (
+                    {(!projectReferenceData.characters || projectReferenceData.characters.length === 0) && 
+                     (!projectReferenceData.backgrounds || projectReferenceData.backgrounds.length === 0) && 
+                     (!projectReferenceData.settingCuts || projectReferenceData.settingCuts.length === 0) &&
+                     (!projectReferenceData.advanced || projectReferenceData.advanced.length === 0) && (
                       <div className="text-center py-8 text-gray-500">
                         프로젝트 참조에 저장된 이미지가 없습니다.
                       </div>

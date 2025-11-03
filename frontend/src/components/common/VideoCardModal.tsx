@@ -131,23 +131,40 @@ const VideoCardModal: React.FC<VideoCardModalProps> = ({
           </div>
         </div>
 
-        {/* 영상 플레이어 - 화면에 맞게 출력 */}
-        <div className="flex-1 p-4 flex items-center justify-center">
-          <div className="relative bg-black rounded-lg overflow-hidden w-full max-w-full h-full max-h-[calc(100vh-200px)]">
+        {/* 썸네일 표시 */}
+        <div className="p-4 border-b">
+          <h3 className="font-medium text-gray-800 mb-3">영상 썸네일</h3>
+          <div className="aspect-square bg-gray-100 rounded-lg overflow-hidden max-w-xs mx-auto">
+            {video.thumbnail ? (
+              <img
+                src={video.thumbnail}
+                alt="영상 썸네일"
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <div className="flex items-center justify-center h-full text-gray-400">
+                <div className="text-center">
+                  <Play className="w-8 h-8 mx-auto mb-2" />
+                  <p className="text-sm">썸네일 없음</p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* 영상 플레이어 */}
+        <div className="flex-1 p-4">
+          <div className={`relative bg-black rounded-lg overflow-hidden ${
+            video.videoRatio === '9:16' ? 'aspect-[9/16] max-h-[80vh]' : 'aspect-video'
+          }`}>
             {video.videoUrl ? (
               <video
-                className="w-full h-full object-contain"
+                className="w-full h-full object-cover"
                 controls
                 poster={video.thumbnail}
                 onPlay={() => setIsPlaying(true)}
                 onPause={() => setIsPlaying(false)}
                 onVolumeChange={(e) => setIsMuted(e.currentTarget.muted)}
-                style={{
-                  maxWidth: '100%',
-                  maxHeight: '100%',
-                  width: 'auto',
-                  height: 'auto'
-                }}
               >
                 <source src={video.videoUrl} type="video/mp4" />
                 브라우저가 비디오를 지원하지 않습니다.
@@ -199,7 +216,7 @@ const VideoCardModal: React.FC<VideoCardModalProps> = ({
           </div>
 
           {/* 참조 이미지 정보 */}
-          {((video.characterImages?.length || 0) > 0 || (video.backgrounds?.length || 0) > 0) && (
+          {(video.characterImages?.length > 0 || video.backgrounds?.length > 0) && (
             <div className="mt-4">
               <h3 className="font-medium text-gray-800 mb-2">참조 이미지</h3>
               <div className="flex gap-2 overflow-x-auto">

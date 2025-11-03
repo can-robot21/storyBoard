@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
-import { AIProvider, AIServiceConfig } from '../types/ai';
+import { AIProvider, AIServiceConfig, GenerationType, FunctionBasedAIProviders } from '../types/ai';
 import { AIServiceFactoryImpl } from '../services/ai/AIServiceFactory';
 import { useUIStore } from '../stores/uiStore';
+import { AIProviderSettings } from '../utils/aiProviderSettings';
 
 interface AIServiceManagerState {
   selectedProvider: AIProvider;
@@ -20,41 +21,56 @@ export const useAIServiceManager = () => {
   // AI 서비스 팩토리 인스턴스
   const aiFactory = AIServiceFactoryImpl.getInstance();
 
-  // 환경변수에서 API 키 로드
+  // 로그인한 사용자만 API 키 로드
   const loadApiKeys = useCallback(() => {
-  let googleApiKey = process.env.REACT_APP_GEMINI_API_KEY || '';
-  let openaiApiKey = process.env.REACT_APP_OPENAI_API_KEY || '';
-  let anthropicApiKey = process.env.REACT_APP_ANTHROPIC_API_KEY || '';
-  let nanoBananaApiKey = process.env.REACT_APP_GEMINI_API_KEY || '';
+    let googleApiKey = '';
+    let chatgptApiKey = '';
+    let anthropicApiKey = '';
+    let klingApiKey = '';
+    let klingSecretKey = '';
 
-  try {
-    if (typeof window !== 'undefined') {
-      const currentUserRaw = localStorage.getItem('storyboard_current_user');
-      const localKeysRaw = localStorage.getItem('user_api_keys');
-      const adminEmail = process.env.REACT_APP_ADMIN_EMAIL || 'star612.net@gmail.com';
-      const currentUser = currentUserRaw ? JSON.parse(currentUserRaw) : null;
-      const isAdmin = !!(currentUser && currentUser.email === adminEmail);
-      const localKeys = localKeysRaw ? JSON.parse(localKeysRaw) : {};
+    try {
+      if (typeof window !== 'undefined') {
+        const currentUserRaw = localStorage.getItem('storyboard_current_user');
+        const localKeysRaw = localStorage.getItem('user_api_keys');
+        const currentUser = currentUserRaw ? JSON.parse(currentUserRaw) : null;
+        
+        console.log('🔍 API 키 로드 시도:', {
+          hasCurrentUser: !!currentUser,
+          currentUserEmail: currentUser?.email,
+          hasLocalKeys: !!localKeysRaw
+        });
 
-      if (!isAdmin) {
-        googleApiKey = (localKeys.google || currentUser?.apiKeys?.google || googleApiKey || '').toString();
-        openaiApiKey = (localKeys.openai || currentUser?.apiKeys?.openai || openaiApiKey || '').toString();
-        anthropicApiKey = (localKeys.anthropic || currentUser?.apiKeys?.anthropic || anthropicApiKey || '').toString();
-        nanoBananaApiKey = googleApiKey;
-      } else {
-        nanoBananaApiKey = googleApiKey;
+        const localKeys = localKeysRaw ? JSON.parse(localKeysRaw) : {};
+
+        // 로그인한 사용자만 개인 API 키 사용
+        if (currentUser) {
+          googleApiKey = (localKeys.google || currentUser?.apiKeys?.google || '').toString();
+          chatgptApiKey = (localKeys.chatgpt || currentUser?.apiKeys?.openai || '').toString();
+          anthropicApiKey = (localKeys.anthropic || currentUser?.apiKeys?.anthropic || '').toString();
+          klingApiKey = (localKeys.kling || currentUser?.apiKeys?.kling || '').toString();
+          
+          console.log('🔑 로드된 API 키 상태:', {
+            google: googleApiKey ? `${googleApiKey.substring(0, 8)}...` : '없음',
+            chatgpt: chatgptApiKey ? `${chatgptApiKey.substring(0, 8)}...` : '없음',
+            anthropic: anthropicApiKey ? `${anthropicApiKey.substring(0, 8)}...` : '없음',
+            kling: klingApiKey ? `${klingApiKey.substring(0, 8)}...` : '없음'
+          });
+        } else {
+          console.log('⚠️ 로그인하지 않은 사용자 - API 키 사용 안함');
+        }
       }
+    } catch (error) {
+      console.error('❌ API 키 로드 오류:', error);
     }
-  } catch {}
 
-  return {
-    google: googleApiKey,
-    openai: openaiApiKey,
-    chatgpt: openaiApiKey,
-    anthropic: anthropicApiKey,
-    'nano-banana': nanoBananaApiKey
-  };
-}, []);
+    return {
+      google: googleApiKey,
+      chatgpt: chatgptApiKey,
+      anthropic: anthropicApiKey,
+      kling: klingApiKey
+    };
+  }, []);
 
   // AI 서비스 초기화
   const initializeAIService = useCallback(async (provider: AIProvider) => {
@@ -70,8 +86,10 @@ export const useAIServiceManager = () => {
 
       const config: AIServiceConfig = {
         apiKey,
-        baseUrl: (provider === 'openai' || provider === 'chatgpt')
+        baseUrl: (provider === 'chatgpt')
           ? 'https://api.openai.com/v1'
+          : provider === 'kling'
+          ? 'https://api.kling.ai/v1'
           : 'https://generativelanguage.googleapis.com/v1beta'
       };
 
@@ -139,8 +157,10 @@ export const useAIServiceManager = () => {
 
     const config: AIServiceConfig = {
       apiKey,
-      baseUrl: (state.selectedProvider === 'openai' || state.selectedProvider === 'chatgpt')
+      baseUrl: (state.selectedProvider === 'chatgpt')
         ? 'https://api.openai.com/v1'
+        : state.selectedProvider === 'kling'
+        ? 'https://api.kling.ai/v1'
         : 'https://generativelanguage.googleapis.com/v1beta'
     };
 
@@ -161,20 +181,76 @@ export const useAIServiceManager = () => {
   useEffect(() => {
     const initialize = async () => {
       const availableProviders = getAvailableProviders();
+      console.log('🔍 사용 가능한 AI 서비스:', availableProviders);
+      
       if (availableProviders.length > 0) {
         await initializeAIService(availableProviders[0]);
       } else {
-        // API 키가 없을 때는 조용히 처리 (경고 메시지 제거)
-        console.info('API 키가 설정되지 않았습니다. 설정에서 API 키를 입력해주세요.');
-        setState(prev => ({
-          ...prev,
-          error: null // 에러 상태를 null로 설정하여 조용히 처리
-        }));
+        // API 키가 없어도 기본적으로 Google 서비스 시도
+        const apiKeys = loadApiKeys();
+        const hasGoogleKey = !!apiKeys.google;
+        
+        if (hasGoogleKey) {
+          console.log('🔑 Google API 키는 있지만 서비스 초기화 실패');
+          setState(prev => ({
+            ...prev,
+            error: 'Google AI 서비스 초기화에 실패했습니다. API 키를 확인해주세요.'
+          }));
+        } else {
+          console.info('🔑 AI 설정: 로그인하지 않은 사용자 - API 키 로드 안함');
+          console.info('💡 사용자 API 키를 설정하면 더 많은 AI 서비스를 이용할 수 있습니다.');
+          setState(prev => ({
+            ...prev,
+            error: 'API 키가 설정되지 않았습니다. 설정에서 API 키를 입력해주세요.'
+          }));
+        }
       }
     };
 
     initialize();
   }, [initializeAIService, getAvailableProviders]);
+
+  /**
+   * 기능별 AI Provider 가져오기
+   */
+  const getProviderForFunction = useCallback((type: GenerationType): AIProvider => {
+    return AIProviderSettings.getProviderForFunction(type);
+  }, []);
+
+  /**
+   * 기능별 AI Service 가져오기
+   */
+  const getAIServiceForFunction = useCallback((type: GenerationType) => {
+    const provider = AIProviderSettings.getProviderForFunction(type);
+    const apiKeys = loadApiKeys();
+    const apiKey = apiKeys[provider];
+    
+    if (!apiKey) {
+      console.warn(`${provider} API 키가 설정되지 않았습니다.`);
+      return null;
+    }
+
+    const config: AIServiceConfig = {
+      apiKey,
+      baseUrl: (provider === 'chatgpt')
+        ? 'https://api.openai.com/v1'
+        : provider === 'kling'
+        ? 'https://api.kling.ai/v1'
+        : 'https://generativelanguage.googleapis.com/v1beta'
+    };
+
+    try {
+      const service = aiFactory.createService(provider, config);
+      if (!service.isAvailable()) {
+        console.warn(`${provider} 서비스를 사용할 수 없습니다.`);
+        return null;
+      }
+      return service;
+    } catch (error) {
+      console.error(`${provider} 서비스 생성 실패:`, error);
+      return null;
+    }
+  }, [aiFactory, loadApiKeys]);
 
   return {
     selectedProvider: state.selectedProvider,
@@ -183,7 +259,9 @@ export const useAIServiceManager = () => {
     changeAIService,
     getAvailableProviders,
     getCurrentAIService,
-    initializeAIService
+    initializeAIService,
+    getProviderForFunction,
+    getAIServiceForFunction
   };
 };
 

@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, HelpCircle, CheckCircle, ArrowRight, Lightbulb } from 'lucide-react';
+import { X, HelpCircle, CheckCircle, ArrowRight, Lightbulb, Key, Sparkles } from 'lucide-react';
 
 interface StepHelpModalProps {
   isOpen: boolean;
@@ -52,6 +52,16 @@ const stepGuides: Record<string, StepGuide> = {
       {
         title: "4. AI 검토 및 카드 초안 작성",
         description: "시나리오를 AI가 검토하고 구조화된 카드로 변환합니다."
+      },
+      {
+        title: "5. 스토리보드 편집 및 PDF 생성",
+        description: "생성된 프로젝트 데이터를 바탕으로 스토리보드를 편집하고 PDF로 내보낼 수 있습니다.",
+        tips: [
+          "StoryBoard와 ImageBoard 양식 중 선택하여 전문적인 스토리보드를 제작하세요",
+          "컷별 이미지와 설명을 추가하여 상세한 스토리보드를 완성하세요",
+          "PDF 미리보기 기능으로 최종 결과를 확인한 후 저장하세요",
+          "이미지와 텍스트를 압축하여 별도로 저장할 수 있습니다"
+        ]
       }
     ],
     requirements: [
@@ -135,7 +145,7 @@ const stepGuides: Record<string, StepGuide> = {
       "특별한 품질이 필요한 이미지에 활용하세요"
     ]
   },
-  "영상 생성": {
+      "영상 생성": {
     title: "영상 생성",
     description: "생성된 이미지들을 바탕으로 최종 영상을 제작합니다.",
     steps: [
@@ -182,6 +192,55 @@ const stepGuides: Record<string, StepGuide> = {
       "선택한 요소들이 서로 조화를 이루는지 확인하세요",
       "생성 시간이 오래 걸릴 수 있으니 인내심을 가지세요"
     ]
+  },
+  "스토리보드 생성": {
+    title: "스토리보드 생성",
+    description: "StoryBoard와 ImageBoard 양식을 활용하여 전문적인 스토리보드를 제작할 수 있습니다.",
+    steps: [
+      {
+        title: "1. 양식 선택",
+        description: "StoryBoard(컷 기반) 또는 ImageBoard(3x3 그리드) 양식 중 하나를 선택하세요.",
+        tips: [
+          "StoryBoard: 컷별 상세 설명이 필요한 경우 선택",
+          "ImageBoard: 이미지 중심의 간결한 구성을 원하는 경우 선택"
+        ]
+      },
+      {
+        title: "2. 상단 정보 입력",
+        description: "프로젝트 타이틀, 날짜, 시간, 씬 번호 등 기본 정보를 입력하세요.",
+        tips: [
+          "입력/수정 버튼을 클릭하여 편집 모드로 전환하세요",
+          "정보 입력 후 저장 버튼을 눌러 데이터를 저장하세요"
+        ]
+      },
+      {
+        title: "3. 이미지 및 컷 추가",
+        description: "[컷] 추가, [이미지] 추가, [이미지만 추가] 버튼을 활용하여 항목을 추가하세요.",
+        tips: [
+          "[컷] 추가: 컷 번호와 함께 이미지와 설명을 추가",
+          "[이미지] 추가: 컷 번호 없이 이미지와 설명 추가",
+          "[이미지만 추가] 최대 3개까지 연속으로 추가 가능"
+        ]
+      },
+      {
+        title: "4. PDF 미리보기 및 저장",
+        description: "저장 완료 후 PDF 미리보기를 통해 결과를 확인하고 저장할 수 있습니다.",
+        tips: [
+          "저장 후에만 PDF 미리보기가 가능합니다",
+          "[이미지+내용] 버튼으로 이미지와 텍스트를 압축 저장할 수 있습니다"
+        ]
+      }
+    ],
+    requirements: [
+      "스토리보드 생성 기능 접근 권한 (필수)",
+      "이미지 파일 준비 (권장)",
+      "프로젝트 정보 입력 (필수)"
+    ],
+    tips: [
+      "페이지네이션 기능을 활용하여 대량의 컷을 관리하세요",
+      "상단 정보 섹션을 보이기/감추기로 화면을 정리할 수 있습니다",
+      "초기화 버튼으로 모든 데이터를 한 번에 초기화할 수 있습니다"
+    ]
   }
 };
 
@@ -219,6 +278,35 @@ export const StepHelpModal: React.FC<StepHelpModalProps> = ({
         <div className="p-6 overflow-y-auto max-h-[calc(90vh-200px)]">
           {/* 설명 */}
           <p className="text-gray-600 mb-6">{guide.description}</p>
+
+          {/* API Key 안내 섹션 - 점선 라운드 박스 */}
+          <div className="mb-6 p-4 border-2 border-dashed border-blue-300 rounded-lg bg-blue-50">
+            <div className="flex items-start gap-3">
+              <Key className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <h3 className="font-semibold text-blue-900 mb-2 flex items-center gap-2">
+                  <Sparkles className="w-4 h-4" />
+                  API Key 설정 안내
+                </h3>
+                <p className="text-sm text-blue-800 mb-2">
+                  본 전용앱과 사이트에 최적화된 프롬프트 생성과 컨트롤 기능을 사용하려면 AI 서비스의 API Key가 필요합니다.
+                </p>
+                <div className="space-y-1.5 mt-3">
+                  <div className="flex items-start gap-2 text-sm text-blue-700">
+                    <span className="font-medium">✓ Google AI:</span>
+                    <span>Google AI Studio에서 발급받은 API Key를 입력하세요. 이미지 생성과 텍스트 생성에 활용됩니다.</span>
+                  </div>
+                  <div className="flex items-start gap-2 text-sm text-blue-700">
+                    <span className="font-medium">✓ ChatGPT (OpenAI):</span>
+                    <span>OpenAI에서 발급받은 API Key를 입력하세요. 고급 텍스트 생성 및 시나리오 작성에 활용됩니다.</span>
+                  </div>
+                  <p className="text-xs text-blue-600 mt-2 pt-2 border-t border-blue-200">
+                    💡 API Key는 프로필 설정에서 입력할 수 있으며, 입력하신 정보는 안전하게 암호화되어 저장됩니다.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
 
           {/* 단계별 가이드 */}
           <div className="mb-8">

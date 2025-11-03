@@ -22,9 +22,10 @@ const ImageUpload: React.FC<ImageUploadProps> = ({
   const handleFileSelect = (files: FileList | null) => {
     if (!files) return;
 
+    const currentImages = attachedImages || [];
     const newFiles = Array.from(files).filter(file => 
       file.type.startsWith('image/') && 
-      attachedImages.length + Array.from(files).length <= maxImages
+      currentImages.length + Array.from(files).length <= maxImages
     );
 
     if (newFiles.length === 0) {
@@ -32,12 +33,12 @@ const ImageUpload: React.FC<ImageUploadProps> = ({
       return;
     }
 
-    if (attachedImages.length + newFiles.length > maxImages) {
+    if (currentImages.length + newFiles.length > maxImages) {
       alert(`최대 ${maxImages}개의 이미지만 업로드 가능합니다.`);
       return;
     }
 
-    onImagesChange([...attachedImages, ...newFiles]);
+    onImagesChange([...currentImages, ...newFiles]);
   };
 
   const handleDrop = (e: React.DragEvent) => {
@@ -57,7 +58,8 @@ const ImageUpload: React.FC<ImageUploadProps> = ({
   };
 
   const removeImage = (index: number) => {
-    const newImages = attachedImages.filter((_, i) => i !== index);
+    const currentImages = attachedImages || [];
+    const newImages = currentImages.filter((_, i) => i !== index);
     onImagesChange(newImages);
   };
 
@@ -100,12 +102,12 @@ const ImageUpload: React.FC<ImageUploadProps> = ({
       </div>
 
       {/* 첨부된 이미지 목록 */}
-      {attachedImages.length > 0 && (
+      {attachedImages && attachedImages.length > 0 && (
         <div className="space-y-2">
           <h4 className="text-sm font-medium text-gray-700">
             첨부된 이미지 ({attachedImages.length}/{maxImages})
           </h4>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+          <div className="grid grid-cols-4 md:grid-cols-6 gap-2">
             {attachedImages.map((file, index) => (
               <div key={index} className="relative group">
                 <div className="aspect-square rounded-lg overflow-hidden bg-gray-100">
@@ -120,9 +122,9 @@ const ImageUpload: React.FC<ImageUploadProps> = ({
                     e.stopPropagation();
                     removeImage(index);
                   }}
-                  className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                  className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
                 >
-                  <X className="h-4 w-4" />
+                  <X className="h-3 w-3" />
                 </button>
                 <p className="text-xs text-gray-600 mt-1 truncate">
                   {file.name}
@@ -134,13 +136,13 @@ const ImageUpload: React.FC<ImageUploadProps> = ({
       )}
 
       {/* 추가 업로드 버튼 */}
-      {attachedImages.length < maxImages && (
+      {attachedImages && attachedImages.length < maxImages && (
         <button
           onClick={openFileDialog}
           className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm text-blue-600 border border-blue-300 rounded-lg hover:bg-blue-50 transition-colors"
         >
           <ImageIcon className="h-4 w-4" />
-          이미지 추가 ({attachedImages.length}/{maxImages})
+          이미지 추가 ({(attachedImages || []).length}/{maxImages})
         </button>
       )}
     </div>

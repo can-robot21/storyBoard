@@ -9,6 +9,29 @@ export interface ImageGenerationConfig {
   aspectRatio: string;
   customSize: string;
   additionalPrompt: string;
+  renderMode?: string;
+  // Imagen 3/4 옵션들 (txt2img용)
+  numberOfImages?: number; // 생성할 이미지 수 (1-4)
+  imageSize?: string; // 이미지 크기 (1K, 2K)
+  personGeneration?: string; // 사람 이미지 생성 허용 (dont_allow, allow_adult, allow_all)
+  // Gemini 2.5 Flash Image 옵션들 (img2img용)
+  responseModalities?: string; // 응답 모달리티 (Image, Text,Image)
+  styleEnhancement?: string; // 스타일 프롬프트 강화
+  editMode?: string; // 편집 모드 (modify, inpainting, style_transfer, composition)
+  detailPreservation?: number; // 세부정보 보존 강도 (0-100)
+  editIntensity?: number; // 편집 강도 (0-100)
+  cameraControl?: string; // 카메라 제어
+  // 나노바나나 카메라 설정 옵션들
+  cameraPosition?: string; // 카메라 위치 (front, side, back, top, low_angle, high_angle, bird_eye, worm_eye)
+  lensType?: string; // 렌즈 타입 (wide_angle, standard, telephoto, macro, fisheye, tilt_shift)
+  focalDistance?: string; // 초점 거리 (close_up, medium, long_shot, extreme_long_shot)
+  cameraFilter?: string; // 카메라 필터 (none, vintage, cinematic, dramatic, soft_focus, sharp, warm, cool)
+  // 기존 옵션들 (호환성 유지)
+  creativity?: number; // 자유도 (0-100)
+  referenceStrength?: number; // 첨부 이미지 참조 강도 (0-100)
+  compositionDetail?: string; // 합성 디테일 레벨
+  lightingStyle?: string; // 조명 스타일
+  colorTemperature?: string; // 색온도
 }
 
 export interface ImageGenerationResult {
@@ -32,6 +55,7 @@ interface ImageGenerationFormProps {
   isGenerating?: boolean;
   maxImages?: number;
   showDownloadButtons?: boolean;
+  showGenerateButton?: boolean;
 }
 
 export const ImageGenerationForm: React.FC<ImageGenerationFormProps> = ({
@@ -46,7 +70,8 @@ export const ImageGenerationForm: React.FC<ImageGenerationFormProps> = ({
   onGenerate,
   isGenerating = false,
   maxImages = 5,
-  showDownloadButtons = true
+  showDownloadButtons = true,
+  showGenerateButton = true
 }) => {
   return (
     <div className="space-y-4">
@@ -90,114 +115,61 @@ export const ImageGenerationForm: React.FC<ImageGenerationFormProps> = ({
                     link.download = `attached-image-${index + 1}.png`;
                     link.click();
                   }}
-                  className="absolute top-2 right-2 bg-black bg-opacity-50 text-white p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                  className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-50 transition-all duration-200 flex items-center justify-center opacity-0 group-hover:opacity-100"
                 >
-                  <Download className="w-4 h-4" />
+                  <Download className="w-6 h-6 text-white" />
                 </button>
               </div>
             ))}
           </div>
         </div>
       )}
-      
+
+      {/* img2img 기본 옵션 블록 - 커스텀 사이즈와 추가 프롬프트만 */}
+      {attachedImages.length > 0 && (
+        <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <h4 className="text-sm font-medium text-blue-800 mb-3">🎨 img2img 기본 옵션</h4>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* 커스텀 사이즈 */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">커스텀 사이즈</label>
+              <input
+                type="text"
+                value={config.customSize}
+                onChange={(e) => onConfigChange({ ...config, customSize: e.target.value })}
+                placeholder="예: 1920x1080, 4K, 세로형 등"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            {/* 추가 프롬프트 */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">추가 프롬프트</label>
+              <textarea
+                value={config.additionalPrompt}
+                onChange={(e) => onConfigChange({ ...config, additionalPrompt: e.target.value })}
+                placeholder="추가로 원하는 스타일이나 요구사항을 입력하세요"
+                rows={2}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+
       {/* 생성 버튼 */}
-      <Button 
-        className="w-full" 
-        onClick={onGenerate}
-        disabled={isGenerating}
-        loading={isGenerating}
-      >
-        {isGenerating ? '생성 중...' : '이미지 생성'}
-      </Button>
-    </div>
-  );
-};
+      {showGenerateButton && (
+        <Button
+          onClick={onGenerate}
+          disabled={isGenerating || !inputValue.trim()}
+          className="w-full bg-yellow-500 hover:bg-yellow-600 text-white font-medium py-2 px-4 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {isGenerating ? '생성 중...' : '생성하기'}
+        </Button>
+      )}
 
-// 고급 옵션 설정 컴포넌트
-interface AdvancedOptionsProps {
-  config: ImageGenerationConfig;
-  onConfigChange: (config: ImageGenerationConfig) => void;
-}
-
-export const AdvancedOptions: React.FC<AdvancedOptionsProps> = ({
-  config,
-  onConfigChange
-}) => {
-  return (
-    <div className="bg-white rounded-lg border p-4">
-      <h3 className="font-medium text-gray-800 mb-3">고급 옵션</h3>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* 이미지 스타일 */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">이미지 스타일</label>
-          <select
-            value={config.style}
-            onChange={(e) => onConfigChange({ ...config, style: e.target.value })}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500"
-          >
-            <option value="realistic">사실적 (Realistic)</option>
-            <option value="cartoon">만화 (Cartoon)</option>
-            <option value="anime">애니메이션 (Anime)</option>
-            <option value="3d">3D 렌더링</option>
-            <option value="watercolor">수채화</option>
-            <option value="oil_painting">유화</option>
-          </select>
-        </div>
-
-        {/* 이미지 품질 */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">이미지 품질</label>
-          <select
-            value={config.quality}
-            onChange={(e) => onConfigChange({ ...config, quality: e.target.value })}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500"
-          >
-            <option value="high">고품질 (High)</option>
-            <option value="medium">중품질 (Medium)</option>
-            <option value="low">저품질 (Low)</option>
-          </select>
-        </div>
-
-        {/* 화면 비율 */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">화면 비율</label>
-          <select
-            value={config.aspectRatio}
-            onChange={(e) => onConfigChange({ ...config, aspectRatio: e.target.value })}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500"
-          >
-            <option value="1:1">정사각형 (1:1)</option>
-            <option value="16:9">와이드 (16:9)</option>
-            <option value="9:16">세로 (9:16)</option>
-            <option value="4:3">표준 (4:3)</option>
-            <option value="3:4">세로 표준 (3:4)</option>
-          </select>
-        </div>
-
-        {/* 커스텀 사이즈 */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">커스텀 사이즈</label>
-          <input
-            type="text"
-            value={config.customSize}
-            onChange={(e) => onConfigChange({ ...config, customSize: e.target.value })}
-            placeholder="예: 1920x1080, 4K, 세로형 등"
-            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500"
-          />
-        </div>
-      </div>
-
-      {/* 추가 프롬프트 */}
-      <div className="mt-4">
-        <label className="block text-sm font-medium text-gray-700 mb-1">추가 프롬프트</label>
-        <textarea
-          value={config.additionalPrompt}
-          onChange={(e) => onConfigChange({ ...config, additionalPrompt: e.target.value })}
-          placeholder="추가로 원하는 스타일이나 요구사항을 입력하세요"
-          rows={3}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500"
-        />
-      </div>
     </div>
   );
 };

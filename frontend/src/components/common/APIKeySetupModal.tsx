@@ -32,7 +32,8 @@ export const APIKeySetupModal: React.FC<APIKeySetupProps> = ({ onClose }) => {
               <li>다음 내용을 추가하세요:</li>
             </ol>
             <div className="mt-3 bg-gray-800 text-green-400 p-3 rounded font-mono text-sm">
-              REACT_APP_GEMINI_API_KEY=your-api-key-here
+            Google AI (Gemini) API 키가 설정되지 않아 이미지 생성 기능을 사용할 수 없습니다.
+            로그인 후 설정에서 API 키를 입력해주세요.
             </div>
           </div>
           

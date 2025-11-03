@@ -108,8 +108,6 @@ interface LazyMainLayoutProps {
   setGeneratedCharacterImages: React.Dispatch<React.SetStateAction<any[]>>;
   generatedVideoBackgrounds: any[];
   setGeneratedVideoBackgrounds: React.Dispatch<React.SetStateAction<any[]>>;
-  generatedSettingCutImages: any[];
-  setGeneratedSettingCutImages: React.Dispatch<React.SetStateAction<any[]>>;
   generatedVideos: any[];
   setGeneratedVideos: React.Dispatch<React.SetStateAction<any[]>>;
 
@@ -124,8 +122,6 @@ interface LazyMainLayoutProps {
   setCutTextCardSelections: React.Dispatch<React.SetStateAction<{[key: string]: Set<number>}>>;
   selectedCuts: Set<string>;
   characterPrompt: string;
-  canProceedToNext: () => any;
-  onEditCard?: (cardId: number, cardData: any) => void;
 }
 
 export const LazyMainLayout: React.FC<LazyMainLayoutProps> = (props) => {

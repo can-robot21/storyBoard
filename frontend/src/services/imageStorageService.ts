@@ -41,13 +41,14 @@ class ImageStorageService {
 
   /**
    * 이미지 저장 (정책에 따라 저장 또는 링크 처리)
+   * @returns 저장된 이미지 ID와 삭제된 이미지 개수
    */
   async storeImage(
     projectId: string,
     imageType: 'character' | 'background' | 'settingCut',
     imageData: string,
     metadata?: any
-  ): Promise<string> {
+  ): Promise<{ imageId: string; deletedImagesCount?: number }> {
     const imageId = `img_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
     
     // 현재 프로젝트의 이미지 수 확인
@@ -88,12 +89,35 @@ class ImageStorageService {
     // 저장 정책 업데이트
     this.updateStoragePolicy();
 
-    // 로컬 스토리지에 저장
-    this.saveToStorage();
+    // 로컬 스토리지에 저장 (용량 초과 시 오래된 이미지 자동 삭제)
+    let deletedCount = 0;
+    try {
+      deletedCount = this.saveToStorage();
+      if (deletedCount > 0) {
+        // 삭제된 이미지가 있으면 알림을 위해 반환
+        // 상위 컴포넌트에서 알림 표시 가능하도록 deletedCount를 포함한 객체 반환
+        console.log(`✅ 오래된 이미지 ${deletedCount}개 삭제 후 저장 완료`);
+      }
+    } catch (error: any) {
+      // localStorage 용량 초과 에러 처리 (삭제 후에도 실패한 경우)
+      if (error?.name === 'QuotaExceededError' || error?.message?.includes('quota')) {
+        console.warn('⚠️ localStorage 용량이 초과되었습니다. 오래된 이미지를 삭제했지만 여전히 용량이 부족합니다.');
+        // 저장 실패해도 이미지는 반환 (메모리에만 존재)
+        // 사용자에게 알림은 상위 컴포넌트에서 처리
+        throw new Error('localStorage 용량이 부족합니다. 브라우저 저장소를 수동으로 정리해주세요.');
+      } else {
+        throw error;
+      }
+    }
 
     console.log(`이미지 저장 완료: ${imageId} (${shouldStore ? '실제 저장' : '링크 처리'})`);
     
-    return imageId;
+    // 삭제된 이미지가 있으면 반환값에 포함
+    if (deletedCount > 0) {
+      return { imageId, deletedImagesCount: deletedCount };
+    }
+    
+    return { imageId };
   }
 
   /**
@@ -132,7 +156,23 @@ class ImageStorageService {
     for (const projectStorage of this.projectStorages.values()) {
       const imageIndex = projectStorage.images.findIndex(img => img.id === imageId);
       if (imageIndex !== -1) {
+        const image = projectStorage.images[imageIndex];
+        // 링크 이미지인 경우 blob URL 해제
+        if (!image.isStored && image.imageData.startsWith('blob:')) {
+          try {
+            URL.revokeObjectURL(image.imageData);
+          } catch (e) {
+            console.warn('Blob URL 해제 실패:', e);
+          }
+        }
+        
         projectStorage.images.splice(imageIndex, 1);
+        
+        // 프로젝트의 이미지가 모두 삭제되면 프로젝트도 삭제
+        if (projectStorage.images.length === 0) {
+          this.projectStorages.delete(projectStorage.projectId);
+        }
+        
         this.saveToStorage();
         console.log(`이미지 삭제 완료: ${imageId}`);
         return true;
@@ -281,15 +321,98 @@ class ImageStorageService {
   }
 
   /**
-   * 저장소에 저장
+   * 오래된 이미지 삭제 (용량 초과 시 사용)
+   * @param targetCount 삭제할 이미지 개수 (기본값: 10개)
+   * @returns 삭제된 이미지 개수
    */
-  private saveToStorage(): void {
-    try {
-      const data = Array.from(this.projectStorages.entries());
-      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(data));
-    } catch (error) {
-      console.error('이미지 저장소 저장 실패:', error);
+  private deleteOldestImages(targetCount: number = 10): number {
+    let deletedCount = 0;
+    
+    // 모든 이미지를 타임스탬프로 정렬하여 오래된 것부터 삭제
+    const allImages: Array<{ projectId: string; image: ImageStorageItem; timestamp: number }> = [];
+    
+    this.projectStorages.forEach((projectStorage, projectId) => {
+      projectStorage.images.forEach(image => {
+        allImages.push({
+          projectId,
+          image,
+          timestamp: image.timestamp
+        });
+      });
+    });
+    
+    // 타임스탬프 오름차순 정렬 (오래된 것부터)
+    allImages.sort((a, b) => a.timestamp - b.timestamp);
+    
+    // 오래된 이미지부터 삭제
+    for (const { projectId, image } of allImages) {
+      if (deletedCount >= targetCount) break;
+      
+      const projectStorage = this.projectStorages.get(projectId);
+      if (projectStorage) {
+        const imageIndex = projectStorage.images.findIndex(img => img.id === image.id);
+        if (imageIndex !== -1) {
+          // 링크 이미지인 경우 blob URL 해제
+          if (!image.isStored && image.imageData.startsWith('blob:')) {
+            try {
+              URL.revokeObjectURL(image.imageData);
+            } catch (e) {
+              console.warn('Blob URL 해제 실패:', e);
+            }
+          }
+          
+          projectStorage.images.splice(imageIndex, 1);
+          deletedCount++;
+          
+          // 프로젝트의 이미지가 모두 삭제되면 프로젝트도 삭제
+          if (projectStorage.images.length === 0) {
+            this.projectStorages.delete(projectId);
+          }
+        }
+      }
     }
+    
+    return deletedCount;
+  }
+
+  /**
+   * 저장소에 저장 (용량 초과 시 오래된 이미지 삭제 후 재시도)
+   * @param maxRetries 최대 재시도 횟수 (기본값: 3)
+   * @returns 삭제된 이미지 개수 (성공 시 0)
+   */
+  private saveToStorage(maxRetries: number = 3): number {
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        const data = Array.from(this.projectStorages.entries());
+        localStorage.setItem(this.STORAGE_KEY, JSON.stringify(data));
+        return 0; // 성공
+      } catch (error: any) {
+        // localStorage 용량 초과 에러 처리
+        if (error?.name === 'QuotaExceededError' || error?.message?.includes('quota')) {
+          if (attempt < maxRetries - 1) {
+            // 오래된 이미지 삭제 후 재시도
+            const deletedCount = this.deleteOldestImages(10); // 10개씩 삭제
+            
+            if (deletedCount === 0) {
+              // 더 이상 삭제할 이미지가 없으면 중단
+              console.error('⚠️ localStorage 용량 초과: 삭제할 이미지가 없습니다.');
+              throw error;
+            }
+            
+            console.log(`⚠️ localStorage 용량 초과: 오래된 이미지 ${deletedCount}개 삭제 후 재시도 (${attempt + 1}/${maxRetries})`);
+            continue; // 재시도
+          } else {
+            // 최대 재시도 횟수 초과
+            console.error('⚠️ localStorage 용량 초과: 최대 재시도 횟수 초과');
+            throw error;
+          }
+        } else {
+          // 다른 에러는 즉시 throw
+          throw error;
+        }
+      }
+    }
+    return 0;
   }
 
   /**

@@ -7,7 +7,9 @@ interface HeaderProps {
   onLogout: () => void;
   onProfileClick?: () => void;
   onRegister?: () => void;
-  onTitleClick?: () => void;
+  onGoToIntro?: () => void;
+  onGoToMain?: () => void;
+  onGoToGuide?: () => void;
   currentUser?: {
     name: string;
     email: string;
@@ -20,17 +22,34 @@ export const Header: React.FC<HeaderProps> = ({
   onLogout,
   onProfileClick,
   onRegister,
-  onTitleClick,
+  onGoToIntro,
+  onGoToMain,
+  onGoToGuide,
   currentUser
 }) => {
+  // 항상 메인 페이지의 프로젝트 개요로 이동
+  const handleTitleClick = () => {
+    if (onGoToMain) {
+      onGoToMain();
+    }
+  };
+
   return (
-    <header className="w-full bg-gradient-to-r from-blue-50 to-purple-50 shadow-md px-6 py-3 flex justify-between items-center border-b border-gray-200">
-      <button
-        onClick={onTitleClick}
-        className="text-xl font-bold text-gray-800 hover:text-blue-600 transition-colors cursor-pointer"
-      >
-        🎬 영상/스토리보드 AI
-      </button>
+    <header className="w-full bg-white shadow-md px-6 py-3 flex justify-between items-center">
+      <div className="flex items-center gap-4">
+        <button
+          onClick={handleTitleClick}
+          className="text-xl font-bold text-gray-800 hover:text-blue-600 transition-colors"
+        >
+          🎬 영상/스토리보드 AI
+        </button>
+        <button
+          onClick={onGoToGuide}
+          className="px-3 py-1 bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200 transition-colors text-sm font-medium"
+        >
+          서비스 안내
+        </button>
+      </div>
 
       <div className="flex items-center gap-3">
         {/* 로그인/로그아웃 버튼 */}

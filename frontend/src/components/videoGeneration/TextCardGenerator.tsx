@@ -57,6 +57,42 @@ export const TextCardGenerator: React.FC<TextCardGeneratorProps> = React.memo(({
 }) => {
   const { addNotification } = useUIStore();
   
+  // 로그인 상태 확인 및 API 키 가져오기
+  const getAPIKey = (): string => {
+    try {
+      if (typeof window === 'undefined') return '';
+      
+      // 현재 사용자 확인
+      const currentUserRaw = localStorage.getItem('storyboard_current_user');
+      const currentUser = currentUserRaw ? JSON.parse(currentUserRaw) : null;
+      
+      if (!currentUser) {
+        console.log('🔑 API 키 로딩: 미설정 (로그인 필요)');
+        return '';
+      }
+      
+      // 사용자 API 키 확인
+      if (currentUser?.apiKeys?.google) {
+        return currentUser.apiKeys.google;
+      }
+      
+      // 로컬 저장소에서 API 키 확인
+      const localKeysRaw = localStorage.getItem('user_api_keys');
+      if (localKeysRaw) {
+        const localKeys = JSON.parse(localKeysRaw);
+        if (localKeys?.google) {
+          return localKeys.google;
+        }
+      }
+      
+      console.log('🔑 API 키 로딩: 미설정');
+      return '';
+    } catch (error) {
+      console.error('API 키 로딩 오류:', error);
+      return '';
+    }
+  };
+  
   // 에피소드만 선택 모드 상태
   const [episodeOnlyMode, setEpisodeOnlyMode] = useState(false);
   const [selectedEpisodeForCards, setSelectedEpisodeForCards] = useState<any>(null);
@@ -225,10 +261,10 @@ export const TextCardGenerator: React.FC<TextCardGeneratorProps> = React.memo(({
 
   // 씬 수정 시작
   const startEditingScene = useCallback((sceneCard: SceneTextCard) => {
-    setEditingSceneId(sceneCard.sceneId || null);
+    setEditingSceneId(sceneCard.sceneId);
     setEditingSceneData({
-      title: sceneCard.sceneTitle || '',
-      description: sceneCard.sceneDescription || '',
+      title: sceneCard.sceneTitle,
+      description: sceneCard.sceneDescription,
       commonSettings: sceneCard.sceneCommonSettings || ''
     });
   }, []);
@@ -275,7 +311,7 @@ export const TextCardGenerator: React.FC<TextCardGeneratorProps> = React.memo(({
   const startEditingCut = useCallback((cut: CutTextCard) => {
     setEditingCutId(cut.id);
     setEditingCutData({
-      text: cut.text || ''
+      text: cut.text
     });
   }, []);
 
@@ -339,7 +375,13 @@ export const TextCardGenerator: React.FC<TextCardGeneratorProps> = React.memo(({
     }
 
     try {
-      const { googleAIService } = await import('../../services/googleAIService');
+      const { GoogleAIService } = await import('../../services/googleAIService');
+      
+      const apiKey = getAPIKey();
+      if (!apiKey) {
+        throw new Error('Google AI API 키가 설정되지 않았습니다. 로그인 후 설정에서 API 키를 입력해주세요.');
+      }
+      const googleAIService = GoogleAIService.getInstance();
       
       const prompt = `다음 에피소드 정보를 바탕으로 텍스트 카드를 생성해주세요:
 
@@ -558,7 +600,7 @@ ${selectedEpisodeForCards.scenes.map((scene: any, index: number) =>
                         ✏️ 수정
                       </button>
                       <button
-                        onClick={() => sceneCard.sceneId && deleteSceneTextCard(sceneCard.sceneId)}
+                        onClick={() => deleteSceneTextCard(sceneCard.sceneId)}
                         className="px-2 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
                       >
                         🗑️ 삭제
@@ -638,7 +680,7 @@ ${selectedEpisodeForCards.scenes.map((scene: any, index: number) =>
                               <input
                                 type="checkbox"
                                 checked={cut.selected}
-                                onChange={() => sceneCard.sceneId && toggleCutSelection(sceneCard.sceneId, cut.id)}
+                                onChange={() => toggleCutSelection(sceneCard.sceneId, cut.id)}
                                 className="rounded"
                               />
                               <span className="text-sm font-medium text-gray-700">
@@ -752,7 +794,7 @@ ${selectedEpisodeForCards.scenes.map((scene: any, index: number) =>
                     <div className="flex items-center gap-2">
                       {onEditCard && (
                         <button
-                          onClick={() => onEditCard(card.id, card.generatedText || '')}
+                          onClick={() => onEditCard(card.id, card.generatedText)}
                           className="px-2 py-1 text-xs bg-yellow-500 text-white rounded hover:bg-yellow-600 transition-colors"
                         >
                           ✏️ 수정

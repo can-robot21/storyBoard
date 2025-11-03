@@ -16,20 +16,13 @@ interface ImageSelectionModalProps {
   onClose: () => void;
   onSelectImages: (images: string[]) => void;
   title?: string;
-  // 프로젝트 참조 이미지들 추가
-  projectReferenceCharacters?: any[];
-  projectReferenceBackgrounds?: any[];
-  projectReferenceSettingCuts?: any[];
 }
 
 export const ImageSelectionModal: React.FC<ImageSelectionModalProps> = ({
   isOpen,
   onClose,
   onSelectImages,
-  title = '이미지 선택',
-  projectReferenceCharacters = [],
-  projectReferenceBackgrounds = [],
-  projectReferenceSettingCuts = []
+  title = '이미지 선택'
 }) => {
   const [availableImages, setAvailableImages] = useState<ImageItem[]>([]);
   const [selectedImages, setSelectedImages] = useState<Set<string>>(new Set());
@@ -40,7 +33,7 @@ export const ImageSelectionModal: React.FC<ImageSelectionModalProps> = ({
     if (isOpen) {
       loadStoredImages();
     }
-  }, [isOpen, projectReferenceCharacters, projectReferenceBackgrounds, projectReferenceSettingCuts]);
+  }, [isOpen]);
 
   const loadStoredImages = () => {
     try {
@@ -51,18 +44,9 @@ export const ImageSelectionModal: React.FC<ImageSelectionModalProps> = ({
       const backgroundImages = JSON.parse(localStorage.getItem('generatedBackgrounds') || '[]');
       const settingCutImages = JSON.parse(localStorage.getItem('generatedSettingCuts') || '[]');
 
-      // 프로젝트 참조 이미지들도 추가
-      const allCharacterImages = [...characterImages, ...projectReferenceCharacters];
-      const allBackgroundImages = [...backgroundImages, ...projectReferenceBackgrounds];
-      const allSettingCutImages = [...settingCutImages, ...projectReferenceSettingCuts];
-
-      // 중복 제거를 위한 Set 사용
-      const seenImages = new Set<string>();
-
       // 캐릭터 이미지 추가
-      allCharacterImages.forEach((img: any, index: number) => {
-        if (img.image && !seenImages.has(img.image)) {
-          seenImages.add(img.image);
+      characterImages.forEach((img: any, index: number) => {
+        if (img.image) {
           images.push({
             id: `character_${index}`,
             image: img.image,
@@ -74,9 +58,8 @@ export const ImageSelectionModal: React.FC<ImageSelectionModalProps> = ({
       });
 
       // 배경 이미지 추가
-      allBackgroundImages.forEach((img: any, index: number) => {
-        if (img.image && !seenImages.has(img.image)) {
-          seenImages.add(img.image);
+      backgroundImages.forEach((img: any, index: number) => {
+        if (img.image) {
           images.push({
             id: `background_${index}`,
             image: img.image,
@@ -88,9 +71,8 @@ export const ImageSelectionModal: React.FC<ImageSelectionModalProps> = ({
       });
 
       // 설정 컷 이미지 추가
-      allSettingCutImages.forEach((img: any, index: number) => {
-        if (img.image && !seenImages.has(img.image)) {
-          seenImages.add(img.image);
+      settingCutImages.forEach((img: any, index: number) => {
+        if (img.image) {
           images.push({
             id: `settingCut_${index}`,
             image: img.image,
@@ -105,7 +87,6 @@ export const ImageSelectionModal: React.FC<ImageSelectionModalProps> = ({
       images.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
       
       setAvailableImages(images);
-      console.log('📸 로드된 이미지 개수:', images.length);
     } catch (error) {
       console.error('이미지 로드 오류:', error);
       setAvailableImages([]);
@@ -222,13 +203,8 @@ export const ImageSelectionModal: React.FC<ImageSelectionModalProps> = ({
         ) : (
           <div className="text-center py-8 text-gray-500">
             <ImageIcon className="w-12 h-12 mx-auto mb-2 opacity-50" />
-            <p className="font-medium mb-2">선택 가능한 이미지가 없습니다.</p>
-            <p className="text-sm mb-1">다음 단계를 확인해주세요:</p>
-            <ul className="text-xs text-left max-w-sm mx-auto space-y-1">
-              <li>• 프로젝트 개요에서 캐릭터/배경/설정 생성</li>
-              <li>• 이미지 생성 단계에서 이미지 생성</li>
-              <li>• 영상 생성에서 이미지 업로드</li>
-            </ul>
+            <p>선택 가능한 이미지가 없습니다.</p>
+            <p className="text-sm">먼저 이미지를 생성해주세요.</p>
           </div>
         )}
 

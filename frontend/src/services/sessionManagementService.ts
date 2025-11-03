@@ -325,7 +325,7 @@ export class SessionManagementService {
   private handleSessionExpired(): void {
     if (!this.currentSession) return;
 
-    // 세션 ID를 미리 저장 (performAutoLogout에서 currentSession이 null이 될 수 있음)
+    // sessionId를 미리 저장 (performAutoLogout에서 null이 될 수 있음)
     const sessionId = this.currentSession.sessionId;
 
     this.recordSessionEvent('expired');
@@ -340,6 +340,7 @@ export class SessionManagementService {
       this.performAutoLogout();
     }
 
+    // sessionId는 이미 저장했으므로 안전하게 사용 가능
     console.log(`⏰ 세션 만료: ${sessionId}`);
   }
 

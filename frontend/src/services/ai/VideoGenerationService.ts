@@ -118,8 +118,26 @@ export class VideoGenerationService {
         throw new Error('Video URI not found in response');
       }
       
-      // API 키를 URI에 추가하여 반환
-      const apiKey = process.env.REACT_APP_GEMINI_API_KEY;
+      // 사용자 API 키를 사용하여 URI에 추가
+      const getAPIKey = () => {
+        try {
+          if (typeof window !== 'undefined') {
+            const currentUserRaw = localStorage.getItem('storyboard_current_user');
+            const localKeysRaw = localStorage.getItem('user_api_keys');
+            const currentUser = currentUserRaw ? JSON.parse(currentUserRaw) : null;
+            const localKeys = localKeysRaw ? JSON.parse(localKeysRaw) : {};
+            
+            return localKeys.google || currentUser?.apiKeys?.google || '';
+          }
+        } catch {}
+        return '';
+      };
+
+      const apiKey = getAPIKey();
+      if (!apiKey) {
+        throw new Error('API 키가 설정되지 않았습니다. 설정에서 API 키를 입력해주세요.');
+      }
+      
       const videoUri = `${video.video.uri}&key=${apiKey}`;
       
       // 사용량 추적

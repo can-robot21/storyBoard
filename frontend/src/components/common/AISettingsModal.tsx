@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Key, AlertCircle, CheckCircle, BarChart3, Eye, EyeOff } from 'lucide-react';
+import { Key, AlertCircle, CheckCircle, BarChart3, Eye, EyeOff, FileText, Image as ImageIcon, Video } from 'lucide-react';
 import { AISelector } from './AISelector';
 import Modal from './Modal';
 import Button from './Button';
-import { AIProvider } from '../../types/ai';
+import { AIProvider, FunctionBasedAIProviders, GenerationType } from '../../types/ai';
+import { AIProviderSettings } from '../../utils/aiProviderSettings';
 import TokenCalculator from '../../utils/tokenCalculator';
 
 interface AISettingsModalProps {
@@ -12,6 +13,8 @@ interface AISettingsModalProps {
   selectedProvider: AIProvider;
   onProviderChange: (provider: AIProvider) => void;
   onSave: () => void;
+  functionBasedProviders?: FunctionBasedAIProviders;
+  onFunctionBasedProvidersChange?: (providers: FunctionBasedAIProviders) => void;
 }
 
 export const AISettingsModal: React.FC<AISettingsModalProps> = ({
@@ -19,18 +22,30 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({
   onClose,
   selectedProvider,
   onProviderChange,
-  onSave
+  onSave,
+  functionBasedProviders,
+  onFunctionBasedProvidersChange
 }) => {
   const [apiKeys, setApiKeys] = useState({
-    google: process.env.REACT_APP_GEMINI_API_KEY || '',
-    openai: process.env.REACT_APP_OPENAI_API_KEY || '',
-    chatgpt: process.env.REACT_APP_OPENAI_API_KEY || '',
-    anthropic: process.env.REACT_APP_ANTHROPIC_API_KEY || '',
-    'nano-banana': process.env.REACT_APP_GEMINI_API_KEY || '' // 나노 바나나는 Google AI 키 사용
+    google: '',
+    chatgpt: '',
+    anthropic: '',
+    kling: '',
+    klingSecret: '' // Kling AI Secret Key
   });
 
   const [showApiKeys, setShowApiKeys] = useState(false);
   const [showApiUsage, setShowApiUsage] = useState(false);
+  
+  // 로그인 상태 확인
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  
+  // 기능별 AI Provider 설정
+  const [functionProviders, setFunctionProviders] = useState<FunctionBasedAIProviders>(
+    functionBasedProviders || AIProviderSettings.load()
+  );
+  
+  const [showFunctionBasedSettings, setShowFunctionBasedSettings] = useState(false);
   const [sessionStats, setSessionStats] = useState({
     totalCalls: 0,
     totalTokens: 0,
@@ -87,33 +102,78 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({
       callsByModel: {}
     });
   };
-  // Prefill from localStorage for non-admin users
-  try {
-    // lightweight guard to avoid SSR issues
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('user_api_keys');
-      if (saved && !apiKeys.google && !apiKeys.openai && !apiKeys.chatgpt && !apiKeys.anthropic) {
-        const parsed = JSON.parse(saved);
-        if (parsed && typeof parsed === 'object') {
-          // prefill from saved keys without overriding env defaults if already present
-          apiKeys.google = apiKeys.google || parsed.google || '';
-          apiKeys.openai = apiKeys.openai || parsed.openai || '';
-          (apiKeys as any)['nano-banana'] = (apiKeys as any)['nano-banana'] || parsed['nano-banana'] || '';
-          apiKeys.chatgpt = apiKeys.chatgpt || parsed.chatgpt || '';
-          apiKeys.anthropic = apiKeys.anthropic || parsed.anthropic || '';
+  // 로그인 상태 확인 및 API 키 로드
+  useEffect(() => {
+    const loadApiKeys = () => {
+      try {
+        if (typeof window !== 'undefined') {
+          // 현재 사용자 확인
+          const currentUserRaw = localStorage.getItem('storyboard_current_user');
+          const currentUser = currentUserRaw ? JSON.parse(currentUserRaw) : null;
+          
+          // 로그인 상태 업데이트
+          setIsLoggedIn(!!currentUser);
+          
+          // 로그인하지 않은 경우 API 키 로드 안함 및 입력창 숨김
+          if (!currentUser) {
+            console.log('🔑 AI 설정: 로그인하지 않은 사용자 - API 키 로드 안함');
+            setShowApiKeys(false); // 입력창 숨김
+            return;
+          }
+          
+          // 로그인한 사용자만 API 키 로드
+          const saved = localStorage.getItem('user_api_keys');
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            if (parsed && typeof parsed === 'object') {
+              setApiKeys(prev => ({
+                ...prev,
+                google: prev.google || parsed.google || currentUser?.apiKeys?.google || '',
+                chatgpt: prev.chatgpt || parsed.chatgpt || currentUser?.apiKeys?.openai || '',
+                anthropic: prev.anthropic || parsed.anthropic || currentUser?.apiKeys?.anthropic || '',
+                kling: prev.kling || parsed.kling || currentUser?.apiKeys?.kling || '',
+                klingSecret: prev.klingSecret || parsed.klingSecret || currentUser?.apiKeys?.klingSecret || ''
+              }));
+            }
+          } else if (currentUser?.apiKeys) {
+            // localStorage에 없으면 사용자 DB에서 로드
+            setApiKeys(prev => ({
+              ...prev,
+              google: prev.google || currentUser.apiKeys.google || '',
+              chatgpt: prev.chatgpt || currentUser.apiKeys.openai || '',
+              anthropic: prev.anthropic || currentUser.apiKeys.anthropic || '',
+              kling: prev.kling || currentUser.apiKeys.kling || '',
+              klingSecret: prev.klingSecret || currentUser.apiKeys.klingSecret || ''
+            }));
+          }
+        }
+      } catch (error) {
+        console.error('API 키 로드 오류:', error);
+      }
+    };
+    
+    loadApiKeys();
+  }, [isOpen]); // 모달이 열릴 때만 실행
+
+  // 로그인한 사용자만 localStorage에 저장
+  useEffect(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        // 현재 사용자 확인
+        const currentUserRaw = localStorage.getItem('storyboard_current_user');
+        const currentUser = currentUserRaw ? JSON.parse(currentUserRaw) : null;
+        
+        // 로그인한 사용자만 저장
+        if (currentUser) {
+          localStorage.setItem('user_api_keys', JSON.stringify(apiKeys));
         }
       }
+    } catch (error) {
+      console.error('API 키 저장 오류:', error);
     }
-  } catch {}
+  }, [apiKeys]);
 
-  // Save to localStorage on change
-  try {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('user_api_keys', JSON.stringify(apiKeys));
-    }
-  } catch {}
-
-  const handleApiKeyChange = (provider: AIProvider, value: string) => {
+  const handleApiKeyChange = (provider: AIProvider | 'klingSecret', value: string) => {
     setApiKeys(prev => ({
       ...prev,
       [provider]: value
@@ -121,10 +181,33 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({
   };
 
   const handleSave = () => {
+    // 기능별 AI Provider 설정 저장
+    if (onFunctionBasedProvidersChange) {
+      AIProviderSettings.save(functionProviders);
+      onFunctionBasedProvidersChange(functionProviders);
+    }
+    
     // 실제로는 환경변수를 직접 수정할 수 없으므로
     // 사용자에게 .env 파일을 수정하도록 안내
     onSave();
     onClose();
+  };
+
+  const handleFunctionProviderChange = (type: GenerationType, provider: AIProvider) => {
+    setFunctionProviders(prev => ({
+      ...prev,
+      [type]: provider
+    }));
+  };
+
+  const getProviderDisplayName = (provider: AIProvider): string => {
+    switch (provider) {
+      case 'google': return 'Google AI';
+      case 'chatgpt': return 'ChatGPT (OpenAI)';
+      case 'anthropic': return 'Anthropic (Claude)';
+      case 'kling': return 'Kling AI';
+      default: return provider;
+    }
   };
 
   const getApiKeyStatus = (provider: AIProvider) => {
@@ -135,6 +218,15 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({
     if (key.includes('your-') || key.includes('-here')) {
       return { status: 'placeholder', text: '플레이스홀더', color: 'text-yellow-500' };
     }
+    
+    // Kling AI의 경우 Access Key와 Secret Key 모두 확인
+    if (provider === 'kling') {
+      const secretKey = apiKeys.klingSecret;
+      if (!secretKey || secretKey.trim() === '') {
+        return { status: 'incomplete', text: 'Secret Key 필요', color: 'text-yellow-500' };
+      }
+    }
+    
     return { status: 'valid', text: '설정됨', color: 'text-green-500' };
   };
 
@@ -151,7 +243,152 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({
           <AISelector
             selectedProvider={selectedProvider}
             onProviderChange={onProviderChange}
+            apiKeys={apiKeys}
           />
+        </div>
+
+        {/* 기능별 AI Provider 설정 */}
+        <div className="border-t pt-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+              <Key className="w-5 h-5" />
+              기능별 AI 서비스 설정
+            </h3>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowFunctionBasedSettings(!showFunctionBasedSettings)}
+            >
+              {showFunctionBasedSettings ? '숨기기' : '보기'}
+            </Button>
+          </div>
+
+          {showFunctionBasedSettings && (
+            <div className="space-y-4">
+              <div className="bg-blue-50 p-3 rounded-lg mb-4">
+                <p className="text-sm text-blue-800">
+                  각 생성 기능(텍스트/이미지/영상)에 사용할 AI 서비스를 개별적으로 선택할 수 있습니다.
+                </p>
+              </div>
+
+              {/* 텍스트 생성 AI */}
+              <div className="border border-gray-200 rounded-lg p-4">
+                <div className="flex items-center gap-3 mb-3">
+                  <FileText className="w-5 h-5 text-blue-600" />
+                  <div className="flex-1">
+                    <h4 className="font-medium text-gray-900">텍스트 생성</h4>
+                    <p className="text-xs text-gray-500">프로젝트 개요, 캐릭터 설명 등 텍스트 생성에 사용</p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                  {(['google', 'chatgpt', 'anthropic'] as AIProvider[]).map((provider) => {
+                    const isSelected = functionProviders.text === provider;
+                    const hasApiKey = provider === 'anthropic' 
+                      ? false // 준비중
+                      : !!(apiKeys[provider] && apiKeys[provider].trim() !== '' && 
+                           !apiKeys[provider].includes('your-') && 
+                           !apiKeys[provider].includes('-here'));
+                    return (
+                      <button
+                        key={provider}
+                        onClick={() => hasApiKey && handleFunctionProviderChange('text', provider)}
+                        disabled={!hasApiKey}
+                        className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                          !hasApiKey
+                            ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                            : isSelected
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        }`}
+                        title={!hasApiKey ? `${getProviderDisplayName(provider)} API 키가 필요합니다` : ''}
+                      >
+                        {getProviderDisplayName(provider)}
+                        {!hasApiKey && ' (키 필요)'}
+                        {provider === 'anthropic' && ' (준비중)'}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 이미지 생성 AI */}
+              <div className="border border-gray-200 rounded-lg p-4">
+                <div className="flex items-center gap-3 mb-3">
+                  <ImageIcon className="w-5 h-5 text-green-600" />
+                  <div className="flex-1">
+                    <h4 className="font-medium text-gray-900">이미지 생성</h4>
+                    <p className="text-xs text-gray-500">캐릭터, 배경 등 이미지 생성에 사용</p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                  {(['google', 'chatgpt'] as AIProvider[]).map((provider) => {
+                    const isSelected = functionProviders.image === provider;
+                    const hasApiKey = !!apiKeys[provider];
+                    return (
+                      <button
+                        key={provider}
+                        onClick={() => hasApiKey && handleFunctionProviderChange('image', provider)}
+                        disabled={!hasApiKey}
+                        className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                          !hasApiKey
+                            ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                            : isSelected
+                            ? 'bg-green-600 text-white'
+                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        }`}
+                        title={!hasApiKey ? `${getProviderDisplayName(provider)} API 키가 필요합니다` : ''}
+                      >
+                        {getProviderDisplayName(provider)}
+                        {!hasApiKey && ' (키 필요)'}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 영상 생성 AI */}
+              <div className="border border-gray-200 rounded-lg p-4">
+                <div className="flex items-center gap-3 mb-3">
+                  <Video className="w-5 h-5 text-purple-600" />
+                  <div className="flex-1">
+                    <h4 className="font-medium text-gray-900">영상 생성</h4>
+                    <p className="text-xs text-gray-500">동영상 생성에 사용</p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                  {(['google', 'kling'] as AIProvider[]).map((provider) => {
+                    const isSelected = functionProviders.video === provider;
+                    const hasApiKey = provider === 'google' ? !!apiKeys.google : !!apiKeys.kling;
+                    return (
+                      <button
+                        key={provider}
+                        onClick={() => hasApiKey && handleFunctionProviderChange('video', provider)}
+                        disabled={!hasApiKey || provider === 'kling'} // Kling은 아직 준비중
+                        className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                          !hasApiKey || provider === 'kling'
+                            ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                            : isSelected
+                            ? 'bg-purple-600 text-white'
+                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        }`}
+                        title={
+                          provider === 'kling' 
+                            ? 'Kling AI는 준비 중입니다' 
+                            : !hasApiKey 
+                            ? `${getProviderDisplayName(provider)} API 키가 필요합니다` 
+                            : ''
+                        }
+                      >
+                        {getProviderDisplayName(provider)}
+                        {provider === 'kling' && ' (준비중)'}
+                        {!hasApiKey && provider !== 'kling' && ' (키 필요)'}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* API 사용량 통계 */}
@@ -267,14 +504,30 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({
               variant="outline"
               size="sm"
               onClick={() => setShowApiKeys(!showApiKeys)}
+              disabled={!isLoggedIn}
+              title={!isLoggedIn ? '로그인이 필요합니다' : ''}
             >
               {showApiKeys ? '숨기기' : '보기'}
             </Button>
           </div>
 
-          {showApiKeys && (
+          {!isLoggedIn && (
+            <div className="mb-4 p-4 bg-gray-50 border border-gray-200 rounded-lg">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="w-5 h-5 text-gray-600 mt-0.5" />
+                <div className="text-sm text-gray-700">
+                  <p className="font-medium mb-1">로그인이 필요합니다</p>
+                  <p className="text-xs text-gray-600">
+                    API 키를 설정하려면 먼저 로그인해주세요.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {showApiKeys && isLoggedIn && (
             <div className="space-y-4">
-              {(['google', 'openai', 'chatgpt', 'anthropic', 'nano-banana'] as AIProvider[]).map((provider) => {
+              {(['google', 'chatgpt', 'anthropic', 'kling'] as AIProvider[]).map((provider) => {
                 const keyStatus = getApiKeyStatus(provider);
                 const isSelected = selectedProvider === provider;
                 
@@ -289,9 +542,8 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({
                       <div className="flex items-center gap-2">
                         <h4 className="font-medium text-gray-900 capitalize">
                           {provider === 'google' ? 'Google AI' :
-                           provider === 'openai' ? 'OpenAI' :
                            provider === 'chatgpt' ? 'ChatGPT' :
-                           provider === 'anthropic' ? 'Anthropic' : '나노 바나나'}
+                           provider === 'anthropic' ? 'Anthropic' : 'Kling AI'}
                         </h4>
                         <div className={`flex items-center gap-1 ${keyStatus.color}`}>
                           {keyStatus.status === 'valid' ? (
@@ -311,58 +563,65 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({
                       placeholder={`${provider.toUpperCase()} API 키를 입력하세요`}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
+                    
+                    {/* Kling AI의 경우 Secret Key 추가 입력 필드 */}
+                    {provider === 'kling' && (
+                      <div className="mt-3">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Secret Key (준비중)
+                        </label>
+                        <input
+                          type="password"
+                          value={apiKeys.klingSecret}
+                          onChange={(e) => handleApiKeyChange('klingSecret', e.target.value)}
+                          placeholder="Kling AI Secret Key를 입력하세요"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          disabled={true}
+                        />
+                        <p className="text-xs text-gray-500 mt-1">
+                          Kling AI는 현재 준비 중입니다.
+                        </p>
+                      </div>
+                    )}
                   </div>
                 );
               })}
             </div>
           )}
 
-          <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
             <div className="flex items-start gap-2">
-              <Key className="w-5 h-5 text-blue-600 mt-0.5" />
-              <div className="text-sm text-blue-800">
-                <p className="font-medium mb-2">개인 API 키 입력 및 관리 안내:</p>
-                <div className="space-y-2 text-xs">
-                  <div className="flex items-start gap-2">
-                    <span className="text-blue-600 font-medium">•</span>
-                    <span>개인 Google AI API 키를 입력하면 모든 AI 기능을 사용할 수 있습니다</span>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <span className="text-blue-600 font-medium">•</span>
-                    <span>API 키는 브라우저에 안전하게 저장되며 외부로 전송되지 않습니다</span>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <span className="text-blue-600 font-medium">•</span>
-                    <span>Google AI Studio에서 무료 API 키를 발급받을 수 있습니다</span>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <span className="text-blue-600 font-medium">•</span>
-                    <span>API 키는 언제든지 수정하거나 삭제할 수 있습니다</span>
-                  </div>
-                </div>
-                <div className="mt-3 pt-2 border-t border-blue-300">
-                  <a 
-                    href="https://aistudio.google.com/app/apikey" 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="text-blue-600 hover:text-blue-800 font-medium text-xs underline"
-                  >
-                    🔗 Google AI Studio에서 API 키 발급받기
-                  </a>
-                </div>
+              <AlertCircle className="w-5 h-5 text-yellow-600 mt-0.5" />
+              <div className="text-sm text-yellow-800">
+                <p className="font-medium mb-1">API 키 설정 방법:</p>
+                <ol className="list-decimal list-inside space-y-1 text-xs">
+                  <li>프로젝트 루트에 <code>.env</code> 파일을 생성하세요</li>
+                  <li><code>env.example</code> 파일을 참고하여 API 키를 설정하세요</li>
+                  <li>개발 서버를 재시작하세요</li>
+                </ol>
               </div>
             </div>
           </div>
         </div>
 
-        {/* 액션 버튼 */}
-        <div className="flex justify-end gap-3 pt-4 border-t">
-          <Button variant="outline" onClick={onClose}>
-            취소
-          </Button>
-          <Button onClick={handleSave}>
-            설정 저장
-          </Button>
+        {/* 안내 링크 & 액션 버튼 */}
+        <div className="pt-4 border-t">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+            <div className="text-xs text-gray-600">
+              참고 링크: 
+              <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-blue-600 hover:underline ml-1">Google AI API 키 발급</a>
+              <span className="mx-2">|</span>
+              <a href="https://platform.openai.com/api-keys" target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">ChatGPT(OpenAI) API 키 발급</a>
+            </div>
+            <div className="flex justify-end gap-3">
+              <Button variant="outline" onClick={onClose}>
+                취소
+              </Button>
+              <Button onClick={handleSave}>
+                설정 저장
+              </Button>
+            </div>
+          </div>
         </div>
       </div>
     </Modal>

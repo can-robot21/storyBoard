@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { StepSettingsPanel } from './StepSettingsPanel';
 import { ActionPanel } from './ActionPanel';
 import { StepProgressPanel } from './StepProgressPanel';
 import { StepHelpModal } from '../common/StepHelpModal';
@@ -12,6 +11,14 @@ import { VideoGenerationStep } from '../steps/VideoGenerationStep';
 import { useSettingsManager } from '../../hooks/useSettingsManager';
 import { useUIStore } from '../../stores/uiStore';
 import { storageOptimizationService } from '../../services/storageOptimizationService';
+import { FunctionBasedAIProviders } from '../../types/ai';
+import type { ProjectHandlers, ImageHandlers, VideoHandlers } from '../../types/handlers';
+import type { StepStatus as StepStatusType } from '../../types/stepStatus';
+import type { GeneratedProjectData as ProjectGeneratedProjectData, GeneratedCharacter, GeneratedBackground, GeneratedSettingCut, GeneratedImage, GeneratedTextCard } from '../../types/project';
+import type { GeneratedProjectData } from '../../types/projectOverview';
+import type { GeneratedVideo as VideoGenerationVideo } from '../../types/videoGeneration';
+import type { Character } from '../../types/project';
+import type { User } from '../../types/auth';
 
 interface ImprovedMainLayoutProps {
   currentStep: string;
@@ -24,39 +31,41 @@ interface ImprovedMainLayoutProps {
   onShowPermissionManager?: () => void;
   onShowActivityLogManager?: () => void;
   onShowManagementModal?: () => void;
+  onShowStoryboardGenerator?: () => void;
+  isAdmin?: boolean;
   // 프로젝트 개요 상태
   story: string;
   setStory: (story: string) => void;
-  characterList: Array<{ id: number; name: string; description: string }>;
-  setCharacterList: (characters: Array<{ id: number; name: string; description: string }>) => void;
+  characterList: Character[];
+  setCharacterList: (characters: Character[]) => void;
   scenarioPrompt: string;
   setScenarioPrompt: (prompt: string) => void;
   storySummary: string;
   setStorySummary: (summary: string) => void;
   finalScenario: string;
   setFinalScenario: (scenario: string) => void;
-  generatedProjectData: any;
-  setGeneratedProjectData: (data: any) => void;
+  generatedProjectData: GeneratedProjectData | null;
+  setGeneratedProjectData: React.Dispatch<React.SetStateAction<GeneratedProjectData | null>>;
 
   // 이미지 생성 상태
-  generatedCharacters: any[];
-  setGeneratedCharacters: React.Dispatch<React.SetStateAction<any[]>>;
-  generatedBackgrounds: any[];
-  setGeneratedBackgrounds: React.Dispatch<React.SetStateAction<any[]>>;
-  generatedSettingCuts: any[];
-  setGeneratedSettingCuts: React.Dispatch<React.SetStateAction<any[]>>;
-  generatedAdvancedImages: any[];
-  setGeneratedAdvancedImages: React.Dispatch<React.SetStateAction<any[]>>;
+  generatedCharacters: GeneratedCharacter[];
+  setGeneratedCharacters: React.Dispatch<React.SetStateAction<GeneratedCharacter[]>>;
+  generatedBackgrounds: GeneratedBackground[];
+  setGeneratedBackgrounds: React.Dispatch<React.SetStateAction<GeneratedBackground[]>>;
+  generatedSettingCuts: GeneratedSettingCut[];
+  setGeneratedSettingCuts: React.Dispatch<React.SetStateAction<GeneratedSettingCut[]>>;
+  generatedAdvancedImages: GeneratedCharacter[];
+  setGeneratedAdvancedImages: React.Dispatch<React.SetStateAction<GeneratedCharacter[]>>;
 
   // 영상 생성 상태
-  generatedTextCards: any[];
-  setGeneratedTextCards: React.Dispatch<React.SetStateAction<any[]>>;
-  generatedCharacterImages: any[];
-  setGeneratedCharacterImages: React.Dispatch<React.SetStateAction<any[]>>;
-  generatedVideoBackgrounds: any[];
-  setGeneratedVideoBackgrounds: React.Dispatch<React.SetStateAction<any[]>>;
-  generatedVideos: any[];
-  setGeneratedVideos: React.Dispatch<React.SetStateAction<any[]>>;
+  generatedTextCards: GeneratedTextCard[];
+  setGeneratedTextCards: React.Dispatch<React.SetStateAction<GeneratedTextCard[]>>;
+  generatedCharacterImages: GeneratedImage[];
+  setGeneratedCharacterImages: React.Dispatch<React.SetStateAction<GeneratedImage[]>>;
+  generatedVideoBackgrounds: GeneratedImage[];
+  setGeneratedVideoBackgrounds: React.Dispatch<React.SetStateAction<GeneratedImage[]>>;
+  generatedVideos: VideoGenerationVideo[];
+  setGeneratedVideos: React.Dispatch<React.SetStateAction<VideoGenerationVideo[]>>;
 
   // 선택 상태
   selectedTextCards: Set<number>;
@@ -70,24 +79,25 @@ interface ImprovedMainLayoutProps {
   characterPrompt: string;
 
   // 핸들러들
-  projectHandlers: any;
-  imageHandlers: any;
-  videoHandlers: any;
+  projectHandlers: ProjectHandlers;
+  imageHandlers: ImageHandlers;
+  videoHandlers: VideoHandlers;
 
   // UI 상태
   showTextResults: boolean;
   setShowTextResults: (show: boolean) => void;
-  stepStatus: any;
-  setStepStatus: (status: any) => void;
+  stepStatus: StepStatusType;
+  setStepStatus: (status: StepStatusType) => void;
 
   // AI 설정
   selectedAIProvider?: string;
+  functionBasedProviders?: FunctionBasedAIProviders;
   
   // 핸들러
   onAISettingsClick?: () => void;
   
   // 사용자 정보
-  currentUser?: any;
+  currentUser?: User | null;
   // 영상 편집 핸들러 참조
   videoStepEditHandlerRef?: React.MutableRefObject<((cardId: number, currentText: string) => void) | null>;
 }
@@ -103,6 +113,8 @@ export const ImprovedMainLayout: React.FC<ImprovedMainLayoutProps> = ({
   onShowPermissionManager,
   onShowActivityLogManager,
   onShowManagementModal,
+  onShowStoryboardGenerator,
+  isAdmin,
   // 프로젝트 개요 상태
   story,
   setStory,
@@ -162,7 +174,7 @@ export const ImprovedMainLayout: React.FC<ImprovedMainLayoutProps> = ({
 }) => {
   const { addNotification } = useUIStore();
   
-  // API 키 상태 확인
+  // API 키 상태 확인 (환경변수 사용 안함)
   const getAPIKey = () => {
     if (currentUser?.apiKeys?.google) {
       return currentUser.apiKeys.google;
@@ -176,7 +188,7 @@ export const ImprovedMainLayout: React.FC<ImprovedMainLayoutProps> = ({
         }
       }
     } catch {}
-    return process.env.REACT_APP_GEMINI_API_KEY || '';
+    return '';
   };
 
   const hasAPIKey = getAPIKey().trim() !== '';
@@ -195,9 +207,7 @@ export const ImprovedMainLayout: React.FC<ImprovedMainLayoutProps> = ({
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [showProjectReference, setShowProjectReference] = useState(false);
   const [showUnifiedReference, setShowUnifiedReference] = useState(false);
-  
-  // ActionPanel 표시/숨김 상태
-  const [isActionPanelVisible, setIsActionPanelVisible] = useState(true);
+  const [isModalVisible, setIsModalVisible] = useState(true);
   const [referenceData, setReferenceData] = useState<{
     title: string;
     type: string;
@@ -220,7 +230,7 @@ export const ImprovedMainLayout: React.FC<ImprovedMainLayoutProps> = ({
         return stepStatus.projectOverviewSaved;
       case "TXT2IMG":
       case "IMG2IMG":
-        return (generatedCharacters.length > 0 || generatedBackgrounds.length > 0 || generatedSettingCuts.length > 0);
+        return (generatedCharacters.length > 0 || generatedBackgrounds.length > 0 || generatedSettingCuts.length > 0 || generatedAdvancedImages.length > 0);
       case "영상 생성":
         return generatedVideos.length > 0;
       default:
@@ -249,6 +259,7 @@ export const ImprovedMainLayout: React.FC<ImprovedMainLayoutProps> = ({
       setGeneratedCharacters([]);
       setGeneratedBackgrounds([]);
       setGeneratedSettingCuts([]);
+      setGeneratedAdvancedImages([]);
       setGeneratedTextCards([]);
       setGeneratedVideos([]);
       setGeneratedCharacterImages([]);
@@ -265,7 +276,7 @@ export const ImprovedMainLayout: React.FC<ImprovedMainLayoutProps> = ({
         scenarioGenerated: false,
         aiReviewCompleted: false,
         jsonCardsGenerated: false,
-        koreanCardDraftGenerated: false,
+        koreanCardDraftGenerated: false, // projectOverview용 속성
         projectOverviewSaved: false
       });
       
@@ -301,6 +312,7 @@ export const ImprovedMainLayout: React.FC<ImprovedMainLayoutProps> = ({
       characterImages: '캐릭터 이미지',
       backgroundImages: '배경 이미지',
       settingCuts: '설정컷',
+      advancedImages: '고급 이미지',
       textCards: '텍스트 카드',
       videos: '생성된 영상'
     };
@@ -316,8 +328,13 @@ export const ImprovedMainLayout: React.FC<ImprovedMainLayoutProps> = ({
 
   // JSON 카드 생성 핸들러
   const handleGenerateJsonCard = (cardType: string, content: string) => {
-    setGeneratedProjectData((prev: any) => {
-      const newData = { ...prev };
+    setGeneratedProjectData((prev: GeneratedProjectData | null) => {
+      const baseData: GeneratedProjectData = prev || {
+        koreanCards: null,
+        koreanCardDraft: null,
+        englishCards: null
+      };
+      const newData = { ...baseData };
       
       // 카드 타입에 따라 적절한 위치에 저장
       if (['스토리', '영상 설정', '캐릭터 설정', '씬-컷 구성', '시나리오 추가 설정', '영상 시나리오', '씬별 컷별 프롬프트'].includes(cardType)) {
@@ -472,11 +489,24 @@ export const ImprovedMainLayout: React.FC<ImprovedMainLayoutProps> = ({
             finalScenario={finalScenario}
             setFinalScenario={setFinalScenario}
             generatedProjectData={generatedProjectData}
-            setGeneratedProjectData={setGeneratedProjectData}
-            onNext={projectHandlers.handleNext}
+            setGeneratedProjectData={(data: GeneratedProjectData | null) => {
+              // projectOverview 타입으로 직접 사용
+              setGeneratedProjectData(data);
+            }}
+            onNext={projectHandlers.handleNext || projectHandlers.handleNextStep || (() => {})}
             canProceedToNext={canProceedToNext}
-            stepStatus={stepStatus}
-            setStepStatus={setStepStatus}
+            stepStatus={{ ...stepStatus, koreanCardDraftGenerated: stepStatus.koreanCardDraftGenerated || false } as any}
+            setStepStatus={(status: any) => {
+              // projectOverview StepStatus를 통합 StepStatus로 변환
+              const converted: StepStatusType = {
+                scenarioGenerated: status.scenarioGenerated ?? false,
+                aiReviewCompleted: status.aiReviewCompleted ?? false,
+                jsonCardsGenerated: status.jsonCardsGenerated ?? false,
+                koreanCardDraftGenerated: status.koreanCardDraftGenerated,
+                projectOverviewSaved: status.projectOverviewSaved ?? false
+              };
+              setStepStatus(converted);
+            }}
           />
         );
 
@@ -497,10 +527,8 @@ export const ImprovedMainLayout: React.FC<ImprovedMainLayoutProps> = ({
             scenarioPrompt={scenarioPrompt}
             storySummary={storySummary}
             finalScenario={finalScenario}
-            onNext={projectHandlers.handleNext}
+            onNext={projectHandlers.handleNext || projectHandlers.handleNextStep || (() => {})}
             canProceedToNext={canProceedToNext}
-            globalImageSettings={settings.image}
-            onOpenSettings={onAISettingsClick}
           />
         );
 
@@ -523,11 +551,9 @@ export const ImprovedMainLayout: React.FC<ImprovedMainLayoutProps> = ({
             setGeneratedAdvancedImages={setGeneratedAdvancedImages}
             showTextResults={showTextResults}
             setShowTextResults={setShowTextResults}
-            onNext={projectHandlers.handleNext}
+            onNext={projectHandlers.handleNext || projectHandlers.handleNextStep || (() => {})}
             canProceedToNext={canProceedToNext}
             currentUser={currentUser}
-            globalImageSettings={settings.image}
-            onOpenSettings={onAISettingsClick}
           />
         );
 
@@ -540,9 +566,10 @@ export const ImprovedMainLayout: React.FC<ImprovedMainLayoutProps> = ({
             setGeneratedCharacterImages={setGeneratedCharacterImages}
             generatedVideoBackgrounds={generatedVideoBackgrounds}
             setGeneratedVideoBackgrounds={setGeneratedVideoBackgrounds}
-            generatedSettingCutImages={generatedSettingCuts}
-            setGeneratedSettingCutImages={setGeneratedSettingCuts}
-            generatedVideos={generatedVideos}
+            generatedVideos={generatedVideos.map(v => ({
+              ...v,
+              sceneCommonSettings: (v as VideoGenerationVideo).sceneCommonSettings || []
+            })) as VideoGenerationVideo[]}
             setGeneratedVideos={setGeneratedVideos}
             selectedTextCards={selectedTextCards}
             setSelectedTextCards={setSelectedTextCards}
@@ -564,20 +591,35 @@ export const ImprovedMainLayout: React.FC<ImprovedMainLayoutProps> = ({
             setStory={setStory}
             characterList={characterList}
             setCharacterList={setCharacterList}
-            onNext={projectHandlers.handleNext}
+            // 이미지 생성 단계에서 생성한 이미지들 (프로젝트 참조용)
+            generatedCharacters={generatedCharacters}
+            generatedBackgrounds={generatedBackgrounds}
+            generatedSettingCuts={generatedSettingCuts}
+            generatedAdvancedImages={generatedAdvancedImages}
+            onNext={projectHandlers.handleNext || projectHandlers.handleNextStep || (() => {})}
             canProceedToNext={canProceedToNext}
-            onEditCard={(cardId, cardData) => {
-              // VideoGenerationStep의 편집 모달을 직접 열기
-              if (videoStepEditHandlerRef?.current) {
-                videoStepEditHandlerRef.current(cardId, cardData);
-              }
-            }}
             onSetEditHandler={(handler) => {
               if (videoStepEditHandlerRef) {
                 videoStepEditHandlerRef.current = handler;
               }
             }}
           />
+        );
+
+      case "스토리보드 생성":
+        return (
+          <div className="p-6">
+            <div className="text-center">
+              <h2 className="text-2xl font-bold text-gray-900 mb-4">스토리보드 생성</h2>
+              <p className="text-gray-600 mb-6">스토리보드 생성 기능이 개발 중입니다.</p>
+              <button
+                onClick={() => onShowStoryboardGenerator && onShowStoryboardGenerator()}
+                className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                스토리보드 생성기 열기
+              </button>
+            </div>
+          </div>
         );
 
       default:
@@ -587,28 +629,8 @@ export const ImprovedMainLayout: React.FC<ImprovedMainLayoutProps> = ({
 
   return (
     <div className="flex flex-col h-full">
-      {/* 상단 설정 패널 - 고정 */}
-      {settings.ui.showStepSettings && (
-        <div className="flex-shrink-0">
-          <StepSettingsPanel
-            currentStep={currentStep}
-            promptLengthSettings={settings.promptLength}
-            setPromptLengthSettings={updatePromptLength}
-            sceneCutSettings={settings.sceneCut}
-            setSceneCutSettings={updateSceneCut}
-            imageSettings={settings.image}
-            setImageSettings={updateImageSettings}
-            videoSettings={settings.video}
-            setVideoSettings={updateVideoSettings}
-            selectedAIProvider={selectedAIProvider}
-            onAISettingsClick={onAISettingsClick}
-            onTogglePanel={() => updateUISettings({ showStepSettings: false })}
-          />
-        </div>
-      )}
-
       {/* 메인 콘텐츠 영역 - 스크롤 가능 */}
-      <div className="flex-1 overflow-auto">
+      <div className="flex-1 overflow-y-auto">
         <div className="container mx-auto px-6 py-6">
           {/* 단계별 콘텐츠 */}
           <div className="bg-white rounded-lg shadow-sm border border-gray-200">
@@ -631,6 +653,7 @@ export const ImprovedMainLayout: React.FC<ImprovedMainLayoutProps> = ({
           generatedCharacters={generatedCharacters}
           generatedBackgrounds={generatedBackgrounds}
           generatedSettingCuts={generatedSettingCuts}
+          generatedAdvancedImages={generatedAdvancedImages}
           generatedTextCards={generatedTextCards}
           generatedVideos={generatedVideos}
           generatedCharacterImages={generatedCharacterImages}
@@ -643,28 +666,35 @@ export const ImprovedMainLayout: React.FC<ImprovedMainLayoutProps> = ({
           selectedAIProvider={selectedAIProvider}
           onAISettingsClick={onAISettingsClick}
           hasAPIKey={hasAPIKey}
-          onUsefulToolsClick={() => setIsActionPanelVisible(!isActionPanelVisible)}
+          onToggleModal={() => setIsModalVisible(!isModalVisible)}
+          isModalVisible={isModalVisible}
+          isAdmin={isAdmin}
+          isLoggedIn={!!currentUser}
         />
       </div>
 
       {/* 하단 액션 패널 - 고정 */}
-      <div className="flex-shrink-0">
-        <ActionPanel
+      {isModalVisible && (
+        <div className="flex-shrink-0">
+          <ActionPanel
           currentStep={currentStep}
           onHelpClick={() => setShowHelpModal(true)}
           onProjectReferenceClick={() => setShowProjectReference(true)}
-          onExportClick={() => {/* 내보내기 로직 */}}
-          onToggleSettings={() => updateUISettings({ showStepSettings: !settings.ui.showStepSettings })}
           onManagementToolsClick={onShowManagementModal}
+          onStoryboardGeneratorClick={() => {
+            // StepProgressPanel과 동일하게 '스토리보드 생성' 단계로 이동
+            setCurrentStep('스토리보드 생성');
+          }}
           projectHandlers={projectHandlers}
           imageHandlers={imageHandlers}
           videoHandlers={videoHandlers}
           stepStatus={stepStatus}
           canProceedToNext={canProceedToNext()}
-          isActionPanelVisible={isActionPanelVisible}
-          onToggleActionPanel={() => setIsActionPanelVisible(!isActionPanelVisible)}
+          isAdmin={isAdmin}
+          isLoggedIn={!!currentUser}
         />
-      </div>
+        </div>
+      )}
 
       {/* 모달들 */}
       <StepHelpModal
@@ -683,6 +713,7 @@ export const ImprovedMainLayout: React.FC<ImprovedMainLayoutProps> = ({
         generatedCharacters={generatedCharacters}
         generatedBackgrounds={generatedBackgrounds}
         generatedSettingCuts={generatedSettingCuts}
+        generatedAdvancedImages={generatedAdvancedImages}
         generatedTextCards={generatedTextCards}
         generatedVideos={generatedVideos}
         generatedCharacterImages={generatedCharacterImages}
@@ -694,17 +725,33 @@ export const ImprovedMainLayout: React.FC<ImprovedMainLayoutProps> = ({
         onEditItem={(type, index, data) => {
           // 데이터 수정 처리
           if (type === 'koreanCards') {
-            // 한글 카드 수정
-            setGeneratedProjectData((prev: any) => ({
-              ...prev,
-              koreanCards: data
-            }));
+            // 한글 카드 수정 (projectOverview용)
+            setGeneratedProjectData((prev: GeneratedProjectData | null): GeneratedProjectData | null => {
+              if (!prev) {
+                // 기본 구조 생성
+                const baseData: GeneratedProjectData = {
+                  koreanCards: null,
+                  koreanCardDraft: null,
+                  englishCards: null
+                };
+                return { ...baseData, koreanCards: data };
+              }
+              return { ...prev, koreanCards: data };
+            });
           } else if (type === 'englishCards') {
-            // 영어 카드 수정
-            setGeneratedProjectData((prev: any) => ({
-              ...prev,
-              englishCards: data
-            }));
+            // 영어 카드 수정 (projectOverview용)
+            setGeneratedProjectData((prev: GeneratedProjectData | null): GeneratedProjectData | null => {
+              if (!prev) {
+                // 기본 구조 생성
+                const baseData: GeneratedProjectData = {
+                  koreanCards: null,
+                  koreanCardDraft: null,
+                  englishCards: null
+                };
+                return { ...baseData, englishCards: data };
+              }
+              return { ...prev, englishCards: data };
+            });
           } else if (type === 'textCard') {
             // 텍스트 카드 수정
             const updatedCards = [...generatedTextCards];
@@ -753,8 +800,12 @@ export const ImprovedMainLayout: React.FC<ImprovedMainLayoutProps> = ({
           if (referenceData.type === 'textCards') {
             // VideoGenerationStep의 편집 모달을 직접 열기
             // videoHandlers를 통해 VideoGenerationStep의 handleEditCard 호출
-            if (videoHandlers?.handleEditCard) {
-              videoHandlers.handleEditCard(item.id, item.generatedText || item);
+            if (videoHandlers?.handleEditCard || videoHandlers?.handleEditTextCard) {
+              const handler = videoHandlers.handleEditCard || videoHandlers.handleEditTextCard;
+              if (handler) {
+                const textValue = item.generatedText || (typeof item === 'string' ? item : String(item));
+                handler(item.id || index, textValue);
+              }
             }
           }
         }}

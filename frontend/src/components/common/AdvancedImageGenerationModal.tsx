@@ -1,14 +1,14 @@
-import React, { useState } from 'react';
-import Button from './Button';
-import ImageUpload from './ImageUpload';
-import { ImageGenerationConfig } from './ImageGenerationForm';
-
-export interface AdvancedImageGenerationProps {
-  isOpen: boolean;
-  onClose: () => void;
-  onComplete: (result: { description: string; image: string; attachedImages: File[] }) => void;
-  nanoBananaService: any;
-}
+import React, { useEffect, useState } from 'react';
+import { AdvancedImageGenerationProps } from '../../types/imageGeneration';
+import { PromptImageBasicModule } from './modules/PromptImageBasicModule';
+import { SizeStyleConfigModule } from './modules/SizeStyleConfigModule';
+import { CameraLightingModule } from './modules/CameraLightingModule';
+import { PromptOptimizationStep } from './modules/PromptOptimizationStep';
+import { ImageGenerationStep } from './modules/ImageGenerationStep';
+import { useAdvancedImageGeneration } from '../../hooks/useAdvancedImageGeneration';
+import { ImageGenerationService } from '../../services/imageGenerationService';
+import { getFormattedErrorMessage } from '../../utils/contentPolicyValidator';
+import { ErrorMessageModal } from './ErrorMessageModal';
 
 export const AdvancedImageGenerationModal: React.FC<AdvancedImageGenerationProps> = ({
   isOpen,
@@ -16,437 +16,391 @@ export const AdvancedImageGenerationModal: React.FC<AdvancedImageGenerationProps
   onComplete,
   nanoBananaService
 }) => {
-  const [step, setStep] = useState(1);
-  const [prompt, setPrompt] = useState('');
-  const [attachedImages, setAttachedImages] = useState<File[]>([]);
-  const [config, setConfig] = useState<ImageGenerationConfig>({
-    style: 'realistic',
-    quality: 'high',
-    aspectRatio: '1:1',
-    customSize: '',
-    additionalPrompt: ''
-  });
-  const [generatedImage, setGeneratedImage] = useState<string>('');
-  const [isGenerating, setIsGenerating] = useState(false);
+  // 커스텀 훅을 사용한 상태 관리
+  const {
+    step,
+    setStep,
+    basicData,
+    setBasicData,
+    sizeStyleData,
+    setSizeStyleData,
+    cameraLightingData,
+    setCameraLightingData,
+    generatedImage,
+    setGeneratedImage,
+    isGenerating,
+    setIsGenerating,
+    generatedImageData,
+    setGeneratedImageData,
+    showPromptDetails,
+    setShowPromptDetails,
+    optimizationResult,
+    setOptimizationResult,
+    isTranslating,
+    setIsTranslating,
+    isOptimizing,
+    setIsOptimizing,
+    resetModalState,
+    resetOptimizationResult
+  } = useAdvancedImageGeneration();
 
-  const handleConfigChange = (key: keyof ImageGenerationConfig, value: string) => {
-    setConfig(prev => ({
+  // 편의를 위한 별칭
+  const prompt = basicData.prompt;
+  const attachedImages = basicData.attachedImages;
+  const imageRoles = basicData.imageRoles;
+  const selectedOutputSize = sizeStyleData.selectedOutputSize;
+  const selectedEditingStyle = sizeStyleData.selectedEditingStyle;
+  const config = sizeStyleData.config;
+  const responseModality = sizeStyleData.responseModality;
+  const detailedSettings = cameraLightingData.detailedSettings;
+  const isDetailedMode = cameraLightingData.isDetailedMode;
+
+  // 에러 모달 상태
+  const [errorModal, setErrorModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+  }>({
+    isOpen: false,
+    title: '',
+    message: ''
+  });
+
+  // 모달이 열릴 때마다 상태 초기화
+  useEffect(() => {
+    if (isOpen) {
+      resetModalState();
+      setErrorModal({ isOpen: false, title: '', message: '' });
+    }
+  }, [isOpen, resetModalState]);
+
+  // 프롬프트 변경 시 최적화 결과 초기화
+  useEffect(() => {
+    setOptimizationResult(null);
+  }, [basicData, sizeStyleData, cameraLightingData, setOptimizationResult]);
+
+  // 디바운싱 훅 사용 예시 (필요 시 실제 값에 적용)
+  // const debouncedPrompt = useDebounce(prompt, 300);
+
+  // 설정 변경 핸들러 (하위 호환성)
+  const handleConfigChange = (key: string, value: string) => {
+    setSizeStyleData(prev => ({
       ...prev,
-      [key]: value
+      config: { ...prev.config, [key]: value }
     }));
   };
 
-  const handleGenerate = async () => {
-    if (!nanoBananaService) return;
 
-    setIsGenerating(true);
+  // 이미지 저장 핸들러
+  const handleSaveImage = (imageData: {
+    imageUrl: string;
+    prompt: string;
+    timestamp: string;
+    settings: any;
+  }) => {
+    if (!generatedImageData) {
+      alert('저장할 이미지 데이터가 없습니다.\n\n먼저 이미지를 생성해주세요.');
+      return;
+    }
+
     try {
-      // 프롬프트 구성
-      let finalPrompt = prompt;
-      if (config.additionalPrompt.trim()) {
-        finalPrompt = `${finalPrompt}\n\n추가 요청사항: ${config.additionalPrompt}`;
-      }
-      if (config.customSize.trim()) {
-        finalPrompt = `${finalPrompt}\n\n사이즈 요청사항: ${config.customSize}`;
-      }
-      
-      // 스타일과 품질 추가
-      finalPrompt = `${finalPrompt}\n\n스타일: ${config.style}, 품질: ${config.quality}, 비율: ${config.aspectRatio}`;
+      const saveResults = ImageGenerationService.saveImageToStorage(
+        generatedImageData,
+        attachedImages
+      );
 
-      let imageResult = '';
-      
-      if (attachedImages.length > 0) {
-        // 첨부 이미지가 있을 때 - 첫 번째 이미지만 사용
-        imageResult = await nanoBananaService.generateImageWithReference(
-          finalPrompt,
-          attachedImages[0]
-        );
-      } else {
-        // 첨부 이미지가 없을 때
-        const result = await nanoBananaService.generateImage({
-          prompt: finalPrompt,
-          provider: 'nano-banana',
-          model: 'gemini-2.5-flash-image-preview',
-          aspectRatio: config.aspectRatio as any,
-          quality: config.quality as any,
-          style: config.style as any
+      // onComplete 콜백 호출
+        onComplete({
+          description: generatedImageData.prompt,
+          image: generatedImageData.image,
+          attachedImages: attachedImages
         });
-        imageResult = result.images[0] || '';
+        
+        // 저장 성공 메시지
+      const successMessage = `이미지가 성공적으로 저장되었습니다!\n\n저장 위치:\n• 고급이미지 카드: ${saveResults.advanced ? '✅' : '❌'}\n• 프로젝트 참조 모달: ${saveResults.project ? '✅' : '❌'}\n• 생성 페이지 하단: ${saveResults.general ? '✅' : '❌'}`;
+        
+        alert(successMessage);
+        onClose();
+      } catch (error) {
+        console.error('❌ 이미지 저장 중 오류 발생:', error);
+        alert('이미지 저장 중 오류가 발생했습니다.\n\n로컬 스토리지 용량이 부족할 수 있습니다.\n브라우저 데이터를 정리하거나 다른 브라우저를 사용해보세요.');
+    }
+  };
+
+  // 이미지 생성 핸들러 (서비스 사용)
+  const handleGenerate = async () => {
+    console.log('🚀 이미지 생성 시작 - 서비스 상태 확인');
+    
+    if (!nanoBananaService) {
+      console.error('❌ NanoBanana 서비스가 초기화되지 않음');
+      try {
+        const currentUserRaw = localStorage.getItem('storyboard_current_user');
+        const localKeysRaw = localStorage.getItem('user_api_keys');
+        const currentUser = currentUserRaw ? JSON.parse(currentUserRaw) : null;
+        const localKeys = localKeysRaw ? JSON.parse(localKeysRaw) : {};
+        
+        const hasLocalKey = !!localKeys.google;
+        const hasUserKey = !!currentUser?.apiKeys?.google;
+        
+        if (!hasLocalKey && !hasUserKey) {
+          alert('Google AI API 키가 설정되지 않았습니다.\n\n설정 → AI 설정에서 Google AI API 키를 입력해주세요.');
+        } else {
+          alert('API 키는 설정되어 있지만 서비스 초기화에 실패했습니다.\n\n페이지를 새로고침하거나 다시 시도해주세요.');
+        }
+      } catch (error) {
+        console.error('❌ API 키 상태 확인 중 오류:', error);
+        alert('API 키 상태를 확인하는 중 오류가 발생했습니다.\n\n페이지를 새로고침해주세요.');
       }
+      return;
+    }
+
+    console.log('✅ NanoBanana 서비스 확인 완료 - 이미지 생성 시작');
+    setIsGenerating(true);
+    
+    try {
+      const imageData = await ImageGenerationService.generateImage(
+        nanoBananaService,
+        {
+          prompt,
+          attachedImages,
+          imageRoles,
+          selectedOutputSize,
+          selectedEditingStyle,
+          detailedSettings,
+          isDetailedMode,
+          config,
+          optimizationResult
+        }
+      );
+
+      const basePrompt = prompt || '';
+      setGeneratedImage({
+        imageUrl: imageData,
+        prompt: basePrompt,
+        settings: {
+          config,
+          selectedOutputSize,
+          selectedEditingStyle,
+          detailedSettings,
+          isDetailedMode,
+          responseModality,
+          attachedImages: attachedImages.length,
+          imageRoles
+        },
+        timestamp: new Date()
+      });
       
-      if (imageResult) {
-        setGeneratedImage(imageResult);
-        setStep(6); // 이미지 확인 단계로 이동
-      }
+      const imageDataObj = {
+        image: imageData,
+        prompt: basePrompt,
+        settings: {
+          config,
+          selectedOutputSize,
+          selectedEditingStyle,
+          detailedSettings,
+          isDetailedMode,
+          responseModality,
+          attachedImages: attachedImages.length,
+          imageRoles
+        },
+        timestamp: new Date()
+      };
+      setGeneratedImageData(imageDataObj);
+      
+      console.log('✅ 이미지 생성 완료 - 모달 유지');
     } catch (error) {
-      console.error('❌ 고급 이미지 생성 오류:', error);
+      console.error('이미지 생성 오류:', error);
+      // 에러 메시지 포맷팅
+      const errorMessage = getFormattedErrorMessage(error, prompt);
+      
+      // 에러 모달 표시
+      setErrorModal({
+        isOpen: true,
+        title: '이미지 생성 실패',
+        message: errorMessage
+      });
     } finally {
       setIsGenerating(false);
     }
   };
 
-  const handleComplete = () => {
-    if (generatedImage) {
-      onComplete({
-        description: prompt,
-        image: generatedImage,
-        attachedImages: attachedImages
-      });
-      
-      // 상태 초기화
-      setStep(1);
-      setPrompt('');
-      setAttachedImages([]);
-      setGeneratedImage('');
-      onClose();
-    }
+  // 이미지 업로드 핸들러 (모듈에서 처리됨, 하위 호환성)
+  const handleImageUpload = (files: File[]) => {
+    const newRoles = files.map((file, index) => ({
+      id: `role_${Date.now()}_${index}`,
+      file: file,
+      role: 'character' as const,
+      description: `참조 이미지 ${index + 1}`,
+      weight: 5
+    }));
+    setBasicData(prev => ({
+      ...prev,
+      attachedImages: files,
+      imageRoles: newRoles
+    }));
   };
 
-  const handleDownload = () => {
-    if (generatedImage) {
-      const link = document.createElement('a');
-      link.href = generatedImage;
-      link.download = `advanced-image-${Date.now()}.png`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    }
-  };
-
-  const handleRegenerate = () => {
-    setStep(1);
-    setGeneratedImage('');
+  // 모달 닫기 핸들러
+  const handleClose = () => {
+    resetModalState();
+    onClose();
   };
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
         <div className="p-6">
-          {/* 모달 헤더 */}
+        {/* 헤더 */}
           <div className="flex justify-between items-center mb-6">
-            <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-              <span className="text-3xl">🎨</span>
-              고급 이미지 생성
-            </h2>
-            <button
-              onClick={onClose}
+            <h2 className="text-2xl font-bold text-gray-900">고급 이미지 생성</h2>
+          <button
+            onClick={handleClose}
               className="text-gray-500 hover:text-gray-700 text-2xl"
-            >
-              ×
-            </button>
-          </div>
+          >
+            ×
+          </button>
+        </div>
 
-          {/* 단계별 진행 표시 */}
+          {/* 단계별 진행 - 3단계로 축소 */}
           <div className="mb-6">
-            <div className="flex items-center justify-center space-x-4">
-              {[1, 2, 3, 4, 5, 6].map((stepNum) => (
-                <div key={stepNum} className="flex items-center">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
-                    stepNum <= step 
-                      ? 'bg-yellow-500 text-white' 
-                      : 'bg-gray-200 text-gray-500'
-                  }`}>
-                    {stepNum}
+            <div className="flex items-center space-x-4">
+              {[1, 2, 3].map((stepNumber) => (
+                <div key={stepNumber} className="flex items-center">
+                  <div
+                    className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
+                      step >= stepNumber
+                        ? 'bg-blue-500 text-white'
+                        : 'bg-gray-200 text-gray-600'
+                    }`}
+                  >
+                    {stepNumber}
                   </div>
-                  {stepNum < 6 && (
-                    <div className={`w-8 h-1 mx-2 ${
-                      stepNum < step ? 'bg-yellow-500' : 'bg-gray-200'
-                    }`} />
+                  {stepNumber < 3 && (
+                    <div
+                      className={`w-8 h-0.5 ${
+                        step > stepNumber ? 'bg-blue-500' : 'bg-gray-200'
+                      }`}
+                    />
                   )}
                 </div>
               ))}
             </div>
-            <div className="text-center mt-2 text-sm text-gray-600">
-              {step === 1 && '프롬프트 입력'}
-              {step === 2 && '이미지 첨부'}
-              {step === 3 && '스타일 설정'}
-              {step === 4 && '고급 옵션'}
-              {step === 5 && '이미지 생성'}
-              {step === 6 && '이미지 확인'}
+            <div className="mt-2 text-center">
+              <p className="text-xs text-gray-500">
+                {step === 1 && '기본 생성 (프롬프트/이미지)'}
+                {step === 2 && '사이즈/스타일 설정'}
+                {step === 3 && '카메라/조명 설정'}
+              </p>
             </div>
           </div>
 
-          {/* 단계별 콘텐츠 */}
-          <div className="space-y-6">
-            {/* 1단계: 프롬프트 입력 */}
-            {step === 1 && (
-              <div className="space-y-4">
-                <h3 className="text-lg font-medium text-gray-800">1. 이미지 설명 입력</h3>
-                <textarea
-                  value={prompt}
-                  onChange={(e) => setPrompt(e.target.value)}
-                  placeholder="생성하고 싶은 이미지에 대해 자세히 설명해주세요..."
-                  rows={6}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500"
-                />
-                <div className="flex justify-end">
-                  <Button
-                    onClick={() => setStep(2)}
-                    disabled={!prompt.trim()}
-                    className="bg-yellow-500 hover:bg-yellow-600 text-white px-6 py-2 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    다음
-                  </Button>
-                </div>
-              </div>
-            )}
+          {/* 1단계: 기본 생성 (프롬프트/이미지) */}
+          {step === 1 && (
+            <PromptImageBasicModule
+              initialData={basicData}
+              onDataChange={setBasicData}
+              onNext={() => setStep(2)}
+            />
+          )}
 
-            {/* 2단계: 이미지 첨부 */}
-            {step === 2 && (
-              <div className="space-y-4">
-                <h3 className="text-lg font-medium text-gray-800">2. 참고 이미지 첨부 (선택사항)</h3>
-                <ImageUpload
-                  onImagesChange={setAttachedImages}
-                  attachedImages={attachedImages}
-                  maxImages={3}
-                />
-                <div className="flex justify-between">
-                  <Button
-                    onClick={() => setStep(1)}
-                    className="bg-gray-500 hover:bg-gray-600 text-white px-6 py-2 rounded-lg"
-                  >
-                    이전
-                  </Button>
-                  <Button
-                    onClick={() => setStep(3)}
-                    className="bg-yellow-500 hover:bg-yellow-600 text-white px-6 py-2 rounded-lg"
-                  >
-                    다음
-                  </Button>
-                </div>
-              </div>
-            )}
+          {/* 2단계: 사이즈/스타일 설정 */}
+          {step === 2 && (
+            <SizeStyleConfigModule
+              initialData={sizeStyleData}
+              onDataChange={(data) => {
+                setSizeStyleData(data);
+                // config 변경 시 cameraLightingData의 config도 동기화
+                setCameraLightingData(prev => ({
+                  ...prev,
+                  config: data.config
+                }));
+              }}
+              onPrev={() => setStep(1)}
+              onNext={() => setStep(3)}
+            />
+          )}
 
-            {/* 3단계: 스타일 설정 */}
-            {step === 3 && (
-              <div className="space-y-4">
-                <h3 className="text-lg font-medium text-gray-800">3. 이미지 스타일 설정</h3>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">이미지 스타일</label>
-                    <select
-                      value={config.style}
-                      onChange={(e) => handleConfigChange('style', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-yellow-500"
-                    >
-                      <option value="realistic">사실적 (Realistic)</option>
-                      <option value="cartoon">만화 (Cartoon)</option>
-                      <option value="anime">애니메이션 (Anime)</option>
-                      <option value="3d">3D 렌더링</option>
-                      <option value="watercolor">수채화</option>
-                      <option value="oil_painting">유화</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">이미지 품질</label>
-                    <select
-                      value={config.quality}
-                      onChange={(e) => handleConfigChange('quality', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-yellow-500"
-                    >
-                      <option value="high">고품질 (High)</option>
-                      <option value="standard">표준 (Standard)</option>
-                      <option value="ultra">최고품질 (Ultra)</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">화면 비율</label>
-                    <select
-                      value={config.aspectRatio}
-                      onChange={(e) => handleConfigChange('aspectRatio', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-yellow-500"
-                    >
-                      <option value="1:1">정사각형 (1:1)</option>
-                      <option value="16:9">와이드 (16:9)</option>
-                      <option value="9:16">세로 (9:16)</option>
-                    </select>
-                  </div>
-                </div>
-                <div className="flex justify-between">
-                  <Button
-                    onClick={() => setStep(2)}
-                    className="bg-gray-500 hover:bg-gray-600 text-white px-6 py-2 rounded-lg"
-                  >
-                    이전
-                  </Button>
-                  <Button
-                    onClick={() => setStep(4)}
-                    className="bg-yellow-500 hover:bg-yellow-600 text-white px-6 py-2 rounded-lg"
-                  >
-                    다음
-                  </Button>
-                </div>
-              </div>
-            )}
+          {/* 3단계: 카메라/조명 설정 */}
+          {step === 3 && (
+            <CameraLightingModule
+              initialData={{
+                ...cameraLightingData,
+                config: sizeStyleData.config // 최신 config 동기화
+              }}
+              onDataChange={(data) => {
+                setCameraLightingData(data);
+                // config 변경 시 sizeStyleData의 config도 동기화
+                setSizeStyleData(prev => ({
+                  ...prev,
+                  config: data.config
+                }));
+              }}
+              attachedImages={basicData.attachedImages}
+              imageRoles={basicData.imageRoles}
+              isGenerating={isGenerating}
+              selectedOutputSize={sizeStyleData.selectedOutputSize}
+              onPrev={() => setStep(2)}
+              onNext={() => {
+                // 최적화 단계로 이동 (4단계)
+                setStep(4);
+              }}
+            />
+          )}
 
-            {/* 4단계: 고급 옵션 */}
-            {step === 4 && (
-              <div className="space-y-4">
-                <h3 className="text-lg font-medium text-gray-800">4. 고급 옵션 설정</h3>
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">커스텀 사이즈</label>
-                    <input
-                      type="text"
-                      value={config.customSize}
-                      onChange={(e) => handleConfigChange('customSize', e.target.value)}
-                      placeholder="예: 1920x1080, 4K, 세로형 등"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-yellow-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">추가 프롬프트</label>
-                    <textarea
-                      value={config.additionalPrompt}
-                      onChange={(e) => handleConfigChange('additionalPrompt', e.target.value)}
-                      placeholder="추가로 원하는 스타일이나 요구사항을 입력하세요"
-                      rows={3}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-yellow-500"
-                    />
-                  </div>
-                </div>
-                <div className="flex justify-between">
-                  <Button
-                    onClick={() => setStep(3)}
-                    className="bg-gray-500 hover:bg-gray-600 text-white px-6 py-2 rounded-lg"
-                  >
-                    이전
-                  </Button>
-                  <Button
-                    onClick={() => setStep(5)}
-                    className="bg-yellow-500 hover:bg-yellow-600 text-white px-6 py-2 rounded-lg"
-                  >
-                    다음
-                  </Button>
-                </div>
-              </div>
-            )}
 
-            {/* 5단계: 이미지 생성 */}
-            {step === 5 && (
-              <div className="space-y-4">
-                <h3 className="text-lg font-medium text-gray-800">5. 이미지 생성</h3>
-                
-                {/* 첨부된 이미지 미리보기 */}
-                {attachedImages.length > 0 && (
-                  <div className="bg-gray-50 rounded-lg p-4 mb-4">
-                    <h4 className="font-medium text-gray-700 mb-3">📷 첨부된 이미지</h4>
-                    <div className="grid grid-cols-2 gap-3">
-                      {attachedImages.map((image, index) => (
-                        <div key={index} className="relative">
-                          <img
-                            src={URL.createObjectURL(image)}
-                            alt={`첨부 이미지 ${index + 1}`}
-                            className="w-full h-32 object-contain rounded-lg border border-gray-200 bg-white"
-                          />
-                          <button
-                            onClick={() => {
-                              const newImages = attachedImages.filter((_, i) => i !== index);
-                              setAttachedImages(newImages);
-                            }}
-                            className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs hover:bg-red-600"
-                          >
-                            ×
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
+          {/* 4단계: 프롬프트 최적화 및 확인 */}
+          {step === 4 && (
+            <PromptOptimizationStep
+              prompt={prompt}
+              imageRoles={imageRoles}
+              selectedOutputSize={selectedOutputSize}
+              selectedEditingStyle={selectedEditingStyle}
+                  detailedSettings={detailedSettings}
+              isDetailedMode={isDetailedMode}
+                  config={config}
+              optimizationResult={optimizationResult}
+              isTranslating={isTranslating}
+              isOptimizing={isOptimizing}
+              onOptimizationResultChange={setOptimizationResult}
+              onTranslatingChange={setIsTranslating}
+              onOptimizingChange={setIsOptimizing}
+              onResetOptimization={resetOptimizationResult}
+              onPrev={() => setStep(3)}
+              onNext={() => setStep(5)}
+            />
+          )}
 
-                {/* 편집 가능한 프롬프트 */}
-                <div className="bg-yellow-50 rounded-lg p-4">
-                  <h4 className="font-medium text-yellow-700 mb-2">✏️ 최종 프롬프트 (수정 가능)</h4>
-                  <textarea
-                    value={prompt}
-                    onChange={(e) => setPrompt(e.target.value)}
-                    rows={6}
-                    className="w-full px-3 py-2 border border-yellow-300 rounded-md focus:outline-none focus:ring-2 focus:ring-yellow-500 text-sm"
-                    placeholder="프롬프트를 수정할 수 있습니다..."
-                  />
-                </div>
-                
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <h4 className="font-medium text-gray-700 mb-2">⚙️ 생성 설정 요약</h4>
-                  <div className="text-sm text-gray-600 space-y-1">
-                    <p><strong>스타일:</strong> {config.style}</p>
-                    <p><strong>품질:</strong> {config.quality}</p>
-                    <p><strong>비율:</strong> {config.aspectRatio}</p>
-                    {config.customSize && <p><strong>커스텀 사이즈:</strong> {config.customSize}</p>}
-                    {attachedImages.length > 0 && <p><strong>참고 이미지:</strong> {attachedImages.length}개</p>}
-                  </div>
-                </div>
-                
-                <div className="flex justify-between">
-                  <Button
-                    onClick={() => setStep(4)}
-                    className="bg-gray-500 hover:bg-gray-600 text-white px-6 py-2 rounded-lg"
-                  >
-                    이전
-                  </Button>
-                  <Button
-                    onClick={handleGenerate}
-                    disabled={isGenerating}
-                    loading={isGenerating}
-                    className="bg-green-500 hover:bg-green-600 text-white px-6 py-2 rounded-lg"
-                  >
-                    🍌 이미지 생성
-                  </Button>
-                </div>
-              </div>
-            )}
+          {/* 5단계: 이미지 생성 */}
+          {step === 5 && (
+            <ImageGenerationStep
+              prompt={prompt}
+              generatedImage={generatedImage}
+              optimizationResult={optimizationResult}
+              isGenerating={isGenerating}
+              showPromptDetails={showPromptDetails}
+              onGenerate={handleGenerate}
+              onShowPromptDetailsChange={setShowPromptDetails}
+              onSave={handleSaveImage}
+              onReset={resetModalState}
+              onPrev={() => setStep(4)}
+            />
+          )}
 
-            {/* 6단계: 이미지 확인 */}
-            {step === 6 && (
-              <div className="space-y-4">
-                <h3 className="text-lg font-medium text-gray-800">6. 생성된 이미지 확인</h3>
-                
-                {/* 생성된 이미지 표시 */}
-                {generatedImage && (
-                  <div className="bg-gray-50 rounded-lg p-4">
-                    <h4 className="font-medium text-gray-700 mb-3">생성된 이미지</h4>
-                    <div className="flex justify-center">
-                      <img 
-                        src={generatedImage} 
-                        alt="Generated Advanced"
-                        className="max-w-full max-h-96 rounded-lg shadow-md"
-                      />
-                    </div>
-                    <div className="mt-3 text-sm text-gray-600">
-                      <p><strong>설명:</strong> {prompt}</p>
-                      <p><strong>스타일:</strong> {config.style} | <strong>품질:</strong> {config.quality} | <strong>비율:</strong> {config.aspectRatio}</p>
-                    </div>
-                  </div>
-                )}
-
-                {/* 액션 버튼들 */}
-                <div className="flex justify-center space-x-4">
-                  <Button
-                    onClick={handleRegenerate}
-                    className="bg-orange-500 hover:bg-orange-600 text-white px-6 py-2 rounded-lg"
-                  >
-                    🔄 재생성
-                  </Button>
-                  <Button
-                    onClick={handleDownload}
-                    className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-lg"
-                  >
-                    💾 다운로드
-                  </Button>
-                  <Button
-                    onClick={handleComplete}
-                    className="bg-green-500 hover:bg-green-600 text-white px-6 py-2 rounded-lg"
-                  >
-                    ✅ 완료
-                  </Button>
-                </div>
-              </div>
-            )}
-          </div>
         </div>
       </div>
+
+      {/* 에러 모달 */}
+      <ErrorMessageModal
+        isOpen={errorModal.isOpen}
+        onClose={() => setErrorModal({ isOpen: false, title: '', message: '' })}
+        error={{
+          title: errorModal.title,
+          message: errorModal.message,
+          type: 'error'
+        }}
+      />
     </div>
   );
 };

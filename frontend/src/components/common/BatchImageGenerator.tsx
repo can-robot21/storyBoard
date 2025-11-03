@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import Button from './Button';
-import { batchImageService, BatchImageRequest, BatchImageResponse } from '../../services/batchImageService';
+import { BatchImageService, BatchImageRequest, BatchImageResponse } from '../../services/batchImageService';
 
 interface BatchImageGeneratorProps {
   onImagesGenerated: (images: Array<{ prompt: string; imageUrl: string }>) => void;
@@ -63,7 +63,28 @@ export const BatchImageGenerator: React.FC<BatchImageGeneratorProps> = ({
         setProgress(prev => Math.min(prev + 10, 90));
       }, 500);
 
-      const response = await batchImageService.generateBatchImages(request);
+      // 사용자 API 키로 서비스 인스턴스 생성
+      const getAPIKey = () => {
+        try {
+          if (typeof window !== 'undefined') {
+            const currentUserRaw = localStorage.getItem('storyboard_current_user');
+            const localKeysRaw = localStorage.getItem('user_api_keys');
+            const currentUser = currentUserRaw ? JSON.parse(currentUserRaw) : null;
+            const localKeys = localKeysRaw ? JSON.parse(localKeysRaw) : {};
+            
+            return localKeys.google || currentUser?.apiKeys?.google || '';
+          }
+        } catch {}
+        return '';
+      };
+
+      const apiKey = getAPIKey();
+      if (!apiKey) {
+        throw new Error('API 키가 설정되지 않았습니다. 설정에서 API 키를 입력해주세요.');
+      }
+
+      const batchService = new BatchImageService(apiKey);
+      const response = await batchService.generateBatchImages(request);
       
       clearInterval(progressInterval);
       setProgress(100);

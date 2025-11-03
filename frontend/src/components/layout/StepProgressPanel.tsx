@@ -11,14 +11,10 @@ import {
   Users,
   Image,
   Video,
-  Download,
-  Trash2,
-  Settings,
   Bot,
-  BarChart3,
-  Wrench
+  TrendingUp,
+  BarChart3
 } from 'lucide-react';
-import { downloadBase64Image, downloadVideo } from '../../utils/downloadUtils';
 
 interface StepItem {
   id: string;
@@ -43,6 +39,7 @@ interface StepProgressPanelProps {
   generatedCharacters?: any[];
   generatedBackgrounds?: any[];
   generatedSettingCuts?: any[];
+  generatedAdvancedImages?: any[];
   generatedTextCards?: any[];
   generatedVideos?: any[];
   // 영상 생성에서 추가된 캐릭터/배경 이미지
@@ -69,8 +66,11 @@ interface StepProgressPanelProps {
   // API 키 상태
   hasAPIKey?: boolean;
   
-  // 유용한툴 핸들러
-  onUsefulToolsClick?: () => void;
+  // 모달 토글 관련
+  onToggleModal?: () => void;
+  isModalVisible?: boolean;
+  isAdmin?: boolean;
+  isLoggedIn?: boolean;
 }
 
 export const StepProgressPanel: React.FC<StepProgressPanelProps> = ({
@@ -83,6 +83,7 @@ export const StepProgressPanel: React.FC<StepProgressPanelProps> = ({
   generatedCharacters = [],
   generatedBackgrounds = [],
   generatedSettingCuts = [],
+  generatedAdvancedImages = [],
   generatedTextCards = [],
   generatedVideos = [],
   generatedCharacterImages = [],
@@ -95,9 +96,12 @@ export const StepProgressPanel: React.FC<StepProgressPanelProps> = ({
   selectedAIProvider = 'google',
   onAISettingsClick,
   hasAPIKey = false,
-  onUsefulToolsClick
+  onToggleModal,
+  isModalVisible = true,
+  isAdmin = false,
+  isLoggedIn = false
 }) => {
-  const [isExpanded, setIsExpanded] = useState(true);
+  const [isExpanded, setIsExpanded] = useState(false); // 기본값: 감추기
   const [itemVisibility, setItemVisibility] = useState<{ [key: string]: boolean }>({
     story: true,
     characters: true,
@@ -106,6 +110,7 @@ export const StepProgressPanel: React.FC<StepProgressPanelProps> = ({
     characterImages: false,
     backgroundImages: false,
     settingCuts: false,
+    advancedImages: false,
     textCards: false,
     videos: true,
     videoSettings: false
@@ -171,6 +176,14 @@ export const StepProgressPanel: React.FC<StepProgressPanelProps> = ({
           count: generatedSettingCuts.length,
           data: generatedSettingCuts,
           isVisible: itemVisibility.settingCuts
+        },
+        {
+          id: 'advancedImages',
+          label: '고급 이미지',
+          status: generatedAdvancedImages.length > 0 ? 'completed' : 'pending',
+          count: generatedAdvancedImages.length,
+          data: generatedAdvancedImages,
+          isVisible: itemVisibility.advancedImages
         }
       );
     }
@@ -259,6 +272,7 @@ export const StepProgressPanel: React.FC<StepProgressPanelProps> = ({
     <div className="bg-white border-t border-gray-200 shadow-lg">
       {/* 헤더 - 항상 표시 */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+        {/* 왼쪽: 진행 상황 정보 */}
         <div className="flex items-center gap-3">
           <h3 className="text-sm font-semibold text-gray-800">진행 상황</h3>
           <span className="text-xs text-gray-500">
@@ -281,9 +295,9 @@ export const StepProgressPanel: React.FC<StepProgressPanelProps> = ({
           </div>
         </div>
 
-        {/* 단계별 네비게이션 */}
+        {/* 중앙: 단계별 네비게이션 */}
         <div className="flex items-center gap-2">
-          {['프로젝트 개요', 'TXT2IMG', 'IMG2IMG', '영상 생성'].map((step) => (
+          {['프로젝트 개요', 'TXT2IMG', 'IMG2IMG', '영상 생성', ...(isLoggedIn ? ['스토리보드 생성'] : [])].map((step) => (
             <button
               key={step}
               onClick={() => onStepChange(step)}
@@ -298,41 +312,42 @@ export const StepProgressPanel: React.FC<StepProgressPanelProps> = ({
           ))}
         </div>
 
-        {/* 컨트롤 버튼들 */}
+        {/* 오른쪽: 컨트롤 버튼들 */}
         <div className="flex items-center gap-2">
-          {/* AI 서비스 표시 및 설정 버튼 */}
-          <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1 px-2 py-1 bg-gray-100 rounded-md">
-              <Bot className="w-4 h-4 text-gray-600" />
-              <span className="text-sm font-medium text-gray-700 capitalize">
-                {selectedAIProvider === 'google' ? 'Google AI' :
-                 selectedAIProvider === 'openai' ? 'OpenAI' : selectedAIProvider}
-              </span>
-            </div>
+          {/* 하단 도구패널 보이기/감추기 버튼 */}
+          {onToggleModal && (
+            <button
+              onClick={onToggleModal}
+              className="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-md transition-colors"
+              title={isModalVisible ? '하단 도구패널 숨기기' : '하단 도구패널 보이기'}
+            >
+              {isModalVisible ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            </button>
+          )}
+
+          {/* AI 서비스 표시 및 설정 */}
+          <div className="flex items-center gap-1 px-2 py-1 bg-gray-100 rounded-md">
+            <Bot className="w-4 h-4 text-gray-600" />
+            <span className="text-sm font-medium text-gray-700 capitalize">
+              {selectedAIProvider === 'google' ? 'Google AI' :
+               selectedAIProvider === 'openai' ? 'OpenAI' : selectedAIProvider}
+            </span>
             {onAISettingsClick && (
               <button
                 onClick={onAISettingsClick}
-                className="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-md transition-colors"
+                className="ml-1 p-1 text-gray-500 hover:text-gray-700 rounded transition-colors"
                 title="AI 서비스 설정"
               >
-                <Settings className="w-4 h-4" />
+                <Bot className="w-3 h-3" />
               </button>
             )}
-            
-            {/* 유용한툴 버튼 */}
-            <button
-              onClick={onUsefulToolsClick}
-              className="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-md transition-colors"
-              title="유용한툴"
-            >
-              <Wrench className="w-4 h-4" />
-            </button>
           </div>
 
           {/* 패널 확장/축소 버튼 */}
           <button
             onClick={() => setIsExpanded(!isExpanded)}
             className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
+            title={isExpanded ? '패널 접기' : '패널 펼치기'}
           >
             {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
           </button>
@@ -346,7 +361,7 @@ export const StepProgressPanel: React.FC<StepProgressPanelProps> = ({
             {stepItems.map((item) => (
               <div
                 key={item.id}
-                className={`p-3 rounded-lg border transition-all ${
+                className={`group p-3 rounded-lg border transition-all ${
                   item.status === 'completed'
                     ? 'bg-green-50 border-green-200'
                     : item.status === 'in_progress'
@@ -369,7 +384,7 @@ export const StepProgressPanel: React.FC<StepProgressPanelProps> = ({
                     )}
                   </div>
 
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                     {/* 참조 버튼 */}
                     {item.data && item.data.length > 0 && (
                       <button
@@ -426,7 +441,7 @@ export const StepProgressPanel: React.FC<StepProgressPanelProps> = ({
                     {['characterImages', 'backgroundImages', 'settingCuts'].includes(item.id) && (
                       <div className="grid grid-cols-2 gap-2 mt-2">
                         {item.data.slice(0, 4).map((imageItem: any, index: number) => (
-                          <div key={index} className="relative group">
+                          <div key={index} className="relative">
                             <div className="aspect-square bg-gray-100 rounded-lg overflow-hidden">
                               <img
                                 src={imageItem.image || imageItem}
@@ -434,34 +449,6 @@ export const StepProgressPanel: React.FC<StepProgressPanelProps> = ({
                                 className="w-full h-full object-cover"
                               />
                             </div>
-                            {/* 출처 표시 */}
-                            <div className="absolute top-1 left-1 px-1 py-0.5 bg-black bg-opacity-50 text-white text-xs rounded">
-                              {imageItem.source || (selectedAIProvider === 'google' ? 'Google AI' : selectedAIProvider)}
-                            </div>
-                            <button
-                              onClick={() => {
-                                const filename = `${item.label}_${index + 1}_${new Date().toISOString().split('T')[0]}.jpg`;
-                                downloadBase64Image(imageItem.image || imageItem, filename);
-                              }}
-                              className="absolute top-1 right-1 p-1 bg-black bg-opacity-50 text-white rounded opacity-0 group-hover:opacity-100 transition-opacity"
-                              title="다운로드"
-                            >
-                              <Download className="w-3 h-3" />
-                            </button>
-                            {onDeleteItem && (
-                              <button
-                                onClick={() => {
-                                  if (window.confirm(`정말로 이 ${item.label} 이미지를 삭제하시겠습니까?`)) {
-                                    console.log('StepProgressPanel 삭제 요청:', { itemId: item.id, index, label: item.label });
-                                    onDeleteItem(item.id, index);
-                                  }
-                                }}
-                                className="absolute top-1 left-1 p-1 bg-red-600 bg-opacity-80 text-white rounded opacity-0 group-hover:opacity-100 transition-opacity"
-                                title="삭제"
-                              >
-                                <Trash2 className="w-3 h-3" />
-                              </button>
-                            )}
                           </div>
                         ))}
                         {item.data.length > 4 && (
@@ -604,6 +591,8 @@ export const StepProgressPanel: React.FC<StepProgressPanelProps> = ({
                           };
 
                           const cuts = parseCutTexts(textCard.generatedText || textCard);
+                          const cardId = textCard.id || index;
+                          const cardKey = `card_${cardId}`;
                           const cutCount = Object.keys(cuts).length;
 
                           return (
@@ -650,7 +639,7 @@ export const StepProgressPanel: React.FC<StepProgressPanelProps> = ({
                     {item.id === 'videos' && (
                       <div className="grid grid-cols-1 gap-2 mt-2">
                         {item.data.slice(0, 2).map((videoItem: any, index: number) => (
-                          <div key={index} className="relative group">
+                          <div key={index} className="relative">
                             <div className="aspect-video bg-gray-100 rounded-lg overflow-hidden">
                               <video
                                 src={videoItem.video || videoItem}
@@ -658,16 +647,6 @@ export const StepProgressPanel: React.FC<StepProgressPanelProps> = ({
                                 className="w-full h-full object-cover"
                               />
                             </div>
-                            <button
-                              onClick={() => {
-                                const filename = `영상_${index + 1}_${new Date().toISOString().split('T')[0]}.mp4`;
-                                downloadVideo(videoItem.video || videoItem, filename);
-                              }}
-                              className="absolute top-1 right-1 p-1 bg-black bg-opacity-50 text-white rounded opacity-0 group-hover:opacity-100 transition-opacity"
-                              title="다운로드"
-                            >
-                              <Download className="w-3 h-3" />
-                            </button>
                             <div className="absolute bottom-1 left-1 text-xs text-white bg-black bg-opacity-50 px-1 rounded">
                               {videoItem.videoRatio || '16:9'}
                             </div>

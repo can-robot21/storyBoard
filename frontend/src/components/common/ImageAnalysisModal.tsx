@@ -22,8 +22,13 @@ export const ImageAnalysisModal: React.FC<ImageAnalysisModalProps> = ({
   const [analysisResult, setAnalysisResult] = useState<string>('');
   const [error, setError] = useState<string>('');
 
-  // API 키 확인 (사용자별 또는 환경 변수)
+  // API 키 확인 (로그인한 사용자만)
   const getAPIKey = () => {
+    // 로그인하지 않은 경우 API 키 사용 안함
+    if (!currentUser) {
+      return '';
+    }
+
     try {
       if (currentUser?.apiKeys?.google) return currentUser.apiKeys.google;
       if (typeof window !== 'undefined') {
@@ -34,7 +39,7 @@ export const ImageAnalysisModal: React.FC<ImageAnalysisModalProps> = ({
         }
       }
     } catch {}
-    return process.env.REACT_APP_GEMINI_API_KEY || '';
+    return '';
   };
 
   const hasAPIKey = getAPIKey().trim() !== '';

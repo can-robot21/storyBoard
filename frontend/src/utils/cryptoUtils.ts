@@ -41,8 +41,8 @@ export class CryptoUtils {
   // 환경변수에서 관리자 정보 가져오기
   static getAdminCredentials(): { email: string; password: string } {
     return {
-      email: process.env.REACT_APP_ADMIN_EMAIL || 'star612.net@gmail.com',
-      password: process.env.REACT_APP_ADMIN_PASSWORD || 'star6120@@'
+      email: (process.env.REACT_APP_ADMIN_EMAIL as string) || 'star612.net@gmail.com',
+      password: (process.env.REACT_APP_ADMIN_PASSWORD as string) || 'star6120@@'
     };
   }
 

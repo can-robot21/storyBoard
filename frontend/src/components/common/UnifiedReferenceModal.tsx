@@ -173,6 +173,7 @@ export const UnifiedReferenceModal: React.FC<UnifiedReferenceModalProps> = ({
       case 'characterImages':
       case 'backgroundImages':
       case 'settingCuts':
+      case 'advancedImages':
         return (
           <div className="space-y-2">
             {item.image && (

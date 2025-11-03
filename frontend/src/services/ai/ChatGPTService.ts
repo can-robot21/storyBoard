@@ -1,6 +1,7 @@
 import { BaseAIService } from './BaseAIService';
 import { AIProvider, TextGenerationOptions, ImageGenerationOptions, VideoGenerationOptions, TextGenerationResponse, ImageGenerationResponse, VideoGenerationResponse, AIServiceConfig } from '../../types/ai';
 import axios, { AxiosError } from 'axios';
+import { getSystemPrompt } from '../../utils/promptTemplates';
 
 export class ChatGPTService extends BaseAIService {
   private apiKey: string;
@@ -35,7 +36,9 @@ export class ChatGPTService extends BaseAIService {
       const model = options.model || 'gpt-4o-mini';
       const maxTokens = options.maxTokens || 4000;
       const temperature = options.temperature || 0.7;
-      const systemPrompt = options.systemPrompt;
+      
+      // Provider별 System Prompt 적용 (옵션에서 제공되면 우선 사용)
+      const systemPrompt = options.systemPrompt || getSystemPrompt('chatgpt', 'text');
 
       const messages: any[] = [];
       if (systemPrompt) {
@@ -110,7 +113,7 @@ export class ChatGPTService extends BaseAIService {
 
     try {
       const model = options.model || 'dall-e-3';
-      const size = this.mapAspectRatioToSize(options.aspectRatio || '1:1');
+      const size = this.mapAspectRatioToSize(options.aspectRatio || '16:9');
       const quality = options.quality === 'high' ? 'hd' : 'standard';
       const style = options.style === 'photographic' ? 'natural' : 'vivid';
       const numberOfImages = options.numberOfImages || 1;

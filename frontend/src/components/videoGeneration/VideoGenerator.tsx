@@ -4,13 +4,11 @@ import VideoCardModal from '../common/VideoCardModal';
 import VideoGenerationErrorModal from '../common/VideoGenerationErrorModal';
 import VideoPromptConfirmModal from '../common/VideoPromptConfirmModal';
 import ImageSelectionModal from '../common/ImageSelectionModal';
-import { MediaSlider } from '../common/MediaSlider';
 import { GeneratedVideo, GeneratedTextCard, GeneratedImage, ErrorModalState, ConfirmModalState, SceneTextCard } from '../../types/videoGeneration';
 import { Episode, Scene } from '../../types/projectOverview';
 import { useUIStore } from '../../stores/uiStore';
-import { googleAIService } from '../../services/googleAIService';
+import { GoogleAIService } from '../../services/googleAIService';
 import { Upload, Image as ImageIcon, Zap, Download, Play } from 'lucide-react';
-import { PDFUpload } from '../common/PDFUpload';
 
 interface VideoGeneratorProps {
   generatedVideos: GeneratedVideo[];
@@ -33,8 +31,6 @@ interface VideoGeneratorProps {
   generatedSceneTextCards?: SceneTextCard[];
   // 에피소드 구조 관련 props
   episodes?: Episode[];
-  // 설정 컷 이미지 관련 props
-  generatedSettingCutImages?: GeneratedImage[];
 }
 
 export const VideoGenerator: React.FC<VideoGeneratorProps> = ({
@@ -54,10 +50,45 @@ export const VideoGenerator: React.FC<VideoGeneratorProps> = ({
   finalScenario,
   generatedProjectData,
   generatedSceneTextCards = [],
-  episodes = [],
-  generatedSettingCutImages = []
+  episodes = []
 }) => {
   const { addNotification } = useUIStore();
+  
+  // 로그인 상태 확인 및 API 키 가져오기
+  const getAPIKey = (): string => {
+    try {
+      if (typeof window === 'undefined') return '';
+      
+      // 현재 사용자 확인
+      const currentUserRaw = localStorage.getItem('storyboard_current_user');
+      const currentUser = currentUserRaw ? JSON.parse(currentUserRaw) : null;
+      
+      if (!currentUser) {
+        console.log('🔑 API 키 로딩: 미설정 (로그인 필요)');
+        return '';
+      }
+      
+      // 사용자 API 키 확인
+      if (currentUser?.apiKeys?.google) {
+        return currentUser.apiKeys.google;
+      }
+      
+      // 로컬 저장소에서 API 키 확인
+      const localKeysRaw = localStorage.getItem('user_api_keys');
+      if (localKeysRaw) {
+        const localKeys = JSON.parse(localKeysRaw);
+        if (localKeys?.google) {
+          return localKeys.google;
+        }
+      }
+      
+      console.log('🔑 API 키 로딩: 미설정');
+      return '';
+    } catch (error) {
+      console.error('API 키 로딩 오류:', error);
+      return '';
+    }
+  };
   
   // 상태 관리
   const [isGeneratingVideo, setIsGeneratingVideo] = useState(false);
@@ -80,205 +111,6 @@ export const VideoGenerator: React.FC<VideoGeneratorProps> = ({
   const [generationStep, setGenerationStep] = useState<string>('');
   const [isProcessing, setIsProcessing] = useState(false);
   
-  // 최신 Veo API 옵션들
-  const [videoGenerationMode, setVideoGenerationMode] = useState<'TEXT_TO_VIDEO' | 'FRAMES_TO_VIDEO' | 'REFERENCES_TO_VIDEO' | 'EXTEND_VIDEO'>('TEXT_TO_VIDEO');
-  const [startFrame, setStartFrame] = useState<{ file: File; base64: string } | null>(null);
-  const [endFrame, setEndFrame] = useState<{ file: File; base64: string } | null>(null);
-  const [styleImage, setStyleImage] = useState<{ file: File; base64: string } | null>(null);
-  const [inputVideoObject, setInputVideoObject] = useState<any>(null);
-  const [isLooping, setIsLooping] = useState(false);
-  const [hasAudio, setHasAudio] = useState(false);
-  const [hasMusic, setHasMusic] = useState(false);
-  const [audioPrompt, setAudioPrompt] = useState('');
-  const [musicStyle, setMusicStyle] = useState('ambient');
-  
-  // PDF 관련 상태
-  const [uploadedPDF, setUploadedPDF] = useState<File | null>(null);
-  const [pdfContent, setPdfContent] = useState<string>('');
-  
-  // 파일 업로드 함수들
-  const fileToBase64 = useCallback(async (file: File): Promise<{ file: File; base64: string }> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const base64 = (reader.result as string).split(',')[1];
-        if (base64) {
-          resolve({ file, base64 });
-        } else {
-          reject(new Error('Failed to read file as base64.'));
-        }
-      };
-      reader.onerror = (error) => reject(error);
-      reader.readAsDataURL(file);
-    });
-  }, []);
-
-  const handleFrameImageUpload = useCallback(async (file: File, type: 'startFrame' | 'endFrame' | 'styleImage') => {
-    try {
-      const imageFile = await fileToBase64(file);
-      switch (type) {
-        case 'startFrame':
-          setStartFrame(imageFile);
-          break;
-        case 'endFrame':
-          setEndFrame(imageFile);
-          break;
-        case 'styleImage':
-          setStyleImage(imageFile);
-          break;
-      }
-      addNotification({
-        type: 'success',
-        title: '이미지 업로드 완료',
-        message: `${file.name}이 업로드되었습니다.`,
-      });
-    } catch (error) {
-      console.error('이미지 업로드 오류:', error);
-      addNotification({
-        type: 'error',
-        title: '업로드 실패',
-        message: '이미지 업로드에 실패했습니다.',
-      });
-    }
-  }, [fileToBase64, addNotification]);
-
-  const handleVideoUpload = useCallback(async (file: File) => {
-    try {
-      const videoFile = await fileToBase64(file);
-      setInputVideoObject(videoFile);
-      addNotification({
-        type: 'success',
-        title: '영상 업로드 완료',
-        message: `${file.name}이 업로드되었습니다.`,
-      });
-    } catch (error) {
-      console.error('영상 업로드 오류:', error);
-      addNotification({
-        type: 'error',
-        title: '업로드 실패',
-        message: '영상 업로드에 실패했습니다.',
-      });
-    }
-  }, [fileToBase64, addNotification]);
-
-  // PDF 처리 함수들
-  const handlePDFUpload = useCallback(async (file: File) => {
-    try {
-      setUploadedPDF(file);
-      
-      // PDF를 텍스트로 변환 (간단한 구현)
-      const reader = new FileReader();
-      reader.onload = async (e) => {
-        try {
-          // 실제로는 PDF.js나 다른 라이브러리를 사용해야 함
-          // 여기서는 간단한 예시로 파일명을 사용
-          const content = `PDF 파일: ${file.name}\n\n이 PDF의 내용을 바탕으로 영상을 생성해주세요.`;
-          setPdfContent(content);
-          
-          addNotification({
-            type: 'success',
-            title: 'PDF 업로드 완료',
-            message: `${file.name}이 업로드되었습니다.`,
-          });
-        } catch (error) {
-          console.error('PDF 처리 오류:', error);
-          addNotification({
-            type: 'error',
-            title: 'PDF 처리 실패',
-            message: 'PDF 파일 처리에 실패했습니다.',
-          });
-        }
-      };
-      reader.readAsArrayBuffer(file);
-    } catch (error) {
-      console.error('PDF 업로드 오류:', error);
-      addNotification({
-        type: 'error',
-        title: '업로드 실패',
-        message: 'PDF 업로드에 실패했습니다.',
-      });
-    }
-  }, [addNotification]);
-
-  const handlePDFRemove = useCallback(() => {
-    setUploadedPDF(null);
-    setPdfContent('');
-    addNotification({
-      type: 'info',
-      title: 'PDF 제거',
-      message: 'PDF 파일이 제거되었습니다.',
-    });
-  }, [addNotification]);
-
-  // 영상 확장 함수
-  const handleExtendVideo = useCallback(async (videoObject: any) => {
-    if (!videoObject) {
-      addNotification({
-        type: 'error',
-        title: '영상 객체 없음',
-        message: '확장할 영상 객체가 없습니다.',
-      });
-      return;
-    }
-
-    try {
-      setIsGeneratingVideo(true);
-      setGenerationStep('영상 확장 중...');
-      setGenerationProgress(0);
-
-      const result = await googleAIService.generateVideo({
-        prompt: englishPrompt || koreanPrompt || '영상을 자연스럽게 연장해주세요.',
-        ratio: videoRatio,
-        model: selectedVideoModel,
-        duration: videoDuration === 'custom' ? customDuration : videoDuration,
-        mode: 'EXTEND_VIDEO',
-        inputVideoObject: videoObject
-      });
-
-      if (result && result.videoUrl) {
-        setGenerationStep('영상 확장 완료!');
-        setGenerationProgress(100);
-        
-        const newVideo: GeneratedVideo = {
-          id: Date.now(),
-          textCards: [],
-          characterImages: selectedCharacterImagesData,
-          backgrounds: selectedBackgroundImagesData,
-          title: `확장된 영상 ${new Date().toLocaleString()}`,
-          description: `원본 영상을 확장한 결과입니다.`,
-          videoUrl: result.videoUrl,
-          thumbnail: result.thumbnail,
-          duration: result.duration,
-          timestamp: new Date().toISOString(),
-          prompt: englishPrompt || koreanPrompt || '영상 확장',
-          model: selectedVideoModel,
-          ratio: videoRatio,
-          quality: videoQuality,
-          referenceImages: getAllReferenceImages()
-        };
-
-        setGeneratedVideos(prev => [newVideo, ...prev]);
-        
-        addNotification({
-          type: 'success',
-          title: '영상 확장 완료',
-          message: '영상이 성공적으로 확장되었습니다.',
-        });
-      }
-    } catch (error) {
-      console.error('영상 확장 오류:', error);
-      addNotification({
-        type: 'error',
-        title: '영상 확장 실패',
-        message: '영상 확장 중 오류가 발생했습니다.',
-      });
-    } finally {
-      setIsGeneratingVideo(false);
-      setGenerationStep('');
-      setGenerationProgress(0);
-    }
-  }, [englishPrompt, koreanPrompt, videoRatio, selectedVideoModel, videoDuration, customDuration, setGeneratedVideos, addNotification]);
-
   // 컷 단위 프롬프트 상태
   const [cutBasedPrompt, setCutBasedPrompt] = useState<{
     cuts: Array<{
@@ -307,7 +139,7 @@ export const VideoGenerator: React.FC<VideoGeneratorProps> = ({
   const [showImageSelectionModal, setShowImageSelectionModal] = useState(false);
   const [selectedStoredImages, setSelectedStoredImages] = useState<string[]>([]);
   const [useDefaultOptions, setUseDefaultOptions] = useState(true);
-  const [uiMode, setUiMode] = useState<'simple' | 'advanced'>('simple');
+  const [generationMode, setGenerationMode] = useState<'simple' | 'advanced'>('simple');
 
   // 에러 모달 상태
   const [errorModal, setErrorModal] = useState<ErrorModalState>({
@@ -367,31 +199,14 @@ export const VideoGenerator: React.FC<VideoGeneratorProps> = ({
 
   // 최적화된 프롬프트 생성 (에피소드 구조 반영)
   const createOptimizedPrompt = useCallback((basePrompt: string) => {
-    let optimizedPrompt = basePrompt;
-    
-    // PDF 내용이 있으면 프롬프트에 추가
-    if (pdfContent) {
-      optimizedPrompt = `${pdfContent}\n\n영상 생성 프롬프트: ${basePrompt}`;
-    }
-    
-    // 오디오 옵션이 있으면 프롬프트에 추가
-    if (hasAudio && audioPrompt) {
-      optimizedPrompt += `\n\n오디오 요구사항: ${audioPrompt}`;
-    }
-    
-    // 음악 옵션이 있으면 프롬프트에 추가
-    if (hasMusic) {
-      optimizedPrompt += `\n\n배경음악 스타일: ${musicStyle}`;
-    }
-    
-    if (!getEpisodeBasedVideoInfo) return optimizedPrompt;
+    if (!getEpisodeBasedVideoInfo) return basePrompt;
 
     const episodeInfo = getEpisodeBasedVideoInfo;
     const episodeStructure = episodeInfo.episodes.map(ep => 
       `- ${ep.title}: ${ep.sceneCount}개 씬, ${ep.cutCount}개 컷`
     ).join('\n');
 
-    return `${optimizedPrompt}
+    return `${basePrompt}
     
 === 에피소드 구조 정보 ===
 총 에피소드: ${episodeInfo.totalEpisodes}개
@@ -403,7 +218,7 @@ export const VideoGenerator: React.FC<VideoGeneratorProps> = ({
 ${episodeStructure}
 
 위 에피소드 구조를 반영하여 일관성 있는 영상을 생성해주세요.`;
-  }, [getEpisodeBasedVideoInfo, pdfContent, hasAudio, audioPrompt, hasMusic, musicStyle]);
+  }, [getEpisodeBasedVideoInfo]);
 
   // 한국어 프롬프트를 영문으로 번역
   const translateKoreanPrompt = useCallback(async (koreanText: string) => {
@@ -411,7 +226,12 @@ ${episodeStructure}
     
     setIsTranslating(true);
     try {
-      const { googleAIService } = await import('../../services/googleAIService');
+      const { GoogleAIService } = await import('../../services/googleAIService');
+      const apiKey = getAPIKey();
+      if (!apiKey) {
+        throw new Error('Google AI API 키가 설정되지 않았습니다. 로그인 후 설정에서 API 키를 입력해주세요.');
+      }
+      const googleAIService = GoogleAIService.getInstance();
       const translatedText = await googleAIService.generateText(
         `다음 한국어 텍스트를 자연스러운 영어로 번역해주세요. 영상 생성에 적합한 표현으로 번역해주세요:\n\n${koreanText}`
       );
@@ -436,6 +256,18 @@ ${episodeStructure}
     }
   }, [addNotification]);
 
+  // 선택된 텍스트 카드들 (일반 텍스트 카드 + 씬 텍스트 카드의 선택된 컷들)
+  const selectedTextCardsData = useMemo(() => {
+    const regularCards = generatedTextCards.filter(card => selectedTextCards.has(card.id));
+    
+    // 씬 텍스트 카드에서 선택된 컷들 수집
+    const sceneCutCards = generatedSceneTextCards.flatMap(sceneCard => 
+      sceneCard.cuts.filter(cut => selectedCuts.has(cut.id.toString()))
+    );
+    
+    return [...regularCards, ...sceneCutCards];
+  }, [generatedTextCards, selectedTextCards, generatedSceneTextCards, selectedCuts]);
+
   // 선택된 캐릭터 이미지들
   const selectedCharacterImagesData = useMemo(() => {
     return generatedCharacterImages.filter(image => selectedCharacterImages.has(image.id));
@@ -446,23 +278,13 @@ ${episodeStructure}
     return generatedVideoBackgrounds.filter(image => selectedVideoBackgrounds.has(image.id));
   }, [generatedVideoBackgrounds, selectedVideoBackgrounds]);
 
-  // 선택된 설정 컷 이미지들
-  const selectedSettingCutImagesData = useMemo(() => {
-    return generatedSettingCutImages.filter(image => {
-      // 설정 컷 이미지의 선택 상태를 확인하는 로직이 필요합니다
-      // 현재는 모든 설정 컷 이미지를 포함하도록 설정
-      return true;
-    });
-  }, [generatedSettingCutImages]);
-
   // 모든 참조 이미지 가져오기
   const getAllReferenceImages = () => {
     const allImages = [
       ...uploadedImages,
       ...selectedStoredImages,
       ...selectedCharacterImagesData.map(img => img.image),
-      ...selectedBackgroundImagesData.map(img => img.image),
-      ...selectedSettingCutImagesData.map(img => img.image) // 설정 컷 이미지 추가
+      ...selectedBackgroundImagesData.map(img => img.image)
     ];
     return allImages;
   };
@@ -472,8 +294,8 @@ ${episodeStructure}
     fileInputRef.current?.click();
   };
 
-  // 이미지 업로드 핸들러 (기존)
-  const handleImageUploadLegacy = (event: React.ChangeEvent<HTMLInputElement>) => {
+  // 이미지 업로드 핸들러
+  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (!files) return;
 
@@ -496,18 +318,11 @@ ${episodeStructure}
   const handleStoredImageSelect = (images: string[]) => {
     setSelectedStoredImages(images);
     setShowImageSelectionModal(false);
-    console.log('📸 저장된 이미지 선택됨:', images.length, '개');
-    console.log('📸 선택된 이미지들:', images);
-    
-    // 선택된 이미지가 제대로 설정되었는지 확인
-    setTimeout(() => {
-      console.log('📸 현재 selectedStoredImages:', selectedStoredImages);
-      console.log('📸 전체 참조 이미지 개수:', getAllReferenceImages().length);
-    }, 100);
+    console.log('저장된 이미지 선택됨:', images.length, '개');
   };
 
-  // 통합된 영상 생성 핸들러 (한글/영문 우선순위 처리)
-  const handleUnifiedVideoGeneration = async () => {
+  // 영상 생성 핸들러 (최적화된 버전)
+  const handleGenerateAIVideo = async () => {
     // 중복 클릭 방지
     if (isGeneratingVideo || isProcessing) {
       addNotification({
@@ -518,26 +333,11 @@ ${episodeStructure}
       return;
     }
 
-    // 프롬프트 우선순위 결정
-    let finalPrompt = '';
-    let promptSource = '';
-
-    if (englishPrompt.trim()) {
-      // 영문 프롬프트가 있으면 우선 사용
-      finalPrompt = englishPrompt.trim();
-      promptSource = '영문 프롬프트';
-    } else if (koreanPrompt.trim()) {
-      // 한글 프롬프트만 있으면 영어로 래핑하여 사용
-      finalPrompt = `Create a video with the following Korean description: ${koreanPrompt.trim()}. 
-      Please generate a high-quality video that captures the essence of this Korean description. 
-      Focus on visual storytelling and cinematic quality.`;
-      promptSource = '한글 프롬프트 (영어로 래핑)';
-    } else {
-      // 둘 다 없으면 오류
+    if (!englishPrompt.trim()) {
       addNotification({
         type: 'error',
-        title: '입력 필요',
-        message: '한글 또는 영문 프롬프트를 입력해주세요.',
+        title: '입력 오류',
+        message: '영문 프롬프트를 입력해주세요.',
       });
       return;
     }
@@ -551,14 +351,11 @@ ${episodeStructure}
 
       // 참조 이미지 정보 로깅 (개발 환경에서만)
       if (process.env.NODE_ENV === 'development') {
-        console.log('통합 영상 생성에 사용될 정보:', {
-          프롬프트_소스: promptSource,
-          최종_프롬프트_길이: finalPrompt.length,
+        console.log('영상 생성에 사용될 참조 이미지:', {
           업로드된_이미지: uploadedImages.length,
           저장된_이미지: selectedStoredImages.length,
           선택된_캐릭터_이미지: selectedCharacterImagesData.length,
           선택된_배경_이미지: selectedBackgroundImagesData.length,
-          선택된_설정컷_이미지: selectedSettingCutImagesData.length,
           총_참조_이미지: referenceImages.length
         });
       }
@@ -567,54 +364,38 @@ ${episodeStructure}
       if (skipPromptEdit) {
         setGenerationStep('프롬프트 수정 단계 생략...');
         // 바로 영상 생성 진행
-        await generateVideoWithModel(finalPrompt, videoRatio, selectedVideoModel, referenceImages, undefined, videoGenerationMode);
+        await generateVideoWithModel(englishPrompt, videoRatio, selectedVideoModel, referenceImages);
       } else {
         // 프롬프트 수정 진행 여부 확인
         const shouldSkip = window.confirm(
-          `프롬프트 수정 단계를 생략하고 바로 영상 생성을 진행하시겠습니까?\n\n` +
-          `• 현재 프롬프트: ${promptSource}\n` +
-          `• 예: 입력한 프롬프트로 바로 생성\n` +
-          `• 아니오: AI가 프롬프트를 최적화한 후 생성`
+          '프롬프트 수정 단계를 생략하고 바로 영상 생성을 진행하시겠습니까?\n\n' +
+          '• 예: 입력한 프롬프트로 바로 생성\n' +
+          '• 아니오: AI가 프롬프트를 최적화한 후 생성'
         );
 
         if (shouldSkip) {
+          setSkipPromptEdit(true);
           setGenerationStep('프롬프트 수정 단계 생략...');
-          await generateVideoWithModel(finalPrompt, videoRatio, selectedVideoModel, referenceImages, undefined, videoGenerationMode);
+          await generateVideoWithModel(englishPrompt, videoRatio, selectedVideoModel, referenceImages);
         } else {
-          setGenerationStep('AI 프롬프트 최적화 중...');
-          // 프롬프트 최적화 모달 표시
-          setOptimizedPromptModal({
-            isOpen: true,
-            originalPrompt: finalPrompt,
-            optimizedPrompt: '',
-            referenceImages: getAllReferenceImages(),
-            onConfirm: (optimizedPrompt) => {
-              setEnglishPrompt(optimizedPrompt);
-              setOptimizedPromptModal({ ...optimizedPromptModal, isOpen: false });
-              addNotification({
-                type: 'success',
-                title: '프롬프트 수정 완료',
-                message: '프롬프트가 수정되었습니다.',
-              });
-            }
-          });
+          setGenerationStep('프롬프트 최적화 중...');
+          await handleOptimizedPromptEdit(englishPrompt, referenceImages, (finalPrompt) => 
+            generateVideoWithModel(finalPrompt, videoRatio, selectedVideoModel, referenceImages)
+          );
         }
       }
     } catch (error) {
-      console.error('통합 영상 생성 오류:', error);
+      console.error('영상 생성 오류:', error);
       addNotification({
         type: 'error',
-        title: '영상 생성 실패',
-        message: `영상 생성에 실패했습니다: ${error instanceof Error ? error.message : '알 수 없는 오류'}`,
+        title: '생성 실패',
+        message: '영상 생성 중 오류가 발생했습니다.',
       });
     } finally {
       setIsProcessing(false);
       setGenerationStep('');
     }
   };
-
-  // 기존 영상 생성 핸들러 (통합된 함수로 교체)
-  const handleGenerateAIVideo = handleUnifiedVideoGeneration;
 
   // 컷 기반 프롬프트 생성 함수
   const generateCutBasedPrompt = async (originalPrompt: string, referenceImages: string[]) => {
@@ -648,6 +429,11 @@ ${referenceImages.length > 0 ? '참조 이미지가 포함되어 있습니다.' 
 
 각 컷은 1초 단위로 구성하고, 구체적인 카메라 앵글(Wide shot, Medium shot, Close-up 등), 캐릭터 동작, 조명, 스타일을 포함해주세요.`;
 
+      const apiKey = getAPIKey();
+      if (!apiKey) {
+        throw new Error('Google AI API 키가 설정되지 않았습니다. 로그인 후 설정에서 API 키를 입력해주세요.');
+      }
+      const googleAIService = GoogleAIService.getInstance();
       const cutBasedResult = await googleAIService.generateText(cutPrompt);
       
       if (cutBasedResult) {
@@ -801,15 +587,8 @@ ${referenceImages.length > 0 ? '참조 이미지가 포함되어 있습니다.' 
     }
   };
 
-  // 실제 영상 생성 - 최신 Veo API 사용
-  const generateVideoWithModel = async (
-    prompt: string, 
-    videoRatio: string, 
-    modelVersion: string, 
-    referenceImages?: string[], 
-    abortController?: AbortController,
-    mode: 'TEXT_TO_VIDEO' | 'FRAMES_TO_VIDEO' | 'REFERENCES_TO_VIDEO' | 'EXTEND_VIDEO' = 'TEXT_TO_VIDEO'
-  ) => {
+  // 실제 영상 생성
+  const generateVideoWithModel = async (prompt: string, videoRatio: string, modelVersion: string, referenceImages?: string[], abortController?: AbortController) => {
     setIsGeneratingVideo(true);
     setGenerationProgress(0);
     setEstimatedTime('예상 시간: 2-3분');
@@ -833,19 +612,18 @@ ${referenceImages.length > 0 ? '참조 이미지가 포함되어 있습니다.' 
       const optimizedPrompt = createOptimizedPrompt(prompt);
       
       setGenerationStep('AI 서버에 영상 생성 요청 중...');
+      const apiKey = getAPIKey();
+      if (!apiKey) {
+        throw new Error('Google AI API 키가 설정되지 않았습니다. 로그인 후 설정에서 API 키를 입력해주세요.');
+      }
+      const googleAIService = GoogleAIService.getInstance();
       const result = await googleAIService.generateVideo({
         prompt: optimizedPrompt,
         ratio: videoRatio,
         model: modelVersion,
         duration: videoDuration === 'custom' ? customDuration : videoDuration,
         referenceImages,
-        abortSignal: abortController?.signal,
-        mode: mode,
-        startFrame: startFrame,
-        endFrame: endFrame,
-        styleImage: styleImage,
-        inputVideoObject: inputVideoObject,
-        isLooping: isLooping
+        abortSignal: abortController?.signal
       });
 
       if (result && result.videoUrl) {
@@ -855,12 +633,6 @@ ${referenceImages.length > 0 ? '참조 이미지가 포함되어 있습니다.' 
         
         const newVideo: GeneratedVideo = {
           id: Date.now(),
-          title: `영상 생성 ${new Date().toLocaleString()}`,
-          description: `생성된 영상입니다.`,
-          prompt: optimizedPrompt,
-          model: selectedVideoModel,
-          ratio: videoRatio,
-          quality: 'standard',
           textCards: [], // 텍스트 카드 의존성 제거
           characterImages: selectedCharacterImagesData,
           backgrounds: selectedBackgroundImagesData,
@@ -873,8 +645,7 @@ ${referenceImages.length > 0 ? '참조 이미지가 포함되어 있습니다.' 
           videoUrl: result.videoUrl,
           thumbnail: result.thumbnail,
           duration: result.duration,
-          type: 'general',
-          videoObject: result.videoObject // 영상 확장을 위한 객체 저장
+          type: 'general'
         };
 
         setGeneratedVideos(prev => [...prev, newVideo]);
@@ -1042,9 +813,9 @@ ${referenceImages.length > 0 ? '참조 이미지가 포함되어 있습니다.' 
           <h3 className="text-lg font-semibold text-gray-800">영상 생성</h3>
           <div className="flex gap-2">
             <button
-              onClick={() => setUiMode('simple')}
+              onClick={() => setGenerationMode('simple')}
               className={`px-3 py-1 rounded text-sm transition-colors ${
-                uiMode === 'simple'
+                generationMode === 'simple'
                   ? 'bg-blue-600 text-white'
                   : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
               }`}
@@ -1052,9 +823,9 @@ ${referenceImages.length > 0 ? '참조 이미지가 포함되어 있습니다.' 
               간단 모드
             </button>
             <button
-              onClick={() => setUiMode('advanced')}
+              onClick={() => setGenerationMode('advanced')}
               className={`px-3 py-1 rounded text-sm transition-colors ${
-                uiMode === 'advanced'
+                generationMode === 'advanced'
                   ? 'bg-blue-600 text-white'
                   : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
               }`}
@@ -1065,221 +836,8 @@ ${referenceImages.length > 0 ? '참조 이미지가 포함되어 있습니다.' 
         </div>
 
         {/* 간단 모드 */}
-        {uiMode === 'simple' && (
+        {generationMode === 'simple' && (
           <div className="space-y-4">
-            {/* 영상 생성 모드 선택 */}
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                영상 생성 모드
-              </label>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                <button
-                  onClick={() => setVideoGenerationMode('TEXT_TO_VIDEO')}
-                  className={`p-3 rounded-lg border transition-colors ${
-                    videoGenerationMode === 'TEXT_TO_VIDEO'
-                      ? 'bg-blue-500 text-white border-blue-500'
-                      : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                  }`}
-                >
-                  <div className="text-sm font-medium">텍스트 → 영상</div>
-                  <div className="text-xs opacity-75">프롬프트로 영상 생성</div>
-                </button>
-                <button
-                  onClick={() => setVideoGenerationMode('FRAMES_TO_VIDEO')}
-                  className={`p-3 rounded-lg border transition-colors ${
-                    videoGenerationMode === 'FRAMES_TO_VIDEO'
-                      ? 'bg-blue-500 text-white border-blue-500'
-                      : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                  }`}
-                >
-                  <div className="text-sm font-medium">프레임 → 영상</div>
-                  <div className="text-xs opacity-75">시작/종료 프레임</div>
-                </button>
-                <button
-                  onClick={() => setVideoGenerationMode('REFERENCES_TO_VIDEO')}
-                  className={`p-3 rounded-lg border transition-colors ${
-                    videoGenerationMode === 'REFERENCES_TO_VIDEO'
-                      ? 'bg-blue-500 text-white border-blue-500'
-                      : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                  }`}
-                >
-                  <div className="text-sm font-medium">참조 → 영상</div>
-                  <div className="text-xs opacity-75">이미지 참조</div>
-                </button>
-                <button
-                  onClick={() => setVideoGenerationMode('EXTEND_VIDEO')}
-                  className={`p-3 rounded-lg border transition-colors ${
-                    videoGenerationMode === 'EXTEND_VIDEO'
-                      ? 'bg-blue-500 text-white border-blue-500'
-                      : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                  }`}
-                >
-                  <div className="text-sm font-medium">영상 확장</div>
-                  <div className="text-xs opacity-75">기존 영상 연장</div>
-                </button>
-              </div>
-            </div>
-
-            {/* 프레임 업로드 (FRAMES_TO_VIDEO 모드) */}
-            {videoGenerationMode === 'FRAMES_TO_VIDEO' && (
-              <div className="mb-4 p-4 bg-gray-50 rounded-lg border">
-                <h4 className="text-sm font-medium text-gray-700 mb-3">프레임 업로드</h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-600 mb-2">시작 프레임</label>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) handleFrameImageUpload(file, 'startFrame');
-                      }}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
-                    />
-                    {startFrame && (
-                      <div className="mt-2">
-                        <img src={URL.createObjectURL(startFrame.file)} alt="Start frame" className="w-full h-32 object-cover rounded" />
-                        <button
-                          onClick={() => setStartFrame(null)}
-                          className="mt-1 text-xs text-red-600 hover:text-red-800"
-                        >
-                          제거
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-600 mb-2">종료 프레임</label>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) handleFrameImageUpload(file, 'endFrame');
-                      }}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
-                    />
-                    {endFrame && (
-                      <div className="mt-2">
-                        <img src={URL.createObjectURL(endFrame.file)} alt="End frame" className="w-full h-32 object-cover rounded" />
-                        <button
-                          onClick={() => setEndFrame(null)}
-                          className="mt-1 text-xs text-red-600 hover:text-red-800"
-                        >
-                          제거
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-                {startFrame && !endFrame && (
-                  <div className="mt-3">
-                    <label className="flex items-center">
-                      <input
-                        type="checkbox"
-                        checked={isLooping}
-                        onChange={(e) => setIsLooping(e.target.checked)}
-                        className="mr-2"
-                      />
-                      <span className="text-sm text-gray-600">루핑 영상 생성 (시작 프레임을 종료 프레임으로 사용)</span>
-                    </label>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* 영상 업로드 (EXTEND_VIDEO 모드) */}
-            {videoGenerationMode === 'EXTEND_VIDEO' && (
-              <div className="mb-4 p-4 bg-gray-50 rounded-lg border">
-                <h4 className="text-sm font-medium text-gray-700 mb-3">확장할 영상 업로드</h4>
-                <div>
-                  <input
-                    type="file"
-                    accept="video/*"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) handleVideoUpload(file);
-                    }}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">
-                    Veo API로 생성된 720p 영상만 확장 가능합니다.
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {/* PDF 업로드 */}
-            <div className="mb-4 p-4 bg-gray-50 rounded-lg border">
-              <h4 className="text-sm font-medium text-gray-700 mb-3">PDF 참조 문서</h4>
-              <PDFUpload
-                onPDFUpload={handlePDFUpload}
-                onPDFRemove={handlePDFRemove}
-                uploadedPDF={uploadedPDF}
-                label="PDF 파일 업로드"
-              />
-              {pdfContent && (
-                <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded">
-                  <h5 className="text-sm font-medium text-blue-800 mb-2">PDF 내용 요약</h5>
-                  <p className="text-sm text-blue-700">{pdfContent}</p>
-                </div>
-              )}
-            </div>
-
-            {/* 오디오 및 음악 옵션 */}
-            <div className="mb-4 p-4 bg-gray-50 rounded-lg border">
-              <h4 className="text-sm font-medium text-gray-700 mb-3">오디오 옵션</h4>
-              <div className="space-y-3">
-                <label className="flex items-center">
-                  <input
-                    type="checkbox"
-                    checked={hasAudio}
-                    onChange={(e) => setHasAudio(e.target.checked)}
-                    className="mr-2"
-                  />
-                  <span className="text-sm text-gray-600">음성/효과음 추가</span>
-                </label>
-                {hasAudio && (
-                  <div className="ml-6">
-                    <label className="block text-sm font-medium text-gray-600 mb-1">오디오 프롬프트</label>
-                    <textarea
-                      value={audioPrompt}
-                      onChange={(e) => setAudioPrompt(e.target.value)}
-                      placeholder="추가할 음성이나 효과음에 대해 설명하세요..."
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
-                      rows={2}
-                    />
-                  </div>
-                )}
-                <label className="flex items-center">
-                  <input
-                    type="checkbox"
-                    checked={hasMusic}
-                    onChange={(e) => setHasMusic(e.target.checked)}
-                    className="mr-2"
-                  />
-                  <span className="text-sm text-gray-600">배경음악 추가</span>
-                </label>
-                {hasMusic && (
-                  <div className="ml-6">
-                    <label className="block text-sm font-medium text-gray-600 mb-1">음악 스타일</label>
-                    <select
-                      value={musicStyle}
-                      onChange={(e) => setMusicStyle(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
-                    >
-                      <option value="ambient">앰비언트</option>
-                      <option value="upbeat">업비트</option>
-                      <option value="dramatic">드라마틱</option>
-                      <option value="romantic">로맨틱</option>
-                      <option value="action">액션</option>
-                      <option value="comedy">코미디</option>
-                    </select>
-                  </div>
-                )}
-              </div>
-            </div>
-
             {/* 원클릭 영상 생성 */}
             <div className="bg-gradient-to-r from-green-50 to-emerald-50 p-4 rounded-lg border border-green-200">
               <div className="flex items-center justify-between mb-3">
@@ -1299,7 +857,12 @@ ${referenceImages.length > 0 ? '참조 이미지가 포함되어 있습니다.' 
                     }
 
                     try {
-                      const { googleAIService } = await import('../../services/googleAIService');
+                      const { GoogleAIService } = await import('../../services/googleAIService');
+                      const apiKey = getAPIKey();
+                      if (!apiKey) {
+                        throw new Error('Google AI API 키가 설정되지 않았습니다. 로그인 후 설정에서 API 키를 입력해주세요.');
+                      }
+                      const googleAIService = GoogleAIService.getInstance();
                       const autoPrompt = await googleAIService.generateText(
                         `다음 정보를 바탕으로 영상 생성에 최적화된 영문 프롬프트를 생성해주세요:
 
@@ -1382,7 +945,7 @@ ${referenceImages.length > 0 ? '참조 이미지가 포함되어 있습니다.' 
                     {isTranslating ? '번역 중...' : '영문으로 번역'}
                   </button>
                   <span className="text-xs text-gray-500 self-center">
-                    한국어로 입력하면 자동으로 영문으로 번역되거나 바로 생성할 수 있습니다
+                    한국어로 입력하면 자동으로 영문으로 번역됩니다
                   </span>
                 </div>
               </div>
@@ -1589,9 +1152,9 @@ ${referenceImages.length > 0 ? '참조 이미지가 포함되어 있습니다.' 
             <div className="flex justify-center">
               <Button
                 onClick={handleGenerateAIVideo}
-                disabled={isGeneratingVideo || isProcessing || (!englishPrompt.trim() && !koreanPrompt.trim())}
+                disabled={isGeneratingVideo || isProcessing || !englishPrompt.trim()}
                 className={`px-8 py-3 rounded-lg font-medium transition-colors ${
-                  isGeneratingVideo || isProcessing || (!englishPrompt.trim() && !koreanPrompt.trim())
+                  isGeneratingVideo || isProcessing || !englishPrompt.trim()
                     ? 'bg-gray-400 text-gray-200 cursor-not-allowed'
                     : 'bg-blue-600 text-white hover:bg-blue-700'
                 }`}
@@ -1604,7 +1167,7 @@ ${referenceImages.length > 0 ? '참조 이미지가 포함되어 있습니다.' 
                 ) : (
                   <>
                     <Zap className="w-5 h-5 mr-2" />
-                    {skipPromptEdit ? '바로 영상생성' : 'AI 영상 생성 (한글/영문 자동 처리)'}
+                    {skipPromptEdit ? '바로 영상생성' : 'AI 영상 생성'}
                   </>
                 )}
               </Button>
@@ -1613,7 +1176,7 @@ ${referenceImages.length > 0 ? '참조 이미지가 포함되어 있습니다.' 
         )}
 
         {/* 고급 모드 */}
-        {uiMode === 'advanced' && (
+        {generationMode === 'advanced' && (
           <div className="space-y-4">
             {/* 고급 설정들 */}
             <div className="grid grid-cols-2 gap-4">
@@ -1724,9 +1287,9 @@ ${referenceImages.length > 0 ? '참조 이미지가 포함되어 있습니다.' 
                     {isTranslating ? '번역 중...' : '영문으로 번역'}
                   </button>
                   <span className="text-xs text-gray-500 self-center">
-                    한국어로 입력하면 자동으로 영문으로 번역되거나 바로 생성할 수 있습니다
+                    한국어로 입력하면 자동으로 영문으로 번역됩니다
                   </span>
-                </div>
+          </div>
           </div>
           </div>
           
@@ -1909,9 +1472,9 @@ ${referenceImages.length > 0 ? '참조 이미지가 포함되어 있습니다.' 
             <div className="flex justify-center">
         <Button
           onClick={handleGenerateAIVideo}
-                disabled={isGeneratingVideo || isProcessing || (!englishPrompt.trim() && !koreanPrompt.trim())}
+                disabled={isGeneratingVideo || isProcessing || !englishPrompt.trim()}
                 className={`px-8 py-3 rounded-lg font-medium transition-colors ${
-                  isGeneratingVideo || isProcessing || (!englishPrompt.trim() && !koreanPrompt.trim())
+                  isGeneratingVideo || isProcessing || !englishPrompt.trim()
                     ? 'bg-gray-400 text-gray-200 cursor-not-allowed'
                     : 'bg-blue-600 text-white hover:bg-blue-700'
                 }`}
@@ -1924,7 +1487,7 @@ ${referenceImages.length > 0 ? '참조 이미지가 포함되어 있습니다.' 
                 ) : (
                   <>
                     <Zap className="w-5 h-5 mr-2" />
-                    {skipPromptEdit ? '바로 영상생성' : 'AI 영상 생성 (한글/영문 자동 처리)'}
+                    {skipPromptEdit ? '바로 영상생성' : 'AI 영상 생성'}
                   </>
                 )}
         </Button>
@@ -1939,7 +1502,7 @@ ${referenceImages.length > 0 ? '참조 이미지가 포함되어 있습니다.' 
         type="file"
         accept="image/*"
         multiple
-        onChange={handleImageUploadLegacy}
+        onChange={handleImageUpload}
         className="hidden"
       />
 
@@ -1981,58 +1544,92 @@ ${referenceImages.length > 0 ? '참조 이미지가 포함되어 있습니다.' 
         isOpen={showImageSelectionModal}
         onClose={() => setShowImageSelectionModal(false)}
         onSelectImages={handleStoredImageSelect}
-        title="프로젝트 참조에서 이미지 선택"
-        projectReferenceCharacters={generatedCharacterImages}
-        projectReferenceBackgrounds={generatedVideoBackgrounds}
-        projectReferenceSettingCuts={generatedSettingCutImages}
+        title="저장된 이미지 선택"
       />
 
-        {/* 생성된 영상 목록 - MediaSlider 사용 */}
-        {(generatedVideos.length > 0 || generatedCharacterImages.length > 0 || generatedVideoBackgrounds.length > 0) && (
+        {/* 생성된 영상 목록 */}
+        {generatedVideos.length > 0 && (
           <div className="bg-white border rounded-lg p-4">
-            <MediaSlider
-              images={[
-                ...generatedCharacterImages.map(img => ({
-                  id: img.id,
-                  type: 'image' as const,
-                  url: img.image,
-                  thumbnail: img.image,
-                  title: img.description,
-                  description: img.description,
-                  timestamp: img.timestamp
-                })),
-                ...generatedVideoBackgrounds.map(img => ({
-                  id: img.id + 10000, // ID 충돌 방지
-                  type: 'image' as const,
-                  url: img.image,
-                  thumbnail: img.image,
-                  title: img.description,
-                  description: img.description,
-                  timestamp: img.timestamp
-                }))
-              ]}
-              videos={generatedVideos.map(video => ({
-                id: video.id,
-                type: 'video' as const,
-                url: video.videoUrl,
-                thumbnail: video.thumbnail,
-                title: `영상 #${video.id}`,
-                description: video.projectTexts?.[0] || '생성된 영상',
-                timestamp: video.timestamp
-              }))}
-              onImageClick={(item) => {
-                // 이미지 클릭 시 처리 (모달 열기 등)
-                console.log('이미지 클릭:', item);
-              }}
-              onVideoClick={(item) => {
-                // 영상 클릭 시 VideoCardModal 열기
-                const video = generatedVideos.find(v => v.id === item.id);
-                if (video) {
-                  handleVideoCardClick(video);
-                }
-              }}
-              className="w-full"
-            />
+            <h3 className="text-lg font-semibold text-gray-800 mb-4">🎬 생성된 영상 ({generatedVideos.length}개)</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {generatedVideos.map((video) => (
+                <div
+                  key={video.id}
+                  className="border rounded-lg p-3 hover:shadow-md transition-shadow"
+                >
+                  {/* 영상 썸네일 - 정사각형 */}
+                  <div 
+                    className="bg-gray-100 rounded mb-3 flex items-center justify-center relative group aspect-square"
+                    onClick={() => handleVideoCardClick(video)}
+                  >
+                    {video.thumbnail ? (
+                      <img
+                        src={video.thumbnail}
+                        alt="영상 썸네일"
+                        className="w-full h-full object-cover rounded"
+                      />
+                    ) : (
+                      <div className="text-gray-400 text-center">
+                        <Zap className="w-8 h-8 mx-auto mb-2" />
+                        <p className="text-sm">영상 미리보기</p>
+                      </div>
+                    )}
+                    
+                    {/* 재생 버튼 오버레이 */}
+                    <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all duration-200 flex items-center justify-center">
+                      <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                        <Play className="w-12 h-12 text-white" />
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* 영상 정보 */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-gray-800">
+                        영상 #{video.id}
+                      </span>
+                      <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                        {video.videoRatio}
+                      </span>
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      {new Date(video.timestamp).toLocaleString()}
+                    </div>
+                    <div className="text-xs text-gray-600 truncate">
+                      {video.projectTexts?.[0]?.substring(0, 50)}...
+                    </div>
+                    
+                    {/* 액션 버튼들 */}
+                    <div className="flex items-center justify-between pt-2">
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={(e) => handleVideoDownload(video, e)}
+                          className="flex items-center gap-1 px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                          title="영상 다운로드"
+                        >
+                          <Download className="w-3 h-3" />
+                          다운로드
+                        </button>
+                        <button
+                          onClick={() => handleVideoCardClick(video)}
+                          className="flex items-center gap-1 px-2 py-1 text-xs bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors"
+                          title="영상 상세보기"
+                        >
+                          <Play className="w-3 h-3" />
+                          재생
+                        </button>
+                      </div>
+                      {video.duration && (
+                        <span className="text-xs text-gray-500">
+                          {video.duration}초
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 

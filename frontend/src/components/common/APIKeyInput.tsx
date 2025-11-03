@@ -77,9 +77,9 @@ export const APIKeyInput: React.FC<APIKeyInputProps> = ({
       </div>
 
       {isAdmin && (
-        <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-4">
-          <p className="text-sm text-green-700">
-            🎉 관리자 계정으로 로그인했습니다. 환경 변수의 API 키가 자동으로 적용됩니다.
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+          <p className="text-sm text-blue-700">
+            🔑 관리자 계정으로 로그인했습니다. 개인 API 키를 입력해주세요.
           </p>
         </div>
       )}
@@ -106,15 +106,12 @@ export const APIKeyInput: React.FC<APIKeyInputProps> = ({
               {showKeys.google ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
             </button>
           </div>
-          {isAdmin && apiKeys.google && (
-            <p className="text-xs text-green-600 mt-1">✅ 환경 변수에서 자동 로드됨</p>
-          )}
         </div>
 
-        {/* OpenAI */}
+        {/* ChatGPT */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            OpenAI
+            ChatGPT
           </label>
           <div className="relative">
             <input
@@ -122,7 +119,7 @@ export const APIKeyInput: React.FC<APIKeyInputProps> = ({
               value={apiKeys.openai}
               onChange={(e) => handleKeyChange('openai', e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-10"
-              placeholder="OpenAI API 키를 입력하세요"
+              placeholder="ChatGPT API 키를 입력하세요"
             />
             <button
               type="button"
@@ -132,9 +129,6 @@ export const APIKeyInput: React.FC<APIKeyInputProps> = ({
               {showKeys.openai ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
             </button>
           </div>
-          {isAdmin && apiKeys.openai && (
-            <p className="text-xs text-green-600 mt-1">✅ 환경 변수에서 자동 로드됨</p>
-          )}
         </div>
 
         {/* Midjourney */}
@@ -181,15 +175,12 @@ export const APIKeyInput: React.FC<APIKeyInputProps> = ({
               {showKeys.anthropic ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
             </button>
           </div>
-          {isAdmin && apiKeys.anthropic && (
-            <p className="text-xs text-green-600 mt-1">✅ 환경 변수에서 자동 로드됨</p>
-          )}
         </div>
       </div>
 
       <div className="mt-4 text-xs text-gray-500">
         <p>💡 API 키는 안전하게 암호화되어 저장됩니다.</p>
-        <p>🔒 관리자 계정은 환경 변수의 키값이 자동으로 적용됩니다.</p>
+        <p>🔒 모든 사용자는 개인 API 키를 입력해야 합니다.</p>
       </div>
     </div>
   );

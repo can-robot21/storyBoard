@@ -3,6 +3,8 @@ import { CryptoUtils } from '../utils/cryptoUtils';
 import { databaseService } from './database/DatabaseService';
 import { User as DBUser } from '../types/project';
 import { userMigrationService, MigrationResult } from './userMigrationService';
+import { GoogleAIService } from './googleAIService';
+import { AIServiceFactoryImpl } from './ai/AIServiceFactory';
 
   // 관리자 계정 정보 (환경변수에서 가져옴)
   const getAdminUser = async (): Promise<User> => {
@@ -15,10 +17,10 @@ import { userMigrationService, MigrationResult } from './userMigrationService';
       email: adminCreds.email,
       password: hashedPassword,
       apiKeys: {
-        google: process.env.REACT_APP_GEMINI_API_KEY || '',
-        openai: process.env.REACT_APP_OPENAI_API_KEY || '',
+        google: '',  // 관리자도 개인 API 키 입력 필요
+        openai: '',   // 관리자도 개인 API 키 입력 필요
         midjourney: '',
-        anthropic: process.env.REACT_APP_ANTHROPIC_API_KEY || ''
+        anthropic: ''  // 관리자도 개인 API 키 입력 필요
       },
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
@@ -62,10 +64,7 @@ export class AuthService {
             adminCreds.password
           );
 
-          // API 키 저장
-          await databaseService.saveUserApiKey(adminUserId, 'google', process.env.REACT_APP_GEMINI_API_KEY || '');
-          await databaseService.saveUserApiKey(adminUserId, 'openai', process.env.REACT_APP_OPENAI_API_KEY || '');
-          await databaseService.saveUserApiKey(adminUserId, 'anthropic', process.env.REACT_APP_ANTHROPIC_API_KEY || '');
+          // 관리자도 개인 API 키를 입력해야 함 (환경변수 API 키 저장 안함)
 
           console.log('관리자 계정이 생성되었습니다.');
         } catch (error) {
@@ -396,6 +395,12 @@ export class AuthService {
 
   // 로그아웃
   static logout(): void {
+    // GoogleAIService 인스턴스 무효화
+    GoogleAIService.invalidateInstance();
+    
+    // AIServiceFactory의 모든 서비스 무효화
+    AIServiceFactoryImpl.getInstance().invalidateAllServices();
+    
     this.setCurrentUser(null);
   }
 

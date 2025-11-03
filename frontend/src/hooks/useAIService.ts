@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { useAIServiceManager } from './useAIServiceManager';
 import { useUIStore } from '../stores/uiStore';
+import { getSystemPrompt } from '../utils/promptTemplates';
 
 export interface AIGenerationOptions {
   prompt: string;
@@ -33,12 +34,17 @@ export const useAIService = () => {
         throw new Error(`${selectedProvider} AI 서비스를 사용할 수 없습니다.`);
       }
       
+      // Provider별 System Prompt 적용
+      const systemPrompt = getSystemPrompt(selectedProvider, 'text');
+      
       const result = await aiService.generateText({
         prompt: options.prompt,
         provider: selectedProvider,
         model: (options.model as any) || (selectedProvider === 'google' ? 'gemini-2.5-flash' : 'gpt-4'),
         maxTokens: options.maxTokens,
-        temperature: options.temperature
+        temperature: options.temperature,
+        systemPrompt,
+        generationType: 'text'
       });
       
       return result.text;
@@ -59,11 +65,18 @@ export const useAIService = () => {
         throw new Error(`${selectedProvider} AI 서비스를 사용할 수 없습니다.`);
       }
       
+      // Provider별 System Prompt 적용 (이미지 생성 최적화)
+      const systemPrompt = getSystemPrompt(selectedProvider, 'image');
+      // 이미지 생성 프롬프트는 systemPrompt를 참고하여 최적화
+      const optimizedPrompt = systemPrompt 
+        ? `${systemPrompt}\n\nGenerate image: ${options.prompt}`
+        : options.prompt;
+      
       const result = await aiService.generateImage({
-        prompt: options.prompt,
+        prompt: optimizedPrompt,
         provider: selectedProvider,
         model: (options.model as any) || 'dall-e-3',
-        aspectRatio: options.aspectRatio || '1:1',
+        aspectRatio: options.aspectRatio || '16:9',
         quality: options.quality || 'standard'
       });
       
@@ -85,8 +98,15 @@ export const useAIService = () => {
         throw new Error(`${selectedProvider} AI 서비스를 사용할 수 없습니다.`);
       }
       
+      // Provider별 System Prompt 적용 (영상 생성 최적화)
+      const systemPrompt = getSystemPrompt(selectedProvider, 'video');
+      // 영상 생성 프롬프트는 systemPrompt를 참고하여 최적화
+      const optimizedPrompt = systemPrompt 
+        ? `${systemPrompt}\n\nGenerate video: ${options.prompt}`
+        : options.prompt;
+      
       const result = await aiService.generateVideo({
-        prompt: options.prompt,
+        prompt: optimizedPrompt,
         provider: selectedProvider,
         model: (options.model as any) || 'veo-3.0-generate-preview',
         videoRatio: options.videoRatio || '16:9',

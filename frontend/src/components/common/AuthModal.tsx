@@ -178,10 +178,19 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div 
+      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+      onClick={(e) => {
+        // 모든 모드에서 배경 클릭으로 닫기 허용
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }}
+    >
       <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-xl font-bold text-gray-800">{getTitle()}</h2>
+          {/* 모든 모드에서 닫기 버튼 표시 */}
           <button
             onClick={onClose}
             className="text-gray-400 hover:text-gray-600 transition-colors"
@@ -316,13 +325,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     />
                   </div>
                   <div>
-                    <label className="block text-xs text-gray-600 mb-1">OpenAI</label>
+                    <label className="block text-xs text-gray-600 mb-1">ChatGPT</label>
                     <input
                       type="password"
                       value={formData.apiKeys.openai || ''}
                       onChange={(e) => handleInputChange('apiKeys.openai', e.target.value)}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                      placeholder="OpenAI API 키"
+                      placeholder="ChatGPT API 키"
                     />
                   </div>
                   <div>
@@ -378,9 +387,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               <button
                 type="button"
                 onClick={() => {
-                  if (onModeChange) {
-                    onModeChange('register');
-                  }
+                  onModeChange?.('register');
                 }}
                 className="text-blue-600 hover:text-blue-800 font-medium"
               >
@@ -396,9 +403,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               <button
                 type="button"
                 onClick={() => {
-                  if (onModeChange) {
-                    onModeChange('login');
-                  }
+                  onModeChange?.('login');
                 }}
                 className="text-blue-600 hover:text-blue-800 font-medium"
               >
@@ -420,6 +425,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             </div>
           )}
         </form>
+
       </div>
     </div>
   );

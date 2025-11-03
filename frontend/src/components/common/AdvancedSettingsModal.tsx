@@ -102,17 +102,22 @@ export const AdvancedSettingsModal: React.FC<AdvancedSettingsModalProps> = ({
 
   // Google API 키 유무로 Nano Banana 옵션 노출 제어
   const hasGoogleKey = (() => {
-    try {
-      if (typeof window !== 'undefined') {
-        const currentUserRaw = localStorage.getItem('storyboard_current_user');
-        const localKeysRaw = localStorage.getItem('user_api_keys');
-        const currentUser = currentUserRaw ? JSON.parse(currentUserRaw) : null;
-        const localKeys = localKeysRaw ? JSON.parse(localKeysRaw) : {};
-        const envKey = process.env.REACT_APP_GEMINI_API_KEY || '';
-        return !!(localKeys.google || currentUser?.apiKeys?.google || envKey);
-      }
-    } catch {}
-    return !!(process.env.REACT_APP_GEMINI_API_KEY);
+    // 사용자 API 키 확인 (환경변수 사용 안함)
+    const getAPIKey = () => {
+      try {
+        if (typeof window !== 'undefined') {
+          const currentUserRaw = localStorage.getItem('storyboard_current_user');
+          const localKeysRaw = localStorage.getItem('user_api_keys');
+          const currentUser = currentUserRaw ? JSON.parse(currentUserRaw) : null;
+          const localKeys = localKeysRaw ? JSON.parse(localKeysRaw) : {};
+          
+          return localKeys.google || currentUser?.apiKeys?.google || '';
+        }
+      } catch {}
+      return '';
+    };
+
+    return !!(getAPIKey());
   })();
 
   const updateVideoSettings = (updates: Partial<VideoSettings>) => {

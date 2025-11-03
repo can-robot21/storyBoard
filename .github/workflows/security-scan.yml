@@ -1,0 +1,61 @@
+name: Security Scan
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Check for secrets
+      run: |
+        echo "🔍 Checking for potential secrets..."
+        
+        # Check for hardcoded API keys
+        if grep -r "sk-[a-zA-Z0-9]" . --exclude-dir=node_modules --exclude-dir=.git; then
+          echo "❌ Potential OpenAI API key found!"
+          exit 1
+        fi
+        
+        # Check for hardcoded passwords
+        if grep -r "password.*=" . --exclude-dir=node_modules --exclude-dir=.git | grep -v "your-.*-here" | grep -v "example"; then
+          echo "❌ Potential hardcoded password found!"
+          exit 1
+        fi
+        
+        # Check for email addresses that might be admin accounts
+        if grep -r "@gmail\.com\|@yahoo\.com\|@hotmail\.com" . --exclude-dir=node_modules --exclude-dir=.git | grep -v "example"; then
+          echo "❌ Potential real email address found!"
+          exit 1
+        fi
+        
+        echo "✅ No obvious secrets found"
+        
+    - name: Check .env files
+      run: |
+        echo "🔍 Checking for .env files..."
+        if find . -name ".env" -not -path "./node_modules/*" -not -path "./.git/*"; then
+          echo "❌ .env files found! These should not be committed."
+          exit 1
+        fi
+        echo "✅ No .env files found"
+        
+    - name: Check gitignore
+      run: |
+        echo "🔍 Checking .gitignore configuration..."
+        if ! grep -q "\.env" .gitignore; then
+          echo "❌ .env not found in .gitignore!"
+          exit 1
+        fi
+        if ! grep -q "node_modules" .gitignore; then
+          echo "❌ node_modules not found in .gitignore!"
+          exit 1
+        fi
+        echo "✅ .gitignore looks good"

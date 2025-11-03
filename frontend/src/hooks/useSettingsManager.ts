@@ -12,7 +12,7 @@ interface SettingsState {
   };
   image: {
     quality: 'standard' | 'high' | 'ultra';
-    aspectRatio: '16:9' | '9:16' | '2:3' | '1:1' | 'free';
+    aspectRatio: '16:9' | '4:3' | '1:1';
   };
   video: {
     quality: '720p' | '1080p' | '4k';
@@ -56,7 +56,7 @@ export const useSettingsManager = () => {
       aspectRatio: '16:9'
     },
     video: {
-      quality: '720p',
+      quality: '1080p',
       duration: 'medium'
     },
     ui: {

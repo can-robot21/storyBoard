@@ -3,11 +3,47 @@ import { useProjectStore } from '../../stores/projectStore';
 import { useUIStore } from '../../stores/uiStore';
 import Button from '../common/Button';
 import Input from '../common/Input';
-import { googleAIService } from '../../services/googleAIService';
+import { GoogleAIService } from '../../services/googleAIService';
 
 const OverviewStep: React.FC = () => {
   const { currentProject, updateStep, createProject } = useProjectStore();
   const { addNotification } = useUIStore();
+  
+  // 로그인 상태 확인 및 API 키 가져오기
+  const getAPIKey = (): string => {
+    try {
+      if (typeof window === 'undefined') return '';
+      
+      // 현재 사용자 확인
+      const currentUserRaw = localStorage.getItem('storyboard_current_user');
+      const currentUser = currentUserRaw ? JSON.parse(currentUserRaw) : null;
+      
+      if (!currentUser) {
+        console.log('🔑 API 키 로딩: 미설정 (로그인 필요)');
+        return '';
+      }
+      
+      // 사용자 API 키 확인
+      if (currentUser?.apiKeys?.google) {
+        return currentUser.apiKeys.google;
+      }
+      
+      // 로컬 저장소에서 API 키 확인
+      const localKeysRaw = localStorage.getItem('user_api_keys');
+      if (localKeysRaw) {
+        const localKeys = JSON.parse(localKeysRaw);
+        if (localKeys?.google) {
+          return localKeys.google;
+        }
+      }
+      
+      console.log('🔑 API 키 로딩: 미설정');
+      return '';
+    } catch (error) {
+      console.error('API 키 로딩 오류:', error);
+      return '';
+    }
+  };
   
   const [formData, setFormData] = useState({
     title: currentProject?.name || '',
@@ -67,6 +103,11 @@ const OverviewStep: React.FC = () => {
 
     setIsGenerating(prev => ({ ...prev, story: true }));
     try {
+      const apiKey = getAPIKey();
+      if (!apiKey) {
+        throw new Error('Google AI API 키가 설정되지 않았습니다. 로그인 후 설정에서 API 키를 입력해주세요.');
+      }
+      const googleAIService = GoogleAIService.getInstance();
       const prompt = await googleAIService.generateStoryPrompt(
         formData.story,
         formData.character,
@@ -102,6 +143,11 @@ const OverviewStep: React.FC = () => {
 
     setIsGenerating(prev => ({ ...prev, character: true }));
     try {
+      const apiKey = getAPIKey();
+      if (!apiKey) {
+        throw new Error('Google AI API 키가 설정되지 않았습니다. 로그인 후 설정에서 API 키를 입력해주세요.');
+      }
+      const googleAIService = GoogleAIService.getInstance();
       const prompt = await googleAIService.generateCharacterPrompt(
         formData.character,
         '애니메이션' // 기본 스타일
@@ -135,6 +181,11 @@ const OverviewStep: React.FC = () => {
 
     setIsGenerating(prev => ({ ...prev, scenario: true }));
     try {
+      const apiKey = getAPIKey();
+      if (!apiKey) {
+        throw new Error('Google AI API 키가 설정되지 않았습니다. 로그인 후 설정에서 API 키를 입력해주세요.');
+      }
+      const googleAIService = GoogleAIService.getInstance();
       const prompt = await googleAIService.generateScenarioPrompt(
         formData.story,
         5 // 기본 컷 수

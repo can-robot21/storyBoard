@@ -206,5 +206,4 @@ export class BatchImageService {
   }
 }
 
-// 싱글톤 인스턴스
-export const batchImageService = new BatchImageService(process.env.REACT_APP_GEMINI_API_KEY || '');
+// 싱글톤 인스턴스 - 사용자별 API 키 필요

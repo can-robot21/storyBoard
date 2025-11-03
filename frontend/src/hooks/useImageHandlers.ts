@@ -1,9 +1,11 @@
 import React from 'react';
 import { useUIStore } from '../stores/uiStore';
 import { downloadBase64Image } from '../utils/downloadUtils';
-import { googleAIService } from '../services/googleAIService';
+import { GoogleAIService } from '../services/googleAIService';
 import { AIProvider } from '../types/ai';
 import ImageStorageService from '../services/imageStorageService';
+import { getFormattedErrorMessage } from '../utils/contentPolicyValidator';
+import { getAPIKeyFromStorage } from '../utils/apiKeyUtils';
 
 export const useImageHandlers = (
   generatedCharacters: any[],
@@ -21,56 +23,40 @@ export const useImageHandlers = (
     numberOfImages: number;
   },
   currentProjectId?: string,
-  globalImageSettings?: {
-    quality: 'standard' | 'high' | 'ultra';
-    aspectRatio: '16:9' | '9:16' | '2:3' | '1:1' | 'free';
-  },
-  onOpenSettings?: () => void
+  individualOptions?: {
+    characterOptions?: any;
+    backgroundOptions?: any;
+    settingOptions?: any;
+  }
 ) => {
   const { addNotification } = useUIStore();
   const imageStorageService = ImageStorageService.getInstance();
   
-  // 나노 바나나 서비스는 더 이상 사용하지 않음 (Google AI만 사용)
-
-  // 설정 우선순위 적용 함수 (본문 설정 우선)
-  const applySettingsPriority = () => {
-    // 본문 설정이 있으면 우선 적용, 없으면 상단 기본 설정 사용
-    const finalAspectRatio = aspectRatio || globalImageSettings?.aspectRatio || '16:9';
-    const finalQuality = imageOptions?.imageQuality || globalImageSettings?.quality || 'high';
-    const finalStyle = imageOptions?.imageStyle || 'realistic';
-    const finalNumberOfImages = imageOptions?.numberOfImages || 1;
-
-    // 설정 우선순위 안내 메시지
-    if (aspectRatio && globalImageSettings?.aspectRatio && aspectRatio !== globalImageSettings.aspectRatio) {
-      console.log('📋 설정 우선순위: 본문 설정이 상단 기본 설정보다 우선 적용됩니다.');
-      console.log(`   본문 비율: ${aspectRatio}, 상단 기본 비율: ${globalImageSettings.aspectRatio}`);
-    }
-    if (imageOptions?.imageQuality && globalImageSettings?.quality && imageOptions.imageQuality !== globalImageSettings.quality) {
-      console.log('📋 설정 우선순위: 본문 설정이 상단 기본 설정보다 우선 적용됩니다.');
-      console.log(`   본문 품질: ${imageOptions.imageQuality}, 상단 기본 품질: ${globalImageSettings.quality}`);
-    }
-
-    return {
-      aspectRatio: finalAspectRatio,
-      quality: finalQuality,
-      style: finalStyle,
-      numberOfImages: finalNumberOfImages
-    };
+  // API 키 가져오기 (통합 유틸리티 사용)
+  const getAPIKey = (): string => {
+    return getAPIKeyFromStorage('google');
   };
+  
+  // Google AI 서비스 인스턴스 생성
+  const createGoogleAIService = (): GoogleAIService => {
+    const apiKey = getAPIKey();
+    if (!apiKey) {
+      throw new Error('Google AI API 키가 설정되지 않았습니다. 설정에서 API 키를 입력해주세요.');
+    }
+    return GoogleAIService.getInstance();
+  };
+  
+  // 나노 바나나 서비스는 더 이상 사용하지 않음 (Google AI만 사용)
 
   // 통합 이미지 생성 함수 (Google AI만 사용) - 단일 이미지 반환
   const generateImageWithAPI = async (prompt: string, attachedImages: File[], type: 'character' | 'background' | 'setting' | 'settingCut') => {
     console.log('🚀 generateImageWithAPI 호출:', { prompt, attachedImages: attachedImages.length, type, imageGenerationAPI, aspectRatio, imageOptions });
     
-    // 설정 우선순위 적용
-    const settings = applySettingsPriority();
-    console.log('⚙️ 적용된 설정:', settings);
-    
     // 이미지 옵션이 있으면 프롬프트에 추가
     let enhancedPrompt = prompt;
     if (imageOptions) {
-      const stylePrompt = `Style: ${settings.style}`;
-      const qualityPrompt = `Quality: ${settings.quality}`;
+      const stylePrompt = `Style: ${imageOptions.imageStyle}`;
+      const qualityPrompt = `Quality: ${imageOptions.imageQuality}`;
       
       enhancedPrompt = `${prompt}\n\n${stylePrompt}\n${qualityPrompt}`;
       console.log('🎨 이미지 옵션 적용된 프롬프트:', enhancedPrompt);
@@ -78,19 +64,22 @@ export const useImageHandlers = (
     
     // Google AI 서비스 사용
     console.log('🔍 Google AI 서비스 사용');
-    const numberOfImages = settings.numberOfImages;
+    const numberOfImages = imageOptions?.numberOfImages || 1;
+    
+    // 동적으로 Google AI 서비스 인스턴스 생성
+    const googleAIService = createGoogleAIService();
     
     if (attachedImages.length > 0) {
       console.log('📷 첨부 이미지와 함께 생성 (단일 이미지만 지원)');
       // 첨부 이미지가 있는 경우 기존 단일 이미지 함수 사용
       switch (type) {
         case 'character':
-          return await googleAIService.generateWithImage(attachedImages[0], enhancedPrompt, settings.aspectRatio);
+          return await googleAIService.generateWithImage(attachedImages[0], enhancedPrompt, aspectRatio);
         case 'background':
-          return await googleAIService.generateBackgroundWithImage(attachedImages[0], enhancedPrompt, settings.aspectRatio);
+          return await googleAIService.generateBackgroundWithImage(attachedImages[0], enhancedPrompt, aspectRatio);
         case 'setting':
         case 'settingCut':
-          return await googleAIService.generateSettingCutWithImage(attachedImages[0], enhancedPrompt, settings.aspectRatio);
+          return await googleAIService.generateSettingCutWithImage(attachedImages[0], enhancedPrompt, aspectRatio);
         default:
           throw new Error(`지원되지 않는 이미지 타입: ${type}`);
       }
@@ -99,65 +88,214 @@ export const useImageHandlers = (
       // 텍스트만으로 생성
       switch (type) {
         case 'character':
-          return await googleAIService.generateCharacterImage(enhancedPrompt, settings.aspectRatio, numberOfImages);
+          return await googleAIService.generateCharacterImage(enhancedPrompt, aspectRatio, numberOfImages);
         case 'background':
-          return await googleAIService.generateBackgroundImage(enhancedPrompt, settings.aspectRatio, numberOfImages);
+          return await googleAIService.generateBackgroundImage(enhancedPrompt, aspectRatio, numberOfImages);
         case 'setting':
         case 'settingCut':
-          return await googleAIService.generateSettingCutImage(enhancedPrompt, settings.aspectRatio, numberOfImages);
+          return await googleAIService.generateSettingCutImage(enhancedPrompt, aspectRatio, numberOfImages);
         default:
           throw new Error(`지원되지 않는 이미지 타입: ${type}`);
       }
     }
   };
 
+  // 옵션 우선순위 적용 함수
+  const applyOptionsPriority = (type: 'character' | 'background' | 'settingCut', basePrompt: string) => {
+    let enhancedPrompt = basePrompt;
+    let finalNumberOfImages = imageOptions?.numberOfImages || 1;
+    let finalAspectRatio = aspectRatio;
+    let finalImageSize = '1K';
+    let finalPersonGeneration = 'allow_adult';
+    
+    // 개별 옵션 우선 적용
+    let individualOpts: any = {};
+    switch (type) {
+      case 'character':
+        individualOpts = individualOptions?.characterOptions || {};
+        break;
+      case 'background':
+        individualOpts = individualOptions?.backgroundOptions || {};
+        break;
+      case 'settingCut':
+        individualOpts = individualOptions?.settingOptions || {};
+        break;
+    }
+    
+    // 개별 옵션 로깅 (개발 환경)
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`🔧 ${type} 개별 옵션 확인:`, {
+        individualOpts,
+        hasPersonGeneration: !!individualOpts.personGeneration,
+        personGenerationValue: individualOpts.personGeneration,
+        hasAspectRatio: !!individualOpts.aspectRatio,
+        aspectRatioValue: individualOpts.aspectRatio,
+        hasNumberOfImages: !!individualOpts.numberOfImages,
+        numberOfImagesValue: individualOpts.numberOfImages
+      });
+    }
+    
+    // 개별 옵션에서 값이 있으면 우선 적용 (명시적으로 설정된 값만 사용)
+    // numberOfImages: 0도 유효한 값이므로, undefined/null 체크만 수행
+    if (individualOpts.numberOfImages !== undefined && individualOpts.numberOfImages !== null) {
+      finalNumberOfImages = individualOpts.numberOfImages;
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`✅ ${type} numberOfImages 개별 옵션 적용: ${finalNumberOfImages} (기본값: ${imageOptions?.numberOfImages || 1})`);
+      }
+    } else {
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`⚠️ ${type} numberOfImages 개별 옵션 없음, 공통 옵션 사용: ${finalNumberOfImages}`);
+      }
+    }
+    
+    // aspectRatio: 빈 문자열이나 undefined가 아닌 경우 적용 ('1:1' 포함 모든 값 허용)
+    if (individualOpts.aspectRatio && typeof individualOpts.aspectRatio === 'string' && individualOpts.aspectRatio.trim() !== '') {
+      finalAspectRatio = individualOpts.aspectRatio;
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`✅ ${type} aspectRatio 개별 옵션 적용: ${finalAspectRatio} (기본값: ${aspectRatio})`);
+      }
+    } else {
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`⚠️ ${type} aspectRatio 개별 옵션 없음, 공통 옵션 사용: ${finalAspectRatio}`);
+      }
+    }
+    
+    // imageSize: 명시적으로 설정된 경우만 적용
+    if (individualOpts.imageSize && typeof individualOpts.imageSize === 'string' && individualOpts.imageSize.trim() !== '') {
+      finalImageSize = individualOpts.imageSize;
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`✅ ${type} imageSize 개별 옵션 적용: ${finalImageSize}`);
+      }
+    } else {
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`⚠️ ${type} imageSize 개별 옵션 없음, 기본값 사용: ${finalImageSize}`);
+      }
+    }
+    
+    // personGeneration: 명시적으로 설정된 경우만 적용
+    if (individualOpts.personGeneration && typeof individualOpts.personGeneration === 'string' && individualOpts.personGeneration.trim() !== '') {
+      finalPersonGeneration = individualOpts.personGeneration;
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`✅ ${type} personGeneration 개별 옵션 적용: ${finalPersonGeneration} (기본값: allow_adult)`);
+      }
+    } else {
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`⚠️ ${type} personGeneration 개별 옵션 없음, 기본값 사용: ${finalPersonGeneration}`);
+      }
+    }
+    
+    // 추가 프롬프트 적용
+    if (individualOpts.additionalPrompt) {
+      enhancedPrompt = `${enhancedPrompt}, ${individualOpts.additionalPrompt}`;
+    }
+    
+    // 공통 옵션 적용 (개별 옵션에 없는 경우만)
+    if (imageOptions) {
+      if (!individualOpts.imageStyle) {
+        enhancedPrompt = `${enhancedPrompt}, ${imageOptions.imageStyle} style`;
+      }
+      if (!individualOpts.imageQuality) {
+        enhancedPrompt = `${enhancedPrompt}, ${imageOptions.imageQuality} quality`;
+      }
+    }
+    
+    // 카메라 옵션 적용
+    const cameraOptions = [];
+    if (individualOpts.cameraProximity && individualOpts.cameraProximity !== 'none') {
+      cameraOptions.push(individualOpts.cameraProximity);
+    }
+    if (individualOpts.cameraPosition && individualOpts.cameraPosition !== 'none') {
+      cameraOptions.push(individualOpts.cameraPosition);
+    }
+    if (individualOpts.lensType && individualOpts.lensType !== 'none') {
+      cameraOptions.push(`${individualOpts.lensType} lens`);
+    }
+    if (individualOpts.filmType && individualOpts.filmType !== 'none') {
+      cameraOptions.push(individualOpts.filmType);
+    }
+    
+    if (cameraOptions.length > 0) {
+      enhancedPrompt = `${enhancedPrompt}, ${cameraOptions.join(', ')}`;
+    }
+    
+    // 최종 적용된 옵션 로깅 (개발 환경)
+    if (process.env.NODE_ENV === 'development') {
+      console.log('🎨 최종 적용된 옵션:', {
+        prompt: enhancedPrompt.substring(0, 100) + '...',
+        numberOfImages: {
+          개별옵션: individualOpts.numberOfImages,
+          공통옵션: imageOptions?.numberOfImages || 1,
+          최종적용: finalNumberOfImages,
+          출처: individualOpts.numberOfImages !== undefined ? '✅ 개별 옵션' : '⚠️ 공통 옵션'
+        },
+        aspectRatio: {
+          개별옵션: individualOpts.aspectRatio,
+          공통옵션: aspectRatio,
+          최종적용: finalAspectRatio,
+          출처: (individualOpts.aspectRatio && typeof individualOpts.aspectRatio === 'string') ? '✅ 개별 옵션' : '⚠️ 공통 옵션'
+        },
+        imageSize: {
+          개별옵션: individualOpts.imageSize,
+          기본값: '1K',
+          최종적용: finalImageSize,
+          출처: individualOpts.imageSize ? '✅ 개별 옵션' : '⚠️ 기본값'
+        },
+        personGeneration: {
+          개별옵션: individualOpts.personGeneration,
+          기본값: 'allow_adult',
+          최종적용: finalPersonGeneration,
+          출처: (individualOpts.personGeneration && typeof individualOpts.personGeneration === 'string') ? '✅ 개별 옵션' : '⚠️ 기본값'
+        }
+      });
+    }
+    
+    return {
+      enhancedPrompt,
+      numberOfImages: finalNumberOfImages,
+      aspectRatio: finalAspectRatio,
+      imageSize: finalImageSize,
+      personGeneration: finalPersonGeneration
+    };
+  };
+
   // 통합 이미지 생성 함수 (Google AI만 사용) - 여러 이미지 반환
   const generateMultipleImagesWithAPI = async (prompt: string, attachedImages: File[], type: 'character' | 'background' | 'setting' | 'settingCut') => {
     console.log('🚀 generateMultipleImagesWithAPI 호출:', { prompt, attachedImages: attachedImages.length, type, imageGenerationAPI, aspectRatio, imageOptions });
     
-    // 설정 우선순위 적용
-    const settings = applySettingsPriority();
-    console.log('⚙️ 적용된 설정:', settings);
-    
-    // 이미지 옵션이 있으면 프롬프트에 추가
-    let enhancedPrompt = prompt;
-    if (imageOptions) {
-      const stylePrompt = `Style: ${settings.style}`;
-      const qualityPrompt = `Quality: ${settings.quality}`;
-      
-      enhancedPrompt = `${prompt}\n\n${stylePrompt}\n${qualityPrompt}`;
-      console.log('🎨 이미지 옵션 적용된 프롬프트:', enhancedPrompt);
-    }
+    // 옵션 우선순위 적용
+    const { enhancedPrompt, numberOfImages: finalNumberOfImages, aspectRatio: finalAspectRatio, imageSize: finalImageSize, personGeneration: finalPersonGeneration } = applyOptionsPriority(type as 'character' | 'background' | 'settingCut', prompt);
     
     // Google AI 서비스 사용
     console.log('🔍 Google AI 서비스 사용');
-    const numberOfImages = settings.numberOfImages;
+    
+    // 동적으로 Google AI 서비스 인스턴스 생성
+    const googleAIService = createGoogleAIService();
     
     if (attachedImages.length > 0) {
       console.log('📷 첨부 이미지와 함께 생성 (단일 이미지만 지원)');
       // 첨부 이미지가 있는 경우 기존 단일 이미지 함수 사용
       switch (type) {
         case 'character':
-          const singleImage = await googleAIService.generateWithImage(attachedImages[0], enhancedPrompt, settings.aspectRatio);
+          const singleImage = await googleAIService.generateWithImage(attachedImages[0], enhancedPrompt, finalAspectRatio);
           return [singleImage];
         case 'background':
-          const singleBgImage = await googleAIService.generateBackgroundWithImage(attachedImages[0], enhancedPrompt, settings.aspectRatio);
+          const singleBgImage = await googleAIService.generateBackgroundWithImage(attachedImages[0], enhancedPrompt, finalAspectRatio);
           return [singleBgImage];
         case 'setting':
         case 'settingCut':
-          const singleSettingImage = await googleAIService.generateSettingCutWithImage(attachedImages[0], enhancedPrompt, settings.aspectRatio);
+          const singleSettingImage = await googleAIService.generateSettingCutWithImage(attachedImages[0], enhancedPrompt, finalAspectRatio);
           return [singleSettingImage];
       }
     } else {
       console.log('📝 텍스트만으로 여러 이미지 생성');
       switch (type) {
         case 'character':
-          return await googleAIService.generateMultipleCharacterImages(enhancedPrompt, settings.aspectRatio, numberOfImages);
+          return await googleAIService.generateMultipleCharacterImages(enhancedPrompt, finalAspectRatio, finalNumberOfImages, finalPersonGeneration);
         case 'background':
-          return await googleAIService.generateMultipleBackgroundImages(enhancedPrompt, settings.aspectRatio, numberOfImages);
+          return await googleAIService.generateMultipleBackgroundImages(enhancedPrompt, finalAspectRatio, finalNumberOfImages, finalPersonGeneration);
         case 'setting':
         case 'settingCut':
-          return await googleAIService.generateMultipleSettingCutImages(enhancedPrompt, settings.aspectRatio, numberOfImages);
+          return await googleAIService.generateMultipleSettingCutImages(enhancedPrompt, finalAspectRatio, finalNumberOfImages, finalPersonGeneration);
       }
     }
   };
@@ -190,21 +328,52 @@ export const useImageHandlers = (
       const imageResults = await generateMultipleImagesWithAPI(imagePrompt, attachedImages, 'character');
       console.log('✅ 이미지 생성 완료:', imageResults ? `${imageResults.length}개 이미지 생성` : '실패');
       
+      // 메타데이터 추출 (이미지 배열에 저장된 메타데이터)
+      const metadataList: Array<import('../types/project').ImageGenerationMetadata> = (imageResults as any).__metadata || [];
+      
       // 여러 이미지를 각각 캐릭터로 추가 (이미지 저장 정책 적용)
       const newCharacters = await Promise.all(imageResults.map(async (imageResult, index) => {
         const characterId = Date.now() + index;
+        const metadata = metadataList[index];
         
-        // 이미지 저장 서비스에 저장
-        const storedImageId = await imageStorageService.storeImage(
-          currentProjectId || 'default',
-          'character',
-          imageResult,
-          {
-            description: characterInput,
-            attachedImages: attachedImages.length,
-            generatedAt: new Date().toISOString()
+        // 이미지 저장 서비스에 저장 (용량 초과 시 오래된 이미지 자동 삭제)
+        let storedImageId: string | null = null;
+        let deletedImagesCount = 0;
+        try {
+          const result = await imageStorageService.storeImage(
+            currentProjectId || 'default',
+            'character',
+            imageResult,
+            {
+              description: characterInput,
+              attachedImages: attachedImages.length,
+              generatedAt: new Date().toISOString()
+            }
+          );
+          storedImageId = result.imageId;
+          deletedImagesCount = result.deletedImagesCount || 0;
+          
+          // 삭제된 이미지가 있으면 알림 표시
+          if (deletedImagesCount > 0) {
+            addNotification({
+              type: 'info',
+              title: '저장소 정리 완료',
+              message: `브라우저 저장소 용량이 부족하여 오래된 이미지 ${deletedImagesCount}개를 자동으로 삭제했습니다.`
+            });
           }
-        );
+        } catch (storageError: any) {
+          // localStorage 용량 초과 에러 처리
+          if (storageError?.name === 'QuotaExceededError' || storageError?.message?.includes('quota') || storageError?.message?.includes('용량이 부족')) {
+            console.warn('⚠️ 이미지 저장 실패: localStorage 용량 초과');
+            addNotification({
+              type: 'warning',
+              title: '저장 경고',
+              message: '이미지 생성은 완료되었지만, 브라우저 저장소 용량이 부족하여 저장되지 않았습니다. 브라우저 저장소를 수동으로 정리해주세요.'
+            });
+          } else {
+            throw storageError;
+          }
+        }
         
         return {
           id: characterId,
@@ -213,6 +382,8 @@ export const useImageHandlers = (
           imageStorageId: storedImageId,
           attachedImages: attachedImages,
           timestamp: new Date().toISOString(),
+          type: 'character' as const,
+          generationMetadata: metadata
         };
       }));
       
@@ -229,53 +400,10 @@ export const useImageHandlers = (
     } catch (error) {
       console.error('❌ 캐릭터 생성 오류:', error);
       
+      // getFormattedErrorMessage를 사용하여 일관된 에러 메시지 제공
       let errorMessage = '캐릭터 생성에 실패했습니다.';
       if (error instanceof Error) {
-        if (error.message.includes('프롬프트가 비어있습니다')) {
-          errorMessage = '캐릭터 설명을 입력해주세요.';
-        } else if (error.message.includes('프롬프트가 너무 깁니다')) {
-          errorMessage = '캐릭터 설명이 너무 깁니다. 1000자 이내로 작성해주세요.';
-        } else if (error.message.includes('부적절한 내용')) {
-          errorMessage = '부적절한 내용이 포함되어 있습니다. 다른 내용으로 시도해주세요.';
-        } else if (error.message.includes('이미지 생성 결과가 없습니다')) {
-          errorMessage = '이미지 생성에 실패했습니다. 프롬프트를 더 구체적으로 작성해보세요.';
-        } else if (error.message.includes('API 키')) {
-          errorMessage = 'Google AI API 키가 설정되지 않았습니다. 설정에서 API 키를 입력해주세요.';
-        } else if (error.message.includes('API 키가 설정되지 않았습니다')) {
-          errorMessage = 'Google AI API 키가 설정되지 않았습니다. 설정에서 API 키를 입력해주세요.';
-          // API 키 설정되지 않을 때도 설정 모달 자동 열기
-          if (onOpenSettings) {
-            setTimeout(() => {
-              onOpenSettings();
-            }, 1000); // 1초 후 설정 모달 열기
-          }
-        } else if (error.message.includes('API 키가 만료되었습니다')) {
-          errorMessage = 'Google AI API 키가 만료되었습니다. 설정에서 새로운 API 키를 입력해주세요.';
-          // API 키 만료 시 설정 모달 자동 열기
-          if (onOpenSettings) {
-            setTimeout(() => {
-              onOpenSettings();
-            }, 1000); // 1초 후 설정 모달 열기
-          }
-        } else if (error.message.includes('API 키가 유효하지 않습니다')) {
-          errorMessage = 'Google AI API 키가 유효하지 않습니다. 설정에서 올바른 API 키를 입력해주세요.';
-          // API 키 유효하지 않을 때도 설정 모달 자동 열기
-          if (onOpenSettings) {
-            setTimeout(() => {
-              onOpenSettings();
-            }, 1000); // 1초 후 설정 모달 열기
-          }
-        } else if (error.message.includes('사용량 한도')) {
-          errorMessage = 'API 사용량 한도를 초과했습니다. 잠시 후 다시 시도해주세요.';
-        } else if (error.message.includes('안전 정책')) {
-          errorMessage = '입력 내용이 안전 정책에 위배됩니다. 다른 내용으로 시도해주세요.';
-        } else if (error.message.includes('503') || error.message.includes('UNAVAILABLE')) {
-          errorMessage = 'Google AI 서비스가 일시적으로 사용할 수 없습니다. 잠시 후 다시 시도해주세요.';
-        } else if (error.message.includes('네트워크')) {
-          errorMessage = '네트워크 연결에 문제가 있습니다. 인터넷 연결을 확인해주세요.';
-        } else {
-          errorMessage = `캐릭터 생성에 실패했습니다: ${error.message}`;
-        }
+        errorMessage = getFormattedErrorMessage(error, characterInput);
       }
       
       addNotification({
@@ -283,6 +411,7 @@ export const useImageHandlers = (
         title: '생성 실패',
         message: errorMessage,
       });
+      
       return null;
     }
   };
@@ -298,6 +427,7 @@ export const useImageHandlers = (
       }
       
       const numberOfImages = imageOptions?.numberOfImages || 1;
+      const googleAIService = createGoogleAIService();
       const imageResult = await googleAIService.generateCharacterImage(imagePrompt, aspectRatio, numberOfImages);
       
       setGeneratedCharacters((prev: any[]) =>
@@ -362,21 +492,52 @@ export const useImageHandlers = (
       
       const imageResults = await generateMultipleImagesWithAPI(imagePrompt, attachedImages, 'background');
       
+      // 메타데이터 추출
+      const metadataList: Array<import('../types/project').ImageGenerationMetadata> = (imageResults as any).__metadata || [];
+      
       // 여러 이미지를 각각 배경으로 추가 (이미지 저장 정책 적용)
       const newBackgrounds = await Promise.all(imageResults.map(async (imageResult, index) => {
         const backgroundId = Date.now() + index;
+        const metadata = metadataList[index];
         
-        // 이미지 저장 서비스에 저장
-        const storedImageId = await imageStorageService.storeImage(
-          currentProjectId || 'default',
-          'background',
-          imageResult,
-          {
-            description: backgroundInput,
-            attachedImages: attachedImages.length,
-            generatedAt: new Date().toISOString()
+        // 이미지 저장 서비스에 저장 (용량 초과 시 오래된 이미지 자동 삭제)
+        let storedImageId: string | null = null;
+        let deletedImagesCount = 0;
+        try {
+          const result = await imageStorageService.storeImage(
+            currentProjectId || 'default',
+            'background',
+            imageResult,
+            {
+              description: backgroundInput,
+              attachedImages: attachedImages.length,
+              generatedAt: new Date().toISOString()
+            }
+          );
+          storedImageId = result.imageId;
+          deletedImagesCount = result.deletedImagesCount || 0;
+          
+          // 삭제된 이미지가 있으면 알림 표시
+          if (deletedImagesCount > 0) {
+            addNotification({
+              type: 'info',
+              title: '저장소 정리 완료',
+              message: `브라우저 저장소 용량이 부족하여 오래된 이미지 ${deletedImagesCount}개를 자동으로 삭제했습니다.`
+            });
           }
-        );
+        } catch (storageError: any) {
+          // localStorage 용량 초과 에러 처리
+          if (storageError?.name === 'QuotaExceededError' || storageError?.message?.includes('quota') || storageError?.message?.includes('용량이 부족')) {
+            console.warn('⚠️ 이미지 저장 실패: localStorage 용량 초과');
+            addNotification({
+              type: 'warning',
+              title: '저장 경고',
+              message: '이미지 생성은 완료되었지만, 브라우저 저장소 용량이 부족하여 저장되지 않았습니다. 브라우저 저장소를 수동으로 정리해주세요.'
+            });
+          } else {
+            throw storageError;
+          }
+        }
         
         return {
           id: backgroundId,
@@ -385,6 +546,8 @@ export const useImageHandlers = (
           imageStorageId: storedImageId,
           attachedImages: attachedImages,
           timestamp: new Date().toISOString(),
+          type: 'background' as const,
+          generationMetadata: metadata
         };
       }));
       
@@ -398,11 +561,17 @@ export const useImageHandlers = (
 
       return newBackgrounds;
     } catch (error) {
-      console.error('배경 생성 오류:', error);
+      console.error('❌ 배경 생성 오류:', error);
+      
+      let errorMessage = '배경 생성에 실패했습니다.';
+      if (error instanceof Error) {
+        errorMessage = getFormattedErrorMessage(error, backgroundInput);
+      }
+      
       addNotification({
         type: 'error',
         title: '생성 실패',
-        message: `배경 생성 중 오류가 발생했습니다: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        message: errorMessage,
       });
       return null;
     }
@@ -419,6 +588,7 @@ export const useImageHandlers = (
       }
       
       const numberOfImages = imageOptions?.numberOfImages || 1;
+      const googleAIService = createGoogleAIService();
       const imageResult = await googleAIService.generateBackgroundImage(imagePrompt, aspectRatio, numberOfImages);
       
       setGeneratedBackgrounds((prev: any[]) =>
@@ -483,21 +653,52 @@ export const useImageHandlers = (
       
       const imageResults = await generateMultipleImagesWithAPI(imagePrompt, attachedImages, 'setting');
       
+      // 메타데이터 추출
+      const metadataList: Array<import('../types/project').ImageGenerationMetadata> = (imageResults as any).__metadata || [];
+      
       // 여러 이미지를 각각 설정 컷으로 추가 (이미지 저장 정책 적용)
       const newSettingCuts = await Promise.all(imageResults.map(async (imageResult, index) => {
         const settingCutId = Date.now() + index;
+        const metadata = metadataList[index];
         
-        // 이미지 저장 서비스에 저장
-        const storedImageId = await imageStorageService.storeImage(
-          currentProjectId || 'default',
-          'settingCut',
-          imageResult,
-          {
-            description: settingCut,
-            attachedImages: attachedImages.length,
-            generatedAt: new Date().toISOString()
+        // 이미지 저장 서비스에 저장 (용량 초과 시 오래된 이미지 자동 삭제)
+        let storedImageId: string | null = null;
+        let deletedImagesCount = 0;
+        try {
+          const result = await imageStorageService.storeImage(
+            currentProjectId || 'default',
+            'settingCut',
+            imageResult,
+            {
+              description: settingCut,
+              attachedImages: attachedImages.length,
+              generatedAt: new Date().toISOString()
+            }
+          );
+          storedImageId = result.imageId;
+          deletedImagesCount = result.deletedImagesCount || 0;
+          
+          // 삭제된 이미지가 있으면 알림 표시
+          if (deletedImagesCount > 0) {
+            addNotification({
+              type: 'info',
+              title: '저장소 정리 완료',
+              message: `브라우저 저장소 용량이 부족하여 오래된 이미지 ${deletedImagesCount}개를 자동으로 삭제했습니다.`
+            });
           }
-        );
+        } catch (storageError: any) {
+          // localStorage 용량 초과 에러 처리
+          if (storageError?.name === 'QuotaExceededError' || storageError?.message?.includes('quota') || storageError?.message?.includes('용량이 부족')) {
+            console.warn('⚠️ 이미지 저장 실패: localStorage 용량 초과');
+            addNotification({
+              type: 'warning',
+              title: '저장 경고',
+              message: '이미지 생성은 완료되었지만, 브라우저 저장소 용량이 부족하여 저장되지 않았습니다. 브라우저 저장소를 수동으로 정리해주세요.'
+            });
+          } else {
+            throw storageError;
+          }
+        }
         
         return {
           id: settingCutId,
@@ -506,6 +707,8 @@ export const useImageHandlers = (
           imageStorageId: storedImageId,
           attachedImages: attachedImages,
           timestamp: new Date().toISOString(),
+          type: 'setting' as const,
+          generationMetadata: metadata
         };
       }));
       
@@ -519,11 +722,17 @@ export const useImageHandlers = (
 
       return newSettingCuts;
     } catch (error) {
-      console.error('설정 컷 생성 오류:', error);
+      console.error('❌ 설정 컷 생성 오류:', error);
+      
+      let errorMessage = '설정 컷 생성에 실패했습니다.';
+      if (error instanceof Error) {
+        errorMessage = getFormattedErrorMessage(error, settingCut);
+      }
+      
       addNotification({
         type: 'error',
         title: '생성 실패',
-        message: `설정 컷 생성 중 오류가 발생했습니다: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        message: errorMessage,
       });
       return null;
     }
@@ -540,6 +749,7 @@ export const useImageHandlers = (
       }
       
       const numberOfImages = imageOptions?.numberOfImages || 1;
+      const googleAIService = createGoogleAIService();
       const imageResult = await googleAIService.generateSettingCutImage(imagePrompt, aspectRatio, numberOfImages);
       
       setGeneratedSettingCuts((prev: any[]) =>
@@ -598,6 +808,7 @@ export const useImageHandlers = (
     try {
       const newCharacters = [];
       const numberOfImages = imageOptions?.numberOfImages || 1;
+      const googleAIService = createGoogleAIService();
       for (const character of generatedCharacters) {
         const imageResult = await googleAIService.generateCharacterImage(character.description, aspectRatio, numberOfImages);
         newCharacters.push({
@@ -635,6 +846,7 @@ export const useImageHandlers = (
     try {
       const newBackgrounds = [];
       const numberOfImages = imageOptions?.numberOfImages || 1;
+      const googleAIService = createGoogleAIService();
       for (const background of generatedBackgrounds) {
         const imageResult = await googleAIService.generateBackgroundImage(background.description, aspectRatio, numberOfImages);
         newBackgrounds.push({
@@ -672,6 +884,7 @@ export const useImageHandlers = (
     try {
       const newSettingCuts = [];
       const numberOfImages = imageOptions?.numberOfImages || 1;
+      const googleAIService = createGoogleAIService();
       for (const cut of generatedSettingCuts) {
         const imageResult = await googleAIService.generateSettingCutImage(cut.description, aspectRatio, numberOfImages);
         newSettingCuts.push({

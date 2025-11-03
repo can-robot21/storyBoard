@@ -1,5 +1,5 @@
 import React from 'react';
-import { Bot, Zap, Sparkles, MessageCircle } from 'lucide-react';
+import { Bot, Zap, Sparkles, MessageCircle, Video } from 'lucide-react';
 import { AIProvider } from '../../types/ai';
 
 interface AISelectorProps {
@@ -7,6 +7,12 @@ interface AISelectorProps {
   onProviderChange: (provider: AIProvider) => void;
   disabled?: boolean;
   className?: string;
+  apiKeys?: {
+    google?: string;
+    chatgpt?: string;
+    anthropic?: string;
+    kling?: string;
+  };
 }
 
 const aiProviders = [
@@ -16,14 +22,6 @@ const aiProviders = [
     description: 'Gemini API를 통한 텍스트, 이미지, 영상 생성',
     icon: Bot,
     color: 'bg-blue-500',
-    available: true
-  },
-  {
-    id: 'openai' as AIProvider,
-    name: 'OpenAI',
-    description: 'GPT-4, DALL-E를 통한 텍스트, 이미지 생성',
-    icon: Zap,
-    color: 'bg-green-500',
     available: true
   },
   {
@@ -41,6 +39,14 @@ const aiProviders = [
     icon: Sparkles,
     color: 'bg-purple-500',
     available: false
+  },
+  {
+    id: 'kling' as AIProvider,
+    name: 'Kling AI',
+    description: 'Kling AI를 통한 고품질 영상 생성',
+    icon: Video,
+    color: 'bg-orange-500',
+    available: false
   }
 ];
 
@@ -48,8 +54,30 @@ export const AISelector: React.FC<AISelectorProps> = ({
   selectedProvider,
   onProviderChange,
   disabled = false,
-  className = ''
+  className = '',
+  apiKeys = {}
 }) => {
+  // API 키 기반 활성화 확인
+  const checkApiKeyAvailability = (providerId: AIProvider): boolean => {
+    if (providerId === 'anthropic' || providerId === 'kling') {
+      return false; // 준비중
+    }
+    
+    if (providerId === 'google') {
+      return !!(apiKeys.google && apiKeys.google.trim() !== '' && 
+                !apiKeys.google.includes('your-') && 
+                !apiKeys.google.includes('-here'));
+    }
+    
+    if (providerId === 'chatgpt') {
+      return !!(apiKeys.chatgpt && apiKeys.chatgpt.trim() !== '' && 
+                !apiKeys.chatgpt.includes('your-') && 
+                !apiKeys.chatgpt.includes('-here'));
+    }
+    
+    return false;
+  };
+
   return (
     <div className={`space-y-3 ${className}`}>
       <div className="flex items-center gap-2 mb-4">
@@ -61,7 +89,8 @@ export const AISelector: React.FC<AISelectorProps> = ({
         {aiProviders.map((provider) => {
           const Icon = provider.icon;
           const isSelected = selectedProvider === provider.id;
-          const isDisabled = disabled || !provider.available;
+          const hasApiKey = checkApiKeyAvailability(provider.id);
+          const isDisabled = disabled || !provider.available || !hasApiKey;
           
           return (
             <button
@@ -69,7 +98,7 @@ export const AISelector: React.FC<AISelectorProps> = ({
               onClick={() => !isDisabled && onProviderChange(provider.id)}
               disabled={isDisabled}
               className={`
-                relative p-4 rounded-lg border-2 transition-all duration-200
+                relative p-2 rounded-lg border-2 transition-all duration-200
                 ${isSelected 
                   ? 'border-blue-500 bg-blue-50 shadow-md' 
                   : 'border-gray-200 bg-white hover:border-gray-300 hover:shadow-sm'
@@ -81,29 +110,33 @@ export const AISelector: React.FC<AISelectorProps> = ({
                 ${isSelected ? 'ring-2 ring-blue-200' : ''}
               `}
             >
-              <div className="flex items-start gap-3">
+              <div className="flex items-start gap-2">
                 <div className={`
-                  p-2 rounded-lg ${provider.color} text-white
+                  p-1 rounded-lg ${provider.color} text-white flex-shrink-0
                   ${isDisabled ? 'opacity-50' : ''}
                 `}>
-                  <Icon className="w-5 h-5" />
+                  <Icon className="w-4 h-4" />
                 </div>
                 
-                <div className="flex-1 text-left">
-                  <div className="flex items-center gap-2">
-                    <h4 className="font-medium text-gray-900">{provider.name}</h4>
+                <div className="flex-1 text-left min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <h4 className="font-medium text-gray-900 text-sm">{provider.name}</h4>
                     {isSelected && (
-                      <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                      <div className="w-1.5 h-1.5 bg-blue-500 rounded-full flex-shrink-0"></div>
                     )}
+                  </div>
+                  <div className="mt-0.5">
                     {!provider.available && (
-                      <span className="text-xs bg-gray-100 text-gray-500 px-2 py-1 rounded">
+                      <span className="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded block">
                         준비중
                       </span>
                     )}
+                    {provider.available && !hasApiKey && (
+                      <span className="text-xs bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded block">
+                        API 키 필요
+                      </span>
+                    )}
                   </div>
-                  <p className="text-sm text-gray-600 mt-1">
-                    {provider.description}
-                  </p>
                 </div>
               </div>
               

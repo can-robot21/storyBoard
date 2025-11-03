@@ -29,6 +29,29 @@ export interface ProjectSettings {
   currentCutIndex: number;
 }
 
+// 이미지 생성 메타데이터
+export interface ImageGenerationMetadata {
+  // 생성 옵션
+  personGeneration?: 'allow_adult' | 'allow_all' | 'dont_allow';
+  aspectRatio?: string;
+  imageSize?: string;
+  numberOfImages?: number;
+  
+  // API 응답 정보
+  apiResponse?: {
+    generatedCount: number;
+    requestedCount: number;
+    timestamp: string;
+  };
+  
+  // 안전 속성 정보
+  safetyAttributes?: {
+    blocked: boolean;
+    categories?: Record<string, string>;
+    scores?: Record<string, number>;
+  };
+}
+
 // 생성된 아이템들의 기본 인터페이스
 export interface BaseGeneratedItem {
   id: number;
@@ -36,6 +59,7 @@ export interface BaseGeneratedItem {
   image: string;
   attachedImages: string[];
   timestamp: string;
+  generationMetadata?: ImageGenerationMetadata;
 }
 
 export interface GeneratedCharacter extends BaseGeneratedItem {
@@ -79,9 +103,18 @@ export interface GeneratedVideo {
   backgrounds: GeneratedImage[];
   projectTexts: string[];
   aiReviewTexts: string[];
+  sceneCommonSettings?: string[]; // videoGeneration 타입과 호환을 위해 추가
   video: string;
   videoRatio: string;
   timestamp: string;
+  // 에피소드 영상 생성을 위한 추가 필드 (videoGeneration 타입과 호환)
+  title?: string;
+  description?: string;
+  videoUrl?: string;
+  thumbnail?: string;
+  duration?: string;
+  type?: 'general' | 'episode';
+  episodeId?: number;
 }
 
 // AI 생성 결과 타입

@@ -224,11 +224,32 @@ ${videoNotes ? `영상 노트: ${videoNotes}` : ''}
 5. 씬 설명에 포함된 구체적인 대화 내용이 있다면 반드시 반영하세요.`;
 
       console.log('📝 프롬프트 생성 완료, 길이:', prompt.length);
-      console.log('🔑 API 키 확인:', !!process.env.REACT_APP_GEMINI_API_KEY);
+      // 사용자 API 키 확인
+      const getAPIKey = () => {
+        try {
+          if (typeof window !== 'undefined') {
+            const currentUserRaw = localStorage.getItem('storyboard_current_user');
+            const localKeysRaw = localStorage.getItem('user_api_keys');
+            const currentUser = currentUserRaw ? JSON.parse(currentUserRaw) : null;
+            const localKeys = localKeysRaw ? JSON.parse(localKeysRaw) : {};
+            
+            return localKeys.google || currentUser?.apiKeys?.google || '';
+          }
+        } catch {}
+        return '';
+      };
 
-      const { googleAIService } = await import('../../services/googleAIService');
+      console.log('🔑 API 키 확인:', !!getAPIKey());
+
+      const { GoogleAIService } = await import('../../services/googleAIService');
       console.log('📡 Google AI 서비스 로드 완료');
       
+      const apiKey = getAPIKey();
+      if (!apiKey) {
+        throw new Error('Google AI API 키가 설정되지 않았습니다. 로그인 후 설정에서 API 키를 입력해주세요.');
+      }
+      
+      const googleAIService = GoogleAIService.getInstance();
       const result = await googleAIService.generateText(prompt);
       console.log('🤖 AI 응답 받음:', result ? '성공' : '실패', result?.length || 0);
 

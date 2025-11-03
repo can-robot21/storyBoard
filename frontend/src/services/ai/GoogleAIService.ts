@@ -1,6 +1,7 @@
 import { BaseAIService } from './BaseAIService';
 import { TextGenerationOptions, ImageGenerationOptions, VideoGenerationOptions, TextGenerationResponse, ImageGenerationResponse, VideoGenerationResponse } from '../../types/ai';
 import { apiUsageService } from '../apiUsageService';
+import { getSystemPrompt } from '../../utils/promptTemplates';
 
 /**
  * Google AI 서비스 구현체
@@ -25,8 +26,16 @@ export class GoogleAIService extends BaseAIService {
     try {
       const model = options.model || 'gemini-2.5-flash';
       
+      // Provider별 System Prompt 적용
+      const systemPrompt = options.systemPrompt || getSystemPrompt('google', 'text');
+      
+      // System Prompt가 있으면 프롬프트에 포함
+      const enhancedPrompt = systemPrompt 
+        ? `${systemPrompt}\n\n사용자 요청: ${options.prompt}`
+        : options.prompt;
+      
       // 기존 googleAIService의 generateText 메서드 사용
-      const text = await this.ai.generateText(options.prompt, model);
+      const text = await this.ai.generateText(enhancedPrompt, model);
 
       // 사용량 추적
       const estimatedTokens = Math.ceil(options.prompt.length / 4) + Math.ceil(text.length / 4);

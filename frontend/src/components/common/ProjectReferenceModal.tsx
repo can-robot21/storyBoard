@@ -20,6 +20,7 @@ interface ProjectReferenceModalProps {
   generatedCharacters?: any[];
   generatedBackgrounds?: any[];
   generatedSettingCuts?: any[];
+  generatedAdvancedImages?: any[];
   generatedTextCards?: any[];
   generatedVideos?: any[];
   // 영상 생성에서 추가된 캐릭터/배경 이미지
@@ -73,6 +74,7 @@ interface SectionVisibility {
   characterImages: boolean;
   backgroundImages: boolean;
   settingCutImages: boolean;
+  advancedImages: boolean;
   videos: boolean;
   jsonCards: boolean;
   englishJson: boolean;
@@ -97,6 +99,7 @@ export const ProjectReferenceModal: React.FC<ProjectReferenceModalProps> = ({
   generatedCharacters = [],
   generatedBackgrounds = [],
   generatedSettingCuts = [],
+  generatedAdvancedImages = [],
   generatedTextCards = [],
   generatedVideos = [],
   generatedCharacterImages = [],
@@ -974,6 +977,7 @@ ${cardType}에 대한 내용을 400자 이내로 생성해주세요.`;
     characterImages: false,
     backgroundImages: false,
     settingCutImages: false,
+    advancedImages: false,
     videos: !episodeOnlyMode,
     jsonCards: false,
     englishJson: false,
@@ -1656,6 +1660,85 @@ ${cardType}에 대한 내용을 400자 이내로 생성해주세요.`;
           ) : (
             <div className="text-gray-500 text-center py-4">
               설정 컷 이미지가 생성되지 않았습니다.
+            </div>
+          )}
+        </div>
+      )}
+
+      <SectionHeader
+        title="고급 이미지"
+        icon={Image}
+        section="advancedImages"
+        count={generatedAdvancedImages.length}
+      />
+      {sectionVisibility.advancedImages && (
+        <div className="p-4 bg-white border rounded-lg">
+          {generatedAdvancedImages.length > 0 ? (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {generatedAdvancedImages.map((item, index) => (
+                <div key={`advanced-${index}`} className="relative group">
+                  <div className="aspect-square bg-gray-100 rounded-lg overflow-hidden">
+                    <img
+                      src={item.image}
+                      alt={`Advanced Image ${index + 1}`}
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                  <div className="mt-2 text-sm">
+                    <div className="font-medium truncate">{item.description}</div>
+                    <div className="text-xs text-gray-500 mt-1">
+                      {new Date(item.timestamp).toLocaleString()}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      const filename = `고급이미지_${index + 1}_${new Date().toISOString().split('T')[0]}.jpg`;
+                      downloadBase64Image(item.image, filename);
+                    }}
+                    className="absolute top-1 right-1 p-1 bg-black bg-opacity-50 text-white rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                    title="이미지 다운로드"
+                  >
+                    <Download className="w-3 h-3" />
+                  </button>
+                  {(onDeleteItem || onDeleteById) && (
+                    <button
+                      onClick={() => {
+                        if (window.confirm('정말로 이 고급 이미지를 삭제하시겠습니까?')) {
+                          console.log('고급 이미지 삭제:', { type: 'advancedImages', index, itemId: item.id });
+                          
+                          if (onDeleteById && item.id) {
+                            onDeleteById('advancedImages', item.id);
+                          } else if (onDeleteItem) {
+                            onDeleteItem('advancedImages', index);
+                          }
+                          
+                          addNotification({
+                            type: 'success',
+                            title: '삭제 완료',
+                            message: '고급 이미지가 삭제되었습니다.',
+                          });
+                        }
+                      }}
+                      className="absolute top-1 left-1 p-1 bg-red-600 bg-opacity-80 text-white rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                      title="삭제"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  )}
+                  <button
+                    onClick={() => {
+                      setShowImageModal(true);
+                      setSelectedImage(item.image);
+                    }}
+                    className="absolute inset-0 bg-transparent cursor-pointer"
+                    title="이미지 확대 보기"
+                  />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-gray-500 text-center py-4">
+              고급 이미지가 생성되지 않았습니다.
             </div>
           )}
         </div>

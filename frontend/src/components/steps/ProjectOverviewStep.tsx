@@ -549,19 +549,28 @@ ${episodes.map(episode =>
         <div className="space-y-3">
           <div className="text-sm font-medium text-gray-700 mb-3">프로젝트 생성 단계</div>
           
+          {/* 관리자 계정 정보 표시 */}
+          {apiKeyStatus.isAdmin && (
+            <div className="p-3 rounded-lg border bg-blue-50 border-blue-200 text-blue-800 text-sm">
+              <div className="flex items-center gap-2">
+                <span className="font-medium">👤 관리자 계정:</span>
+                <span>star612.net@gmail.com (환경변수 API 키 사용)</span>
+              </div>
+            </div>
+          )}
           <div className={`p-3 rounded-lg border text-sm ${
             apiKeyStatus.hasApiKey 
               ? 'bg-green-50 border-green-200 text-green-800' 
-              : 'bg-blue-50 border-blue-200 text-blue-800'
+              : 'bg-red-50 border-red-200 text-red-800'
           }`}>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <span className="font-medium">
-                  {apiKeyStatus.hasApiKey ? '✅' : 'ℹ️'} Google AI API 키 상태:
+                  {apiKeyStatus.hasApiKey ? '✅' : '⚠️'} Google AI API 키 상태:
                 </span>
                 <span>
                   {apiKeyStatus.hasApiKey 
-                    ? '설정됨' 
+                    ? `설정됨 (${apiKeyStatus.isAdmin ? '관리자 환경변수' : '사용자 설정'})` 
                     : '설정되지 않음'
                   }
                 </span>
@@ -572,7 +581,7 @@ ${episodes.map(episode =>
                     addNotification({
                       type: 'info',
                       title: 'API 키 설정 안내',
-                      message: '개인 Google AI API 키를 설정하면 모든 기능을 사용할 수 있습니다. 우측 상단 설정 버튼을 클릭하여 API 키를 입력해주세요.',
+                      message: '우측 상단의 설정 버튼을 클릭하여 Google AI API 키를 입력해주세요.',
                     });
                   }}
                   className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
@@ -581,11 +590,6 @@ ${episodes.map(episode =>
                 </button>
               )}
             </div>
-            {!apiKeyStatus.hasApiKey && (
-              <div className="mt-2 text-xs text-blue-700">
-                💡 개인 Google AI API 키를 설정하면 이미지 생성, 텍스트 생성, 영상 생성 등 모든 AI 기능을 사용할 수 있습니다.
-              </div>
-            )}
           </div>
           
           {/* 1단계: 기본 입력 */}
@@ -927,23 +931,6 @@ ${episodes.map(episode =>
         </div>
       </div>
 
-      {/* 다음 단계 진행 버튼 */}
-      {stepStatus.projectOverviewSaved && (
-        <div className="bg-white border rounded-lg p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-lg font-semibold text-gray-800">🎉 프로젝트 개요 완료</h3>
-              <p className="text-sm text-gray-600 mt-1">모든 단계가 완료되었습니다. 다음 단계로 진행하세요.</p>
-            </div>
-            <Button
-              className="px-6 py-3 bg-orange-600 hover:bg-orange-700 text-white font-medium"
-              onClick={onNext}
-            >
-              다음 단계로 →
-            </Button>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
