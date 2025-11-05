@@ -39,6 +39,8 @@ import { userActivityLogService } from './services/userActivityLogService';
 import { ManagementModal } from './components/common/ManagementModal';
 import IntroPage from './components/common/IntroPage';
 import GuidePage from './components/common/GuidePage';
+import ContactPage from './components/common/ContactPage';
+import SEO from './components/common/SEO';
 import StoryboardGenerator from './components/storyboard/StoryboardGenerator';
 import WelcomeModal from './components/common/WelcomeModal';
 
@@ -62,7 +64,7 @@ export default function App() {
   
   // 진전형 레이아웃 상태
   // 초기값을 intro로 설정 (인증 확인 후 로그인된 경우에만 main으로 변경)
-  const [currentPage, setCurrentPage] = useState<'intro' | 'guide' | 'main'>('intro');
+  const [currentPage, setCurrentPage] = useState<'intro' | 'guide' | 'main' | 'contact'>('intro');
   const [isFirstVisit, setIsFirstVisit] = useState(false);
   
   // 페이지 전환 함수들
@@ -76,6 +78,11 @@ export default function App() {
   const goToIntro = () => {
     setCurrentPage('intro');
     // intro 페이지로 이동 시 스토리보드 생성기도 닫기
+    setShowStoryboardGenerator(false);
+  };
+  const goToContact = () => {
+    setCurrentPage('contact');
+    // 문의/의뢰 페이지로 이동 시 스토리보드 생성기도 닫기
     setShowStoryboardGenerator(false);
   };
 
@@ -525,9 +532,14 @@ export default function App() {
 
   return (
     <HelmetProvider>
+      <SEO 
+        title="StoryBoard AI - 스토리보드/영상 AI"
+        description="StoryBoard AI는 AI 기반 스토리보드 및 영상 제작 플랫폼입니다. 텍스트만 입력하면 전문가 수준의 스토리보드, 캐릭터 이미지, 배경 이미지를 자동 생성하고 완성된 영상을 제작할 수 있습니다. AI Storyboard and Video Creation Platform - Generate professional storyboards, characters, backgrounds, and videos with AI technology."
+        keywords="StoryBoard AI, 스토리보드 AI, 영상 제작 AI, AI 스토리보드 생성, AI 영상 제작, 스토리보드 제작, 영상 제작, AI 캐릭터 생성, AI 이미지 생성, ChatGPT, 챗GPT, 구글 AI, Google AI, 제미니, Gemini, 나노 바나나, Nano Banana, kling, Kling, 콘티, conti, 콘티 제작, AI video creation, AI storyboard generation, storyboard creator, video production AI, AI character generation, AI image generation, 스토리보드 생성기, 영상 제작 도구"
+      />
       <div className="h-screen flex flex-col bg-gray-50 overflow-hidden">
-      {/* 상단 헤더 - 메인 페이지와 스토리보드 생성기에서 표시 */}
-      {(currentPage === 'main' || showStoryboardGenerator) && (
+      {/* 상단 헤더 - 메인 페이지, 문의/의뢰 페이지, 스토리보드 생성기에서 표시 */}
+      {(currentPage === 'main' || currentPage === 'contact' || showStoryboardGenerator) && (
         <Header
           isLoggedIn={isLoggedIn}
           onLogin={handleLogin}
@@ -537,6 +549,7 @@ export default function App() {
           onGoToIntro={goToIntro}
           onGoToMain={goToMain}
           onGoToGuide={goToGuide}
+          onGoToContact={goToContact}
           currentUser={currentUser}
         />
       )}
@@ -567,11 +580,16 @@ export default function App() {
                 setShowWelcomeModal(true);
               }
             }} 
-            onBack={goToIntro} 
+            onBack={goToIntro}
+            onContact={goToContact}
           />
         </div>
+      ) : currentPage === 'contact' ? (
+        <div className="flex-1 overflow-auto">
+          <ContactPage onBack={goToMain} />
+        </div>
       ) : showStoryboardGenerator ? (
-        <StoryboardGenerator onBack={() => setShowStoryboardGenerator(false)} />
+        <StoryboardGenerator onBack={() => setShowStoryboardGenerator(false)} isLoggedIn={isLoggedIn} />
       ) : (
         <div className="flex-1 overflow-hidden">
           <ImprovedMainLayout

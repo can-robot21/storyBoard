@@ -156,6 +156,37 @@ const safeText = async (pdf: jsPDF, text: string, x: number, y: number, options?
  * @param currentFontSize 현재 폰트 크기 (bold 효과를 위한 크기 조정용)
  * @returns bold 효과를 적용한 경우 새로운 폰트 크기, 그렇지 않으면 현재 크기
  */
+/**
+ * 이미지 플레이스홀더 그리기 함수
+ */
+const drawImagePlaceholder = async (
+  pdf: jsPDF,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  pretendardFontLoaded: boolean
+): Promise<void> => {
+  // 배경색 설정
+  pdf.setFillColor(249, 249, 249); // #f9f9f9
+  pdf.setDrawColor(200, 200, 200);
+  pdf.setLineWidth(0.5);
+  pdf.rect(x, y, width, height, 'FD'); // Fill and Draw
+  
+  // "이미지 없음" 텍스트
+  pdf.setFontSize(8);
+  pdf.setTextColor(150, 150, 150);
+  if (pretendardFontLoaded) {
+    pdf.setFont('Pretendard', 'normal');
+  } else {
+    pdf.setFont('helvetica', 'normal');
+  }
+  const placeholderText = '이미지 없음';
+  const textWidth = pdf.getTextWidth(placeholderText);
+  await safeText(pdf, placeholderText, x + (width - textWidth) / 2, y + height / 2);
+  pdf.setTextColor(0, 0, 0);
+};
+
 const setSafeFont = (pdf: jsPDF, style: 'normal' | 'bold' = 'normal', currentFontSize?: number): number => {
   if (pretendardFontLoaded) {
     // Pretendard는 'bold' 스타일이 없으므로 항상 'normal' 사용
@@ -244,166 +275,311 @@ export const generateStoryBoardPDF = async (
   const pageHeight = 297; // A4 높이 (mm)
   const margin = 20; // 여백 증가 (15mm → 20mm)
   const contentWidth = pageWidth - margin * 2; // 170mm
-  let currentY = margin;
-
-  // 상단 라인 (테이블 상단)
-  pdf.setDrawColor(0, 0, 0);
-  pdf.setLineWidth(0.5);
-  pdf.line(margin, currentY - 5, pageWidth - margin, currentY - 5);
-
-  // 헤더 테이블 영역 시작
-  const headerTableY = currentY;
-  const headerTableHeight = 45; // 헤더 영역 높이
-  
-  // 헤더 테이블 배경
-  pdf.setFillColor(245, 245, 245);
-  pdf.rect(margin, currentY - 5, contentWidth, headerTableHeight, 'F');
-  
-  // 헤더 테이블 외곽선
-  pdf.setDrawColor(100, 100, 100);
-  pdf.setLineWidth(0.3);
-  pdf.rect(margin, currentY - 5, contentWidth, headerTableHeight);
+  let currentY = 0; // 상단 여백 제거 (5mm → 0mm)
 
   // Pretendard 폰트 로드 (최초 한 번만)
   await loadPretendardFont(pdf);
   
-  // 타이틀 (첫 번째 행)
-  pdf.setFontSize(18);
-  if (pretendardFontLoaded) {
-    // Pretendard는 bold 지원이 제한적이므로 normal 사용 후 크기 조정
-    pdf.setFont('Pretendard', 'normal');
-    pdf.setFontSize(19); // 크기를 약간 키워서 bold 효과
-  } else {
-    pdf.setFont('helvetica', 'bold');
-  }
+  // 타이틀 (테이블 밖 상단 중앙)
   if (data.headerData.title) {
-    await safeText(pdf, data.headerData.title, margin + 5, currentY + 5);
-    currentY += 10;
+    pdf.setFontSize(22);
+    if (pretendardFontLoaded) {
+      pdf.setFont('Pretendard', 'bold');
+      pdf.setFontSize(24); // 크기를 키워서 더 두껍게
+    } else {
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(22);
+    }
+    // 중앙 정렬을 위해 텍스트 너비 계산
+    try {
+      const titleWidth = pdf.getTextWidth(data.headerData.title);
+      const titleX = (pageWidth - titleWidth) / 2;
+      await safeText(pdf, data.headerData.title, titleX, currentY);
+    } catch (error) {
+      // 에러 발생 시 중앙 정렬 없이 출력
+      await safeText(pdf, data.headerData.title, margin + 5, currentY);
+    }
+    currentY += 9; // 여백 반으로 (18mm → 9mm)
   }
 
-  // 헤더 정보 테이블 (두 번째 행)
-  pdf.setFontSize(11);
+  // 헤더 테이블 영역 시작
+  const headerTableY = currentY;
+  const headerTableHeight = 20; // 헤더 영역 높이 (2줄)
+  
+  // 헤더 테이블 배경
+  pdf.setFillColor(245, 245, 245);
+  pdf.rect(margin, headerTableY, contentWidth, headerTableHeight, 'F');
+  
+  // 헤더 테이블 외곽선
+  pdf.setDrawColor(100, 100, 100);
+  pdf.setLineWidth(0.3);
+  pdf.rect(margin, headerTableY, contentWidth, headerTableHeight);
+
+  // 첫 번째 줄: 나머지 필드들 (날짜, 시간대, 장소, 씬, 컷) - 중앙 정렬
+  pdf.setFontSize(10);
   if (pretendardFontLoaded) {
     pdf.setFont('Pretendard', 'normal');
   } else {
     pdf.setFont('helvetica', 'normal');
   }
   
-  // 테이블 셀 너비 계산
-  const cellCount = 4;
-  const cellWidth = contentWidth / cellCount;
-  const tableRowY = currentY + 5;
+  const firstRowY = headerTableY + 6;
+  const fieldSpacing = 25; // 필드 간 간격
   
-  // 테이블 라인 (세로선)
-  for (let i = 0; i <= cellCount; i++) {
-    const lineX = margin + (i * cellWidth);
-    pdf.line(lineX, headerTableY - 5, lineX, headerTableY - 5 + headerTableHeight);
+  // 필드 정보 수집
+  interface FieldInfo {
+    label: string;
+    value: string;
+    labelWidth: number;
+    valueWidth: number;
+    totalWidth: number;
   }
   
-  // 헤더 정보 셀별 배치
-  let cellX = margin;
+  const fields: FieldInfo[] = [];
+  
+  // 날짜
   if (data.headerData.date) {
-    if (pretendardFontLoaded) {
-      pdf.setFont('Pretendard', 'normal');
-      pdf.setFontSize(11.5); // 약간 크게
-    } else {
-      pdf.setFont('helvetica', 'bold');
-    }
-    await safeText(pdf, '날짜:', cellX + 2, tableRowY);
-    if (pretendardFontLoaded) {
-      pdf.setFont('Pretendard', 'normal');
-    } else {
-      pdf.setFont('helvetica', 'normal');
-    }
-    await safeText(pdf, data.headerData.date, cellX + 15, tableRowY);
-  }
-  cellX += cellWidth;
-  
-  if (data.headerData.time) {
+    pdf.setFontSize(10.5);
     if (pretendardFontLoaded) {
       pdf.setFont('Pretendard', 'normal');
     } else {
       pdf.setFont('helvetica', 'bold');
     }
-    await safeText(pdf, '시간:', cellX + 2, tableRowY);
-    if (pretendardFontLoaded) {
-      pdf.setFont('Pretendard', 'normal');
-    } else {
-      pdf.setFont('helvetica', 'normal');
-    }
-    await safeText(pdf, data.headerData.time, cellX + 15, tableRowY);
-  }
-  cellX += cellWidth;
-  
-  if (data.headerData.location) {
-    if (pretendardFontLoaded) {
-      pdf.setFont('Pretendard', 'normal');
-    } else {
-      pdf.setFont('helvetica', 'bold');
-    }
-    await safeText(pdf, '장소:', cellX + 2, tableRowY);
-    if (pretendardFontLoaded) {
-      pdf.setFont('Pretendard', 'normal');
-    } else {
-      pdf.setFont('helvetica', 'normal');
-    }
-    await safeText(pdf, data.headerData.location, cellX + 15, tableRowY);
-  }
-  cellX += cellWidth;
-  
-  if (data.headerData.scene) {
-    if (pretendardFontLoaded) {
-      pdf.setFont('Pretendard', 'normal');
-    } else {
-      pdf.setFont('helvetica', 'bold');
-    }
-    await safeText(pdf, '씬:', cellX + 2, tableRowY);
-    if (pretendardFontLoaded) {
-      pdf.setFont('Pretendard', 'normal');
-    } else {
-      pdf.setFont('helvetica', 'normal');
-    }
-    await safeText(pdf, data.headerData.scene, cellX + 15, tableRowY);
-  }
-  
-  currentY = headerTableY + headerTableHeight - 10;
-  
-  // 테이블 하단 라인
-  pdf.setDrawColor(100, 100, 100);
-  pdf.setLineWidth(0.5);
-  pdf.line(margin, currentY, pageWidth - margin, currentY);
-  currentY += 10;
-
-  // 주요 내용 영역 (세 번째 행)
-  if (data.headerData.mainContent) {
-    pdf.setFontSize(11);
-    if (pretendardFontLoaded) {
-      pdf.setFont('Pretendard', 'normal');
-    } else {
-      pdf.setFont('helvetica', 'bold');
-    }
-    await safeText(pdf, '주요 내용:', margin + 5, currentY);
-    currentY += 6;
-    
+    const labelWidth = pdf.getTextWidth('날짜:');
     pdf.setFontSize(10);
     if (pretendardFontLoaded) {
       pdf.setFont('Pretendard', 'normal');
     } else {
       pdf.setFont('helvetica', 'normal');
     }
-    // 텍스트 줄바꿈 처리 (한글 지원)
-    try {
-      const mainContentLines = pdf.splitTextToSize(data.headerData.mainContent, contentWidth - 10);
-      for (let i = 0; i < mainContentLines.length; i++) {
-        await safeText(pdf, mainContentLines[i], margin + 5, currentY + i * 5);
-      }
-      currentY += mainContentLines.length * 5 + 5;
-    } catch (error) {
-      // splitTextToSize 실패 시 일반 텍스트 출력
-      await safeText(pdf, data.headerData.mainContent, margin + 5, currentY);
-      currentY += 8;
-    }
+    const valueWidth = pdf.getTextWidth(data.headerData.date);
+    fields.push({
+      label: '날짜:',
+      value: data.headerData.date,
+      labelWidth,
+      valueWidth,
+      totalWidth: labelWidth + valueWidth + 12
+    });
   }
+  
+  // 시간대
+  if (data.headerData.time) {
+    const timeLabel = data.headerData.time === 'DAY' ? '낮 (DAY)' : 
+                     data.headerData.time === 'NIGHT' ? '밤 (NIGHT)' :
+                     data.headerData.time === 'DUSK' ? '황혼 (DUSK)' :
+                     data.headerData.time === 'DAWN' ? '새벽 (DAWN)' :
+                     data.headerData.time === 'OTHER' ? '기타' : data.headerData.time;
+    pdf.setFontSize(10.5);
+    if (pretendardFontLoaded) {
+      pdf.setFont('Pretendard', 'normal');
+    } else {
+      pdf.setFont('helvetica', 'bold');
+    }
+    const labelWidth = pdf.getTextWidth('시간대:');
+    pdf.setFontSize(10);
+    if (pretendardFontLoaded) {
+      pdf.setFont('Pretendard', 'normal');
+    } else {
+      pdf.setFont('helvetica', 'normal');
+    }
+    const valueWidth = pdf.getTextWidth(timeLabel);
+    fields.push({
+      label: '시간대:',
+      value: timeLabel,
+      labelWidth,
+      valueWidth,
+      totalWidth: labelWidth + valueWidth + 15
+    });
+  }
+  
+  // 장소
+  if (data.headerData.location) {
+    pdf.setFontSize(10.5);
+    if (pretendardFontLoaded) {
+      pdf.setFont('Pretendard', 'normal');
+    } else {
+      pdf.setFont('helvetica', 'bold');
+    }
+    const labelWidth = pdf.getTextWidth('장소:');
+    pdf.setFontSize(10);
+    if (pretendardFontLoaded) {
+      pdf.setFont('Pretendard', 'normal');
+    } else {
+      pdf.setFont('helvetica', 'normal');
+    }
+    const valueWidth = pdf.getTextWidth(data.headerData.location);
+    fields.push({
+      label: '장소:',
+      value: data.headerData.location,
+      labelWidth,
+      valueWidth,
+      totalWidth: labelWidth + valueWidth + 12
+    });
+  }
+  
+  // 씬
+  if (data.headerData.scene) {
+    pdf.setFontSize(10.5);
+    if (pretendardFontLoaded) {
+      pdf.setFont('Pretendard', 'normal');
+    } else {
+      pdf.setFont('helvetica', 'bold');
+    }
+    const labelWidth = pdf.getTextWidth('씬:');
+    pdf.setFontSize(10);
+    if (pretendardFontLoaded) {
+      pdf.setFont('Pretendard', 'normal');
+    } else {
+      pdf.setFont('helvetica', 'normal');
+    }
+    const valueWidth = pdf.getTextWidth(data.headerData.scene);
+    fields.push({
+      label: '씬:',
+      value: data.headerData.scene,
+      labelWidth,
+      valueWidth,
+      totalWidth: labelWidth + valueWidth + 10
+    });
+  }
+  
+  // 컷
+  if (data.headerData.cut) {
+    pdf.setFontSize(10.5);
+    if (pretendardFontLoaded) {
+      pdf.setFont('Pretendard', 'normal');
+    } else {
+      pdf.setFont('helvetica', 'bold');
+    }
+    const labelWidth = pdf.getTextWidth('컷:');
+    pdf.setFontSize(10);
+    if (pretendardFontLoaded) {
+      pdf.setFont('Pretendard', 'normal');
+    } else {
+      pdf.setFont('helvetica', 'normal');
+    }
+    const valueWidth = pdf.getTextWidth(data.headerData.cut);
+    fields.push({
+      label: '컷:',
+      value: data.headerData.cut,
+      labelWidth,
+      valueWidth,
+      totalWidth: labelWidth + valueWidth + 10
+    });
+  }
+  
+  // 전체 필드 너비 계산
+  const totalFieldsWidth = fields.reduce((sum, field) => sum + field.totalWidth, 0);
+  
+  // 좌우 균형 배치: 첫 번째 필드는 왼쪽에서 시작, 마지막 필드는 오른쪽에서 끝
+  const firstFieldStartX = margin + 2; // 첫 번째 필드 시작 위치 (2mm 여백)
+  const lastFieldEndX = pageWidth - margin - 2; // 마지막 필드 끝 위치
+  const lastFieldStartX = lastFieldEndX - fields[fields.length - 1].totalWidth;
+  
+  // 필드 간 균등 간격 계산 (space-between 효과)
+  let adjustedSpacing = 0;
+  if (fields.length > 1) {
+    const usedWidth = totalFieldsWidth;
+    const availableWidth = lastFieldStartX - firstFieldStartX;
+    adjustedSpacing = (availableWidth - usedWidth) / (fields.length - 1);
+  }
+  
+  let currentX = firstFieldStartX;
+  
+  // 필드들 그리기
+  for (let i = 0; i < fields.length; i++) {
+    const field = fields[i];
+    
+    // 라벨
+    pdf.setFontSize(10.5);
+    if (pretendardFontLoaded) {
+      pdf.setFont('Pretendard', 'normal');
+    } else {
+      pdf.setFont('helvetica', 'bold');
+    }
+    await safeText(pdf, field.label, currentX, firstRowY);
+    
+    // 값
+    pdf.setFontSize(10);
+    if (pretendardFontLoaded) {
+      pdf.setFont('Pretendard', 'normal');
+    } else {
+      pdf.setFont('helvetica', 'normal');
+    }
+    const valueX = currentX + field.labelWidth + (field.label === '시간대:' ? 15 : 12);
+    await safeText(pdf, field.value, valueX, firstRowY);
+    
+    // 다음 필드 위치 (조정된 간격 사용)
+    currentX += field.totalWidth + adjustedSpacing;
+  }
+  
+  // 첫 번째 필드의 시작 위치 저장 (두 번째 줄에서 사용)
+  const firstFieldStartX_saved = firstFieldStartX;
+  
+  // 두 번째 줄: 주요내용과 입력 내용을 밑줄에 한 줄로 배치 - 첫 번째 필드와 동일한 시작 위치
+  const secondRowY = headerTableY + 16;
+  if (data.headerData.mainContent) {
+    // 라벨 너비 계산
+    pdf.setFontSize(10.5);
+    if (pretendardFontLoaded) {
+      pdf.setFont('Pretendard', 'normal');
+    } else {
+      pdf.setFont('helvetica', 'bold');
+    }
+    const labelText = '주요내용:';
+    const labelWidth = pdf.getTextWidth(labelText);
+    
+    // 내용 텍스트 너비 계산 (한 줄로 표시 가능한 부분만)
+    pdf.setFontSize(10);
+    if (pretendardFontLoaded) {
+      pdf.setFont('Pretendard', 'normal');
+    } else {
+      pdf.setFont('helvetica', 'normal');
+    }
+    const maxContentWidth = contentWidth - labelWidth - 20; // 여백 고려
+    let contentText = '';
+    try {
+      const contentLines = pdf.splitTextToSize(data.headerData.mainContent, maxContentWidth);
+      contentText = contentLines[0] || data.headerData.mainContent.substring(0, 50);
+    } catch (error) {
+      contentText = data.headerData.mainContent.substring(0, 50);
+    }
+    const contentWidth_actual = pdf.getTextWidth(contentText);
+    
+    // 첫 번째 필드와 동일한 시작 위치 사용
+    const secondRowStartX = firstFieldStartX_saved;
+    
+    // 라벨 그리기
+    pdf.setFontSize(10.5);
+    if (pretendardFontLoaded) {
+      pdf.setFont('Pretendard', 'normal');
+    } else {
+      pdf.setFont('helvetica', 'bold');
+    }
+    await safeText(pdf, labelText, secondRowStartX, secondRowY);
+    
+    // 내용 텍스트 (밑줄과 함께)
+    pdf.setFontSize(10);
+    if (pretendardFontLoaded) {
+      pdf.setFont('Pretendard', 'normal');
+    } else {
+      pdf.setFont('helvetica', 'normal');
+    }
+    const contentX = secondRowStartX + labelWidth + 15;
+    await safeText(pdf, contentText, contentX, secondRowY);
+    
+    // 밑줄 그리기
+    pdf.setDrawColor(0, 0, 0);
+    pdf.setLineWidth(0.3);
+    pdf.line(contentX, secondRowY + 1.5, contentX + contentWidth_actual, secondRowY + 1.5);
+  }
+  
+  currentY = headerTableY + headerTableHeight + 5;
+  
+  // 테이블 하단 라인
+  pdf.setDrawColor(100, 100, 100);
+  pdf.setLineWidth(0.5);
+  pdf.line(margin, currentY, pageWidth - margin, currentY);
+  currentY += 10;
 
   // 본문 구별 라인 (상단 영역과 본문 사이)
   pdf.setDrawColor(150, 150, 150);
@@ -494,10 +670,12 @@ export const generateStoryBoardPDF = async (
           currentY += 6;
         }
 
-        // 이미지와 텍스트 (1:2 비율)
-        const imageWidth = contentWidth / 3;
+        // 이미지와 텍스트 (1:2 비율 - 정확히 33.33%:66.67%)
+        const imageWidth = contentWidth / 3; // 정확히 1/3 = 33.33%
         const imageHeight = 50;
-        const textWidth = (contentWidth * 2) / 3;
+        const textWidth = (contentWidth * 2) / 3; // 정확히 2/3 = 66.67%
+        const hasImage = !!cut.imagePreview;
+        const hasDescription = !!cut.description;
         
         // 페이지 용량 체크
         if (currentY + imageHeight > pageHeight - 20) {
@@ -505,39 +683,54 @@ export const generateStoryBoardPDF = async (
           currentY = margin;
         }
 
-        // 이미지 (왼쪽 1/3)
-        if (cut.imagePreview) {
+        // 이미지 영역 (왼쪽 1/3) - 항상 표시 (1:2 비율 유지)
+        if (hasImage) {
           try {
             const imageData = await loadImage(cut.imagePreview);
             if (imageData) {
               pdf.addImage(imageData, 'JPEG', margin, currentY, imageWidth, imageHeight);
+            } else {
+              // 이미지 로드 실패 시 플레이스홀더 표시
+              drawImagePlaceholder(pdf, margin, currentY, imageWidth, imageHeight, pretendardFontLoaded);
             }
           } catch (error) {
-            console.error('이미지 추가 실패:', error);
+            if (process.env.NODE_ENV === 'development') {
+              console.error('이미지 추가 실패:', error);
+            }
+            // 이미지 로드 실패 시 플레이스홀더 표시
+            drawImagePlaceholder(pdf, margin, currentY, imageWidth, imageHeight, pretendardFontLoaded);
           }
+        } else {
+          // 이미지가 없을 경우: 이미지 영역에 플레이스홀더 표시 (1:2 비율 유지)
+          drawImagePlaceholder(pdf, margin, currentY, imageWidth, imageHeight, pretendardFontLoaded);
         }
 
-        // 텍스트 (오른쪽 2/3)
-        if (cut.description) {
+        // 텍스트 영역 (오른쪽 2/3) - 항상 표시 (1:2 비율 유지)
+        const textX = margin + imageWidth + 5;
+        if (hasDescription) {
           pdf.setFontSize(10);
           if (pretendardFontLoaded) {
             pdf.setFont('Pretendard', 'normal');
           } else {
             pdf.setFont('helvetica', 'normal');
           }
-          const textX = margin + imageWidth + 5;
           try {
             const textLines = pdf.splitTextToSize(cut.description, textWidth - 5);
             for (let i = 0; i < textLines.length; i++) {
               await safeText(pdf, textLines[i], textX, currentY + 5 + i * 5);
             }
+            // 텍스트 높이에 따라 currentY 조정
+            const textHeight = textLines.length * 5;
+            currentY += Math.max(imageHeight, textHeight) + 8;
           } catch (error) {
             // 한글 처리 실패 시 일반 출력
             await safeText(pdf, cut.description, textX, currentY + 5);
+            currentY += imageHeight + 8;
           }
+        } else {
+          // 텍스트가 없는 경우: 빈 텍스트 영역 유지 (1:2 비율 유지)
+          currentY += imageHeight + 8;
         }
-
-        currentY += imageHeight + 8;
       }
     }
     
@@ -657,19 +850,33 @@ export const generateImageBoardPDF = async (
   currentY += 8; // 본문 시작 여백
 
   // 3x3 그리드 레이아웃 (중간 영역)
+  // 그리드 변수들을 스코프 밖에서 선언 (주요내용 출력에서도 사용)
+  let itemsPerPage = 9;
+  let gridCols = 3;
+  let gridRows = 3;
+  let itemSpacing = 4;
+  let gridStartY = currentY;
+  let itemHeight = 0;
+  let itemWidth = 0;
+  let bottomLineMargin = 15; // 주요내용 박스 하단과 하단 라인 사이 여백 15mm
+  let mainContentBoxHeight = data.headerData.mainContent ? 18.5 : 0; // 주요내용 박스 높이 (패딩 2mm + 5mm + 텍스트 2줄 11.5mm = 18.5mm)
+  let mainContentBoxMargin = 6; // 컷 하단과 주요내용 박스 사이 여백 (2줄 가량)
+  
   if (data.imageBoardItems) {
-    const itemsPerPage = 9;
-    const gridCols = 3;
-    const gridRows = 3;
-    const itemSpacing = 4;
+    itemsPerPage = 9;
+    gridCols = 3;
+    gridRows = 3;
+    itemSpacing = 4;
     
-    // 이미지 그리드가 들어갈 공간 계산 (하단 주요내용 영역 제외)
-    const mainContentHeight = data.headerData.mainContent ? 30 : 0; // 주요내용 예상 높이
-    const gridAreaHeight = pageHeight - currentY - mainContentHeight - 20; // 하단 여백 포함
-    const gridStartY = currentY;
+    // 이미지 그리드가 들어갈 공간 계산 (컷 하단과 주요내용 박스 사이 6mm + 박스 높이 + 하단 라인 여백 15mm)
+    mainContentBoxMargin = 6; // 컷 하단과 주요내용 박스 사이 여백 (2줄 가량)
+    mainContentBoxHeight = data.headerData.mainContent ? 18.5 : 0; // 주요내용 박스 높이 (패딩 2mm + 5mm + 텍스트 2줄 11.5mm = 18.5mm)
+    bottomLineMargin = 15; // 주요내용 박스 하단과 하단 라인 사이 여백 15mm
+    const gridAreaHeight = pageHeight - currentY - mainContentBoxMargin - mainContentBoxHeight - bottomLineMargin - 20; // 하단 여백 포함
+    gridStartY = currentY;
     
-    const itemHeight = (gridAreaHeight - (gridRows - 1) * itemSpacing) / gridRows - 15; // 설명 공간 제외
-    const itemWidth = (contentWidth - (gridCols - 1) * itemSpacing) / gridCols;
+    itemHeight = (gridAreaHeight - (gridRows - 1) * itemSpacing) / gridRows - 15; // 설명 공간 제외
+    itemWidth = (contentWidth - (gridCols - 1) * itemSpacing) / gridCols;
 
     for (let i = 0; i < data.imageBoardItems.length; i++) {
       const item = data.imageBoardItems[i];
@@ -754,7 +961,8 @@ export const generateImageBoardPDF = async (
         pdf.line(margin, currentY, pageWidth - margin, currentY);
         currentY += 8;
         
-        const newGridAreaHeight = pageHeight - currentY - mainContentHeight - 20;
+        // 이미지 그리드가 들어갈 공간 계산 (컷 하단과 주요내용 박스 사이 6mm + 박스 높이 + 하단 라인 여백 15mm)
+        const newGridAreaHeight = pageHeight - currentY - mainContentBoxMargin - mainContentBoxHeight - bottomLineMargin - 20;
         const newItemHeight = (newGridAreaHeight - (gridRows - 1) * itemSpacing) / gridRows - 15;
         const newItemWidth = (contentWidth - (gridCols - 1) * itemSpacing) / gridCols;
         
@@ -891,29 +1099,107 @@ export const generateImageBoardPDF = async (
     );
     pdf.setTextColor(0, 0, 0); // 색상 초기화
     
-    // 주요내용 (가장 하단) - 모든 페이지 하단에 출력
-    if (data.headerData.mainContent) {
-      const mainContentY = pageHeight - 25; // 하단에서 25mm 위
+    // 주요내용 (컷 하단에서 3mm 지점) - 줄바꿈 포함
+    if (data.headerData.mainContent && data.imageBoardItems && itemHeight > 0) {
+      // 각 페이지의 그리드 시작 위치 계산 (첫 페이지는 이미 계산됨, 다른 페이지는 헤더 위치 기준)
+      let pageGridStartY = gridStartY;
+      if (i > 1) {
+        // 다른 페이지는 헤더 위치를 기준으로 계산
+        // 헤더 높이: margin + 35 (헤더 테이블) + titleHeight + 여백
+        const headerHeight = margin + 35 + titleHeight + 8 + 8; // 헤더 + 타이틀 + 여백
+        // 이미지 그리드가 들어갈 공간 계산 (컷 하단과 주요내용 박스 사이 6mm + 박스 높이 + 하단 라인 여백 15mm)
+        const gridAreaHeight = pageHeight - headerHeight - mainContentBoxMargin - mainContentBoxHeight - bottomLineMargin - 20;
+        const calculatedItemHeight = (gridAreaHeight - (gridRows - 1) * itemSpacing) / gridRows - 15;
+        // 실제 그리드가 시작되는 위치 (헤더 아래)
+        pageGridStartY = headerHeight;
+      }
       
+      // 컷 하단 위치 계산 (마지막 행의 마지막 항목 하단)
+      const lastRow = 2; // 0-based, 마지막 행
+      const lastItemY = pageGridStartY + 8 + lastRow * (itemHeight + 15 + itemSpacing);
+      const lastItemBottom = lastItemY + itemHeight * 0.75 + 15; // 이미지 높이 + 설명 공간
+      const mainContentBoxTop = lastItemBottom + 6; // 컷 하단에서 6mm 아래 (2줄 가량의 공간)
+      
+      // 주요내용 박스 높이 계산 (줄바꿈 고려, 텍스트 descender 공간 확보)
+      const boxPaddingTop = 2; // 상단 패딩 (여백 줄여 텍스트 공간 확대)
+      const boxPaddingBottom = 5; // 하단 패딩 증가 (텍스트 descender 공간 확보)
+      const boxPadding = boxPaddingTop; // 텍스트 위치 계산용
+      const lineHeight = 4.5; // 줄 간격 (10pt 폰트 기준 약 4.5mm)
+      const maxLines = 2; // 최대 줄 수 (박스 높이에 맞춰 2줄)
+      const textDescenderSpace = 1.5; // 텍스트 descender 공간 (하강부 여유 공간)
+      const textHeight = lineHeight * maxLines + textDescenderSpace; // 텍스트 영역 높이 (2줄 + descender 공간)
+      const boxHeight = boxPaddingTop + boxPaddingBottom + textHeight; // 패딩 + 텍스트 높이
+      const mainContentBoxBottom = mainContentBoxTop + boxHeight;
+      
+      // 하단 라인 그리기 (주요내용 박스 하단에서 15mm 아래)
+      const lineY = mainContentBoxBottom + 15; // 하단 라인과 박스 사이 여백 15mm
       pdf.setDrawColor(150, 150, 150);
       pdf.setLineWidth(0.8);
-      pdf.line(margin, mainContentY - 5, pageWidth - margin, mainContentY - 5);
+      pdf.line(margin, lineY, pageWidth - margin, lineY);
+      
+      // 주요내용 박스 배경 그리기
+      pdf.setFillColor(249, 249, 249); // #f9f9f9
+      pdf.setDrawColor(150, 150, 150); // #969696
+      pdf.setLineWidth(0.3);
+      // border 너비 고려하여 오른쪽 라인 잘림 방지
+      const boxWidth = contentWidth - 0.3; // border 두께(0.3mm) 고려
+      pdf.roundedRect(margin, mainContentBoxTop - boxPaddingTop, boxWidth, boxHeight, 1, 1, 'FD'); // Fill and Draw (boxPaddingTop 사용)
       
       const mainContentLabelFontSize = 11;
       pdf.setFontSize(mainContentLabelFontSize);
       setSafeFont(pdf, 'bold', mainContentLabelFontSize);
-      await safeText(pdf, '주요내용:', margin + 5, mainContentY);
+      const labelText = '주요내용:';
+      const labelX = margin + 2.5; // 좌측 여백 최소화 (2.5mm)
+      const mainContentTextY = mainContentBoxTop + boxPadding - 1; // 박스 상단에서 패딩 아래 (상단 여백 조정: -1mm)
+      await safeText(pdf, labelText, labelX, mainContentTextY);
+      
+      // 라벨 너비 계산
+      const labelWidth = pdf.getTextWidth(labelText);
+      const contentStartX = labelX + labelWidth + 3; // 라벨과 내용 사이 간격 (3mm)
+      // 우측 여백 최소화하여 텍스트 공간 확대
+      const maxContentWidth = pageWidth - margin - contentStartX - 2.5; // 사용 가능한 너비 (우측 패딩 2.5mm)
       
       const mainContentFontSize = 10;
       pdf.setFontSize(mainContentFontSize);
       setSafeFont(pdf, 'normal', mainContentFontSize);
+      
+      // 줄바꿈 허용하여 표시
+      const mainContentText = data.headerData.mainContent.replace(/\r/g, ''); // \r만 제거, \n은 유지
+      
       try {
-        const mainContentLines = pdf.splitTextToSize(data.headerData.mainContent, contentWidth - 10);
-        for (let j = 0; j < Math.min(mainContentLines.length, 3); j++) { // 최대 3줄
-          await safeText(pdf, mainContentLines[j], margin + 5, mainContentY + 5 + j * 5);
+        // 텍스트를 박스 너비에 맞춰 여러 줄로 분할
+        const contentLines = pdf.splitTextToSize(mainContentText, maxContentWidth);
+        const lineHeight = 4.5; // 줄 간격 (10pt 폰트 기준 약 4.5mm)
+        const maxLines = Math.min(contentLines.length, 2); // 최대 2줄까지 표시
+        
+        // 박스 내부에 맞춰 줄바꿈하여 표시
+        let currentY = mainContentTextY;
+        const textDescenderSpace = 1.5; // 텍스트 descender 공간
+        for (let lineIndex = 0; lineIndex < maxLines; lineIndex++) {
+          // 하단 패딩과 descender 공간을 고려하여 텍스트가 가려지지 않도록 확인
+          if (currentY + lineHeight + textDescenderSpace > mainContentBoxBottom - boxPaddingBottom) {
+            // 박스 높이를 초과하면 중단
+            break;
+          }
+          await safeText(pdf, contentLines[lineIndex], contentStartX, currentY);
+          currentY += lineHeight;
+        }
+        
+        // 2줄을 초과하는 경우 마지막 줄에 ... 표시
+        if (contentLines.length > maxLines && maxLines > 0) {
+          const lastLine = contentLines[maxLines - 1];
+          let truncatedLastLine = lastLine;
+          const ellipsisWidth = pdf.getTextWidth('...');
+          while (pdf.getTextWidth(truncatedLastLine + '...') > maxContentWidth && truncatedLastLine.length > 0) {
+            truncatedLastLine = truncatedLastLine.substring(0, truncatedLastLine.length - 1);
+          }
+          // 마지막 줄을 덮어쓰기
+          await safeText(pdf, truncatedLastLine + '...', contentStartX, currentY - lineHeight);
         }
       } catch (error) {
-        await safeText(pdf, data.headerData.mainContent.substring(0, 50) + '...', margin + 5, mainContentY + 5);
+        // 에러 발생 시 원본 텍스트를 한 줄로 표시
+        const fallbackText = mainContentText.replace(/\n/g, ' ').substring(0, 50) + (mainContentText.length > 50 ? '...' : '');
+        await safeText(pdf, fallbackText, contentStartX, mainContentTextY);
       }
     }
   }

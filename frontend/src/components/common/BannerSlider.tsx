@@ -6,16 +6,27 @@ interface BannerSliderProps {
   items: BannerItem[];
   autoPlay?: boolean;
   autoPlayInterval?: number;
+  initialIndex?: number;
 }
 
 const BannerSlider: React.FC<BannerSliderProps> = ({ 
   items, 
   autoPlay = true, 
-  autoPlayInterval = 4000 
+  autoPlayInterval = 4000,
+  initialIndex = 0
 }) => {
-  const [currentIndex, setCurrentIndex] = useState(0);
+  // initialIndex가 배열 범위를 벗어나지 않도록 안전 처리
+  const safeInitialIndex = Math.max(0, Math.min(initialIndex, items.length > 0 ? items.length - 1 : 0));
+  const [currentIndex, setCurrentIndex] = useState(safeInitialIndex);
   const [isPlaying, setIsPlaying] = useState(autoPlay);
   const [isTransitioning, setIsTransitioning] = useState(false);
+
+  // items가 로드된 후 initialIndex 적용 (한 번만 실행)
+  useEffect(() => {
+    if (items.length > 0 && initialIndex >= 0 && initialIndex < items.length) {
+      setCurrentIndex(initialIndex);
+    }
+  }, [items.length]); // items.length가 변경될 때만 실행
 
   // 자동 재생 기능
   useEffect(() => {

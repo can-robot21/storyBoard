@@ -5,6 +5,7 @@ import { saveCompressedImagesAndText } from '../../services/pdfGenerationService
 
 interface StoryboardGeneratorProps {
   onBack: () => void;
+  isLoggedIn?: boolean;
 }
 
 type BoardFormat = 'storyBoard' | 'imageBoard';
@@ -28,9 +29,13 @@ interface ImageBoardItem {
   imageOnly?: boolean; // 이미지만 추가 항목 여부
 }
 
-const StoryboardGenerator: React.FC<StoryboardGeneratorProps> = ({ onBack }) => {
+const StoryboardGenerator: React.FC<StoryboardGeneratorProps> = ({ onBack, isLoggedIn = false }) => {
   const [boardFormat, setBoardFormat] = useState<BoardFormat>('storyBoard');
   const [isEditing, setIsEditing] = useState(false);
+  
+  // 상단 정보 편집 상태 (독립 관리)
+  const [isHeaderEditing, setIsHeaderEditing] = useState(false);
+  const [isHeaderSaved, setIsHeaderSaved] = useState(false);
   
   // 상단 입력 필드
   const [headerData, setHeaderData] = useState({
@@ -71,6 +76,7 @@ const StoryboardGenerator: React.FC<StoryboardGeneratorProps> = ({ onBack }) => 
   const handleFormatChange = (format: BoardFormat) => {
     setBoardFormat(format);
     setIsEditing(false);
+    setIsHeaderEditing(false);
     setCurrentPage(1); // 페이지 초기화
     if (format === 'storyBoard') {
       setImageBoardItems([]);
@@ -91,6 +97,63 @@ const StoryboardGenerator: React.FC<StoryboardGeneratorProps> = ({ onBack }) => 
     });
     const nextCutNum = sceneCuts.length + 1;
     return `컷${nextCutNum}`;
+  };
+
+  // 컷 넘버 순차 정리 (편집 종료 시 호출)
+  const reorganizeCutNumbers = () => {
+    if (boardFormat !== 'storyBoard') return;
+    
+    // 씬별로 그룹화하여 컷 넘버 재정리
+    const sceneGroups: { [key: string]: StoryboardCut[] } = {};
+    
+    // 컷 넘버가 있는 항목들을 씬별로 그룹화
+    storyboardCuts.forEach(cut => {
+      const sceneNum = cut.sceneNum || '1';
+      if (cut.cutNumber && cut.cutNumber !== '') {
+        if (!sceneGroups[sceneNum]) {
+          sceneGroups[sceneNum] = [];
+        }
+        sceneGroups[sceneNum].push(cut);
+      }
+    });
+    
+    // 각 씬별로 컷들을 배열 순서대로 정렬 (현재 배열 순서 유지)
+    Object.keys(sceneGroups).forEach(sceneNum => {
+      const sceneCuts = sceneGroups[sceneNum];
+      // 현재 storyboardCuts 배열에서 나타나는 순서대로 정렬
+      const sorted = sceneCuts.sort((a, b) => {
+        const indexA = storyboardCuts.findIndex(c => c.id === a.id);
+        const indexB = storyboardCuts.findIndex(c => c.id === b.id);
+        return indexA - indexB;
+      });
+      sceneGroups[sceneNum] = sorted;
+    });
+    
+    // 컷 넘버 재할당
+    const updatedCuts = storyboardCuts.map(cut => {
+      const sceneNum = cut.sceneNum || '1';
+      
+      // 컷 넘버가 없는 항목은 그대로 유지
+      if (!cut.cutNumber || cut.cutNumber === '') {
+        return cut;
+      }
+      
+      // 같은 씬의 컷들 중에서 현재 컷의 순서 찾기
+      const sceneCuts = sceneGroups[sceneNum] || [];
+      const currentIndex = sceneCuts.findIndex(c => c.id === cut.id);
+      
+      if (currentIndex === -1) return cut;
+      
+      // 새로운 컷 넘버 할당 (1부터 시작)
+      const newCutNumber = `컷${currentIndex + 1}`;
+      
+      return {
+        ...cut,
+        cutNumber: newCutNumber
+      };
+    });
+    
+    setStoryboardCuts(updatedCuts);
   };
 
   // [컷] 추가 버튼 핸들러 (컷 넘버 자동 추가)
@@ -172,7 +235,7 @@ const StoryboardGenerator: React.FC<StoryboardGeneratorProps> = ({ onBack }) => 
     };
     setImageBoardItems(prev => [...prev, newItem]);
     // 새 항목이 추가되면 마지막 페이지로 이동
-    const totalPages = Math.ceil((imageBoardItems.length + 1) / itemsPerPage);
+    const totalPages = Math.ceil((imageBoardItems.length + 1) / imageBoardItemsPerPage);
     setCurrentPage(totalPages);
   };
 
@@ -268,18 +331,34 @@ const StoryboardGenerator: React.FC<StoryboardGeneratorProps> = ({ onBack }) => 
   const [showPDFPreview, setShowPDFPreview] = useState(false);
   const [previewPDFBlob, setPreviewPDFBlob] = useState<{ page: number; blob: Blob; url: string } | null>(null);
 
-  // 입력/수정 버튼 클릭 (저장만, PDF 생성 안 함)
+  // 전체 데이터 저장 핸들러 (편집 종료 후 저장 버튼)
   const handleSave = () => {
-    if (!isEditing) {
-      // 수정 모드 진입
-      setIsEditing(true);
+    // 편집 모드가 활성화되어 있으면 저장 불가
+    if (isEditing) {
+      alert('먼저 "편집 종료" 버튼을 클릭하여 편집을 완료해주세요.');
       return;
     }
 
-    // 저장 모드: 데이터만 저장 (PDF 생성 안 함)
+    // 컷 넘버 정리 (한 번 더 확인)
+    reorganizeCutNumbers();
+
+    // 전체 데이터 저장 (PDF 생성 안 함)
     setIsSaved(true);
-    setIsEditing(false);
     alert('저장 완료!\n\n샘플 미리보기 하단의 [PDF 미리보기] 버튼을 클릭하여 PDF를 생성하고 미리보기할 수 있습니다.');
+  };
+
+  // 생성기 종료 핸들러 (변경사항 확인)
+  const handleExit = () => {
+    const hasChanges = isEditing || isHeaderEditing || storyboardCuts.length > 0 || imageBoardItems.length > 0;
+    
+    if (hasChanges) {
+      const confirmExit = window.confirm('변경사항이 있습니다. 정말 종료하시겠습니까?\n\n저장하지 않은 내용은 삭제됩니다.');
+      if (!confirmExit) {
+        return;
+      }
+    }
+    
+    onBack();
   };
 
   // PDF 미리보기 생성 및 모달 표시
@@ -461,10 +540,20 @@ const StoryboardGenerator: React.FC<StoryboardGeneratorProps> = ({ onBack }) => 
     }
   };
 
-  // 수정 버튼 클릭
+  // 수정 버튼 클릭 (편집 모드 토글)
   const handleEdit = () => {
-    setIsEditing(true);
-    setIsSaved(false);
+    if (isEditing) {
+      // 편집 모드 종료 시 컷 넘버 정리
+      reorganizeCutNumbers();
+      setIsEditing(false);
+      setIsHeaderEditing(false);
+      // 편집 종료 후 저장 버튼 활성화 상태로 전환 (저장은 수동으로 클릭)
+      setIsSaved(false); // 편집 종료 시 저장 상태 해제하여 다시 저장 가능하도록
+    } else {
+      // 편집 모드 활성화
+      setIsEditing(true);
+      setIsHeaderEditing(true); // 상단 정보 편집도 함께 활성화
+    }
   };
 
   // 초기화 버튼 클릭
@@ -484,6 +573,8 @@ const StoryboardGenerator: React.FC<StoryboardGeneratorProps> = ({ onBack }) => 
       setImageBoardItems([]);
       setIsEditing(false);
       setIsSaved(false);
+      setIsHeaderEditing(false);
+      setIsHeaderSaved(false);
       setPdfBlobs([]);
       setCurrentPage(1);
       
@@ -602,12 +693,6 @@ const StoryboardGenerator: React.FC<StoryboardGeneratorProps> = ({ onBack }) => 
                   <span>{showHeaderSection ? '감추기' : '보이기'}</span>
                 </button>
               </div>
-              <button
-                onClick={handleSave}
-                className="w-full sm:w-auto px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm md:text-base"
-              >
-                {isEditing ? '수정 완료' : '입력/수정'}
-              </button>
             </div>
 
             {showHeaderSection && (
@@ -624,7 +709,7 @@ const StoryboardGenerator: React.FC<StoryboardGeneratorProps> = ({ onBack }) => 
                           onChange={(e) => handleHeaderChange('title', e.target.value)}
                           className="w-full px-2 md:px-3 py-1.5 md:py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                   placeholder="프로젝트 타이틀"
-                          disabled={!isEditing}
+                          disabled={!isLoggedIn || !isEditing}
                 />
               </div>
               
@@ -635,19 +720,25 @@ const StoryboardGenerator: React.FC<StoryboardGeneratorProps> = ({ onBack }) => 
                           value={headerData.date}
                           onChange={(e) => handleHeaderChange('date', e.target.value)}
                           className="w-full px-2 md:px-3 py-1.5 md:py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                          disabled={!isEditing}
+                          disabled={!isLoggedIn || !isEditing}
                 />
               </div>
               
               <div>
-                        <label className="block text-xs md:text-sm font-medium text-gray-700 mb-1 md:mb-2">시간 (Time)</label>
-                        <input
-                          type="time"
+                        <label className="block text-xs md:text-sm font-medium text-gray-700 mb-1 md:mb-2">시간대 (Time)</label>
+                        <select
                           value={headerData.time}
                           onChange={(e) => handleHeaderChange('time', e.target.value)}
                           className="w-full px-2 md:px-3 py-1.5 md:py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                          disabled={!isEditing}
-                />
+                          disabled={!isLoggedIn || !isEditing}
+                        >
+                          <option value="">선택하세요</option>
+                          <option value="DAY">낮 (DAY)</option>
+                          <option value="NIGHT">밤 (NIGHT)</option>
+                          <option value="DUSK">황혼 (DUSK)</option>
+                          <option value="DAWN">새벽 (DAWN)</option>
+                          <option value="OTHER">기타</option>
+                        </select>
               </div>
               
               <div>
@@ -658,7 +749,7 @@ const StoryboardGenerator: React.FC<StoryboardGeneratorProps> = ({ onBack }) => 
                           onChange={(e) => handleHeaderChange('location', e.target.value)}
                           className="w-full px-2 md:px-3 py-1.5 md:py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                   placeholder="촬영 장소"
-                          disabled={!isEditing}
+                          disabled={!isLoggedIn || !isEditing}
                 />
               </div>
               
@@ -670,7 +761,7 @@ const StoryboardGenerator: React.FC<StoryboardGeneratorProps> = ({ onBack }) => 
                           onChange={(e) => handleHeaderChange('scene', e.target.value)}
                           className="w-full px-2 md:px-3 py-1.5 md:py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                   placeholder="씬 번호"
-                          disabled={!isEditing}
+                          disabled={!isLoggedIn || !isEditing}
                 />
               </div>
               
@@ -682,7 +773,7 @@ const StoryboardGenerator: React.FC<StoryboardGeneratorProps> = ({ onBack }) => 
                           onChange={(e) => handleHeaderChange('cut', e.target.value)}
                           className="w-full px-2 md:px-3 py-1.5 md:py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                   placeholder="컷 번호"
-                          disabled={!isEditing}
+                          disabled={!isLoggedIn || !isEditing}
                 />
               </div>
                     </>
@@ -699,20 +790,26 @@ const StoryboardGenerator: React.FC<StoryboardGeneratorProps> = ({ onBack }) => 
                           onChange={(e) => handleHeaderChange('title', e.target.value)}
                           className="w-full px-2 md:px-3 py-1.5 md:py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                           placeholder="프로젝트 타이틀"
-                          disabled={!isEditing}
+                          disabled={!isLoggedIn || !isEditing}
                         />
             </div>
 
-                      <div>
-                        <label className="block text-xs md:text-sm font-medium text-gray-700 mb-1 md:mb-2">시간 (Time)</label>
-                        <input
-                          type="time"
+              <div>
+                        <label className="block text-xs md:text-sm font-medium text-gray-700 mb-1 md:mb-2">시간대 (Time)</label>
+                        <select
                           value={headerData.time}
                           onChange={(e) => handleHeaderChange('time', e.target.value)}
                           className="w-full px-2 md:px-3 py-1.5 md:py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                          disabled={!isEditing}
-                />
-          </div>
+                          disabled={!isLoggedIn || !isEditing}
+                        >
+                          <option value="">선택하세요</option>
+                          <option value="DAY">낮 (DAY)</option>
+                          <option value="NIGHT">밤 (NIGHT)</option>
+                          <option value="DUSK">황혼 (DUSK)</option>
+                          <option value="DAWN">새벽 (DAWN)</option>
+                          <option value="OTHER">기타</option>
+                        </select>
+              </div>
 
               <div>
                         <label className="block text-xs md:text-sm font-medium text-gray-700 mb-1 md:mb-2">씬 (Scene)</label>
@@ -722,7 +819,7 @@ const StoryboardGenerator: React.FC<StoryboardGeneratorProps> = ({ onBack }) => 
                           onChange={(e) => handleHeaderChange('scene', e.target.value)}
                           className="w-full px-2 md:px-3 py-1.5 md:py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                   placeholder="씬 번호"
-                          disabled={!isEditing}
+                          disabled={!isLoggedIn || !isEditing}
                 />
               </div>
               
@@ -734,7 +831,7 @@ const StoryboardGenerator: React.FC<StoryboardGeneratorProps> = ({ onBack }) => 
                           onChange={(e) => handleHeaderChange('cut', e.target.value)}
                           className="w-full px-2 md:px-3 py-1.5 md:py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                   placeholder="컷 번호"
-                          disabled={!isEditing}
+                          disabled={!isLoggedIn || !isEditing}
                 />
                       </div>
                     </>
@@ -755,7 +852,7 @@ const StoryboardGenerator: React.FC<StoryboardGeneratorProps> = ({ onBack }) => 
                   {/* 샘플 미리보기 영역 (1/4) */}
                   <div className="lg:col-span-1">
                     <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 md:p-4">
-                      <h3 className="text-sm md:text-base font-semibold text-gray-800 mb-3">샘플 미리보기</h3>
+                      <h3 className="text-sm md:text-base font-semibold text-gray-800 mb-3">PDF 샘플 미리보기</h3>
                       <div className="space-y-2">
                         <div className="text-xs text-gray-600">
                           <p className="font-medium mb-1">프로젝트 정보</p>
@@ -774,21 +871,23 @@ const StoryboardGenerator: React.FC<StoryboardGeneratorProps> = ({ onBack }) => 
                         <div className="mt-4 pt-3 border-t border-gray-300 space-y-2">
               <button
                             onClick={handlePDFPreview}
-                            disabled={!isSaved || isGeneratingPDF}
+                            disabled={!isLoggedIn || !isSaved || isGeneratingPDF}
                             className={`
                               w-full flex items-center justify-center gap-2 px-3 py-2 rounded text-xs md:text-sm transition-colors font-medium
-                              ${!isSaved 
+                              ${!isLoggedIn || !isSaved 
                                 ? 'bg-gray-400 text-gray-600 cursor-not-allowed' 
                                 : isGeneratingPDF
                                 ? 'bg-gray-400 text-white cursor-wait'
                                 : 'bg-green-600 hover:bg-green-700 text-white'
                               }
                             `}
-                            title={!isSaved ? '먼저 저장해주세요' : 'PDF 미리보기'}
+                            title={!isLoggedIn ? '로그인이 필요합니다' : !isSaved ? '먼저 저장해주세요' : 'PDF 미리보기'}
                           >
-                            <Eye className={`w-4 h-4 ${!isSaved ? 'opacity-50' : ''}`} />
+                            <Eye className={`w-4 h-4 ${!isLoggedIn || !isSaved ? 'opacity-50' : ''}`} />
                             <span>
-                              {!isSaved 
+                              {!isLoggedIn
+                                ? '로그인 필요'
+                                : !isSaved 
                                 ? '저장 후 미리보기' 
                                 : isGeneratingPDF 
                                 ? 'PDF 생성 중...' 
@@ -800,21 +899,23 @@ const StoryboardGenerator: React.FC<StoryboardGeneratorProps> = ({ onBack }) => 
                           {/* 이미지+내용 저장 버튼 */}
                           <button
                             onClick={handleSaveImagesAndText}
-                            disabled={!isSaved || isGeneratingPDF}
+                            disabled={!isLoggedIn || !isSaved || isGeneratingPDF}
                             className={`
                               w-full flex items-center justify-center gap-2 px-3 py-2 rounded text-xs md:text-sm transition-colors font-medium
-                              ${!isSaved 
+                              ${!isLoggedIn || !isSaved 
                                 ? 'bg-gray-400 text-gray-600 cursor-not-allowed' 
                                 : isGeneratingPDF
                                 ? 'bg-gray-400 text-white cursor-wait'
                                 : 'bg-blue-600 hover:bg-blue-700 text-white'
                               }
                             `}
-                            title={!isSaved ? '먼저 저장해주세요' : '이미지 압축 및 텍스트 저장'}
+                            title={!isLoggedIn ? '로그인이 필요합니다' : !isSaved ? '먼저 저장해주세요' : '이미지 압축 및 텍스트 저장'}
                           >
-                            <FileDown className={`w-4 h-4 ${!isSaved ? 'opacity-50' : ''}`} />
+                            <FileDown className={`w-4 h-4 ${!isLoggedIn || !isSaved ? 'opacity-50' : ''}`} />
                             <span>
-                              {!isSaved 
+                              {!isLoggedIn
+                                ? '로그인 필요'
+                                : !isSaved 
                                 ? '저장 후 다운로드' 
                                 : isGeneratingPDF 
                                 ? '처리 중...' 
@@ -845,7 +946,7 @@ const StoryboardGenerator: React.FC<StoryboardGeneratorProps> = ({ onBack }) => 
                         className="w-full px-2 md:px-3 py-1.5 md:py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-none"
                         rows={3}
                         placeholder="주요 내용을 입력하세요"
-                        disabled={!isEditing}
+                        disabled={!isLoggedIn || !isEditing}
                       />
                     </div>
 
@@ -853,29 +954,46 @@ const StoryboardGenerator: React.FC<StoryboardGeneratorProps> = ({ onBack }) => 
                     <div className="mb-4 md:mb-6 flex flex-wrap gap-2 md:gap-3">
                     <button
                         onClick={handleAddCut}
-                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm md:text-base flex items-center gap-2"
+                        disabled={!isLoggedIn || !isEditing}
+                        className={`px-4 py-2 rounded-lg transition-colors text-sm md:text-base flex items-center gap-2 ${
+                          isLoggedIn
+                            ? 'bg-blue-600 text-white hover:bg-blue-700'
+                            : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                        }`}
                       >
                         <span>+</span>
                         <span>[컷] 추가</span>
                       </button>
                       <button
                         onClick={handleAddImage}
-                        className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm md:text-base flex items-center gap-2"
+                        disabled={!isLoggedIn || !isEditing}
+                        className={`px-4 py-2 rounded-lg transition-colors text-sm md:text-base flex items-center gap-2 ${
+                          isLoggedIn
+                            ? 'bg-green-600 text-white hover:bg-green-700'
+                            : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                        }`}
                       >
                         <ImageIcon className="w-4 h-4" />
                         <span>[이미지] 추가</span>
                       </button>
               <button
                         onClick={handleAddImageOnly}
-                        className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm md:text-base flex items-center gap-2"
+                        disabled={!isLoggedIn || !isEditing}
+                        className={`px-4 py-2 rounded-lg transition-colors text-sm md:text-base flex items-center gap-2 ${
+                          isLoggedIn
+                            ? 'bg-purple-600 text-white hover:bg-purple-700'
+                            : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                        }`}
                       >
                         <ImageIcon className="w-4 h-4" />
                         <span>[이미지만 추가]</span>
-                        <span className="text-xs bg-purple-800 px-1.5 py-0.5 rounded">
+                        <span className={`text-xs px-1.5 py-0.5 rounded ${
+                          isLoggedIn ? 'bg-purple-800' : 'bg-gray-400'
+                        }`}>
                           (최대 3개)
                         </span>
-                    </button>
-                  </div>
+                      </button>
+                    </div>
                   
                     {/* 컷 목록 - 세로 배치 */}
                     <div className="space-y-4 md:space-y-6">
@@ -991,13 +1109,15 @@ const StoryboardGenerator: React.FC<StoryboardGeneratorProps> = ({ onBack }) => 
                                     {group.map((cutItem) => (
                                       <div key={cutItem.id} className="flex flex-col gap-2 md:gap-3 rounded-lg border border-gray-200 p-2 md:p-3 bg-gray-50 relative">
                                         {/* 삭제 버튼 */}
-                                        <button
-                                          onClick={() => handleRemoveCut(cutItem.id)}
-                                          className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 opacity-70 hover:opacity-100 transition-opacity z-10"
-                                          title="삭제"
-                                        >
-                                          <X className="w-3 h-3 md:w-4 md:h-4" />
-                                        </button>
+                                        {isEditing && (
+                                          <button
+                                            onClick={() => handleRemoveCut(cutItem.id)}
+                                            className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 opacity-70 hover:opacity-100 transition-opacity z-10"
+                                            title="삭제"
+                                          >
+                                            <X className="w-3 h-3 md:w-4 md:h-4" />
+                                          </button>
+                                        )}
                                         
                                         {/* 이미지만 추가: 이미지만 표시 (텍스트 입력 없음) */}
                                         <div className="w-full">
@@ -1008,15 +1128,19 @@ const StoryboardGenerator: React.FC<StoryboardGeneratorProps> = ({ onBack }) => 
                                                 alt="이미지만 추가"
                                                 className="w-full h-32 md:h-40 lg:h-48 object-cover rounded-lg border"
                                               />
-                                              <button
-                                                onClick={() => handleImageRemove(cutItem.id)}
-                                                className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
-                                              >
-                                                <X className="w-3 h-3 md:w-4 md:h-4" />
-                                              </button>
+                                              {isEditing && (
+                                                <button
+                                                  onClick={() => handleImageRemove(cutItem.id)}
+                                                  className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                >
+                                                  <X className="w-3 h-3 md:w-4 md:h-4" />
+                                                </button>
+                                              )}
                                             </div>
                                           ) : (
-                                            <label className="flex flex-col items-center justify-center w-full h-32 md:h-40 lg:h-48 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-blue-400 transition-colors">
+                                            <label className={`flex flex-col items-center justify-center w-full h-32 md:h-40 lg:h-48 border-2 border-dashed border-gray-300 rounded-lg transition-colors ${
+                                              isEditing ? 'cursor-pointer hover:border-blue-400' : 'cursor-not-allowed opacity-50'
+                                            }`}>
                                               <Upload className="w-5 h-5 md:w-6 md:h-6 text-gray-400 mb-1" />
                                               <span className="text-xs text-gray-600">이미지</span>
                                               <input
@@ -1024,6 +1148,7 @@ const StoryboardGenerator: React.FC<StoryboardGeneratorProps> = ({ onBack }) => 
                                                 accept="image/*"
                                                 className="hidden"
                                                 onChange={(e) => handleFileSelect(cutItem.id, e)}
+                                                disabled={!isEditing}
                                               />
                                             </label>
                                           )}
@@ -1046,13 +1171,15 @@ const StoryboardGenerator: React.FC<StoryboardGeneratorProps> = ({ onBack }) => 
                                   <div key={`imageOnly-group-${index}-${i}`} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4 mb-4">
                                     {group.map((cutItem) => (
                                       <div key={cutItem.id} className="flex flex-col gap-2 md:gap-3 rounded-lg border border-gray-200 p-2 md:p-3 bg-gray-50 relative">
-                                        <button
-                                          onClick={() => handleRemoveCut(cutItem.id)}
-                                          className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 opacity-70 hover:opacity-100 transition-opacity z-10"
-                                          title="삭제"
-                                        >
-                                          <X className="w-3 h-3 md:w-4 md:h-4" />
-                                        </button>
+                                        {isEditing && (
+                                          <button
+                                            onClick={() => handleRemoveCut(cutItem.id)}
+                                            className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 opacity-70 hover:opacity-100 transition-opacity z-10"
+                                            title="삭제"
+                                          >
+                                            <X className="w-3 h-3 md:w-4 md:h-4" />
+                                          </button>
+                                        )}
                                         {/* 이미지만 추가: 이미지만 표시 (텍스트 입력 없음) */}
                                         <div className="w-full">
                                           {cutItem.imagePreview ? (
@@ -1062,15 +1189,19 @@ const StoryboardGenerator: React.FC<StoryboardGeneratorProps> = ({ onBack }) => 
                                                 alt="이미지만 추가"
                                                 className="w-full h-32 md:h-40 lg:h-48 object-cover rounded-lg border"
                                               />
-                                              <button
-                                                onClick={() => handleImageRemove(cutItem.id)}
-                                                className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
-                                              >
-                                                <X className="w-3 h-3 md:w-4 md:h-4" />
-                                              </button>
+                                              {isEditing && (
+                                                <button
+                                                  onClick={() => handleImageRemove(cutItem.id)}
+                                                  className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                >
+                                                  <X className="w-3 h-3 md:w-4 md:h-4" />
+                                                </button>
+                                              )}
                                             </div>
                                           ) : (
-                                            <label className="flex flex-col items-center justify-center w-full h-32 md:h-40 lg:h-48 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-blue-400 transition-colors">
+                                            <label className={`flex flex-col items-center justify-center w-full h-32 md:h-40 lg:h-48 border-2 border-dashed border-gray-300 rounded-lg transition-colors ${
+                                              isEditing ? 'cursor-pointer hover:border-blue-400' : 'cursor-not-allowed opacity-50'
+                                            }`}>
                                               <Upload className="w-5 h-5 md:w-6 md:h-6 text-gray-400 mb-1" />
                                               <span className="text-xs text-gray-600">이미지</span>
                                               <input
@@ -1078,6 +1209,7 @@ const StoryboardGenerator: React.FC<StoryboardGeneratorProps> = ({ onBack }) => 
                                                 accept="image/*"
                                                 className="hidden"
                                                 onChange={(e) => handleFileSelect(cutItem.id, e)}
+                                                disabled={!isEditing}
                                               />
                                             </label>
                                           )}
@@ -1094,6 +1226,7 @@ const StoryboardGenerator: React.FC<StoryboardGeneratorProps> = ({ onBack }) => 
                             result.push(
                               <div key={cut.id} className="flex flex-col gap-3 md:gap-4 rounded-lg border border-gray-200 p-3 md:p-4 bg-gray-50 relative">
                                 {/* 삭제 버튼 */}
+                              {isEditing && (
                                 <button
                                   onClick={() => handleRemoveCut(cut.id)}
                                   className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 opacity-70 hover:opacity-100 transition-opacity z-10"
@@ -1101,6 +1234,7 @@ const StoryboardGenerator: React.FC<StoryboardGeneratorProps> = ({ onBack }) => 
                                 >
                                   <X className="w-3 h-3 md:w-4 md:h-4" />
                                 </button>
+                              )}
                                 
                                 {/* 컷넘버 표시 (있는 경우만) */}
                                 {cut.cutNumber && (
@@ -1121,15 +1255,19 @@ const StoryboardGenerator: React.FC<StoryboardGeneratorProps> = ({ onBack }) => 
                                           alt={cut.cutNumber || '이미지'}
                                           className="w-full h-40 md:h-48 lg:h-56 object-cover rounded-lg border"
                                         />
-                                        <button
-                                          onClick={() => handleImageRemove(cut.id)}
-                                          className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
-                                        >
-                                          <X className="w-3 h-3 md:w-4 md:h-4" />
-                                        </button>
+                                        {isEditing && (
+                                          <button
+                                            onClick={() => handleImageRemove(cut.id)}
+                                            className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                                          >
+                                            <X className="w-3 h-3 md:w-4 md:h-4" />
+                                          </button>
+                                        )}
                                       </div>
                                     ) : (
-                                      <label className="flex flex-col items-center justify-center w-full h-40 md:h-48 lg:h-56 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-blue-400 transition-colors">
+                                      <label className={`flex flex-col items-center justify-center w-full h-40 md:h-48 lg:h-56 border-2 border-dashed border-gray-300 rounded-lg transition-colors ${
+                                        isEditing ? 'cursor-pointer hover:border-blue-400' : 'cursor-not-allowed opacity-50'
+                                      }`}>
                                         <Upload className="w-5 h-5 md:w-6 md:h-6 text-gray-400 mb-1" />
                                         <span className="text-xs text-gray-600">이미지</span>
                       <input
@@ -1137,6 +1275,7 @@ const StoryboardGenerator: React.FC<StoryboardGeneratorProps> = ({ onBack }) => 
                                           accept="image/*"
                                           className="hidden"
                                           onChange={(e) => handleFileSelect(cut.id, e)}
+                                          disabled={!isEditing}
                                         />
                                       </label>
                                     )}
@@ -1150,6 +1289,7 @@ const StoryboardGenerator: React.FC<StoryboardGeneratorProps> = ({ onBack }) => 
                                       onChange={(e) => handleDescriptionChange(cut.id, e.target.value)}
                                       className="w-full min-h-[160px] md:min-h-[192px] lg:min-h-[224px] px-2 md:px-3 py-1.5 md:py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs md:text-sm resize-none"
                                       placeholder="카메라이동/설명/대사를 입력하세요."
+                                      disabled={!isEditing}
                                     />
                                   </div>
                                 </div>
@@ -1280,7 +1420,7 @@ const StoryboardGenerator: React.FC<StoryboardGeneratorProps> = ({ onBack }) => 
                   {/* 샘플 미리보기 영역 (1/4) */}
                   <div className="lg:col-span-1">
                     <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 md:p-4">
-                      <h3 className="text-sm md:text-base font-semibold text-gray-800 mb-3">샘플 미리보기</h3>
+                      <h3 className="text-sm md:text-base font-semibold text-gray-800 mb-3">PDF 샘플 미리보기</h3>
                       <div className="space-y-2">
                         <div className="text-xs text-gray-600">
                           <p className="font-medium mb-1">프로젝트 정보</p>
@@ -1370,7 +1510,7 @@ const StoryboardGenerator: React.FC<StoryboardGeneratorProps> = ({ onBack }) => 
                         className="w-full px-2 md:px-3 py-1.5 md:py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-none"
                         rows={3}
                         placeholder="주요 내용을 입력하세요"
-                        disabled={!isEditing}
+                        disabled={!isLoggedIn || !isEditing}
                       />
                     </div>
 
@@ -1378,7 +1518,12 @@ const StoryboardGenerator: React.FC<StoryboardGeneratorProps> = ({ onBack }) => 
                     <div className="mb-4 md:mb-6 flex flex-wrap gap-2 md:gap-3">
                       <button
                         onClick={handleAddImageBoardItem}
-                        className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm md:text-base flex items-center gap-2"
+                        disabled={!isLoggedIn || !isEditing}
+                        className={`px-4 py-2 rounded-lg transition-colors text-sm md:text-base flex items-center gap-2 ${
+                          isLoggedIn
+                            ? 'bg-green-600 text-white hover:bg-green-700'
+                            : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                        }`}
                       >
                         <ImageIcon className="w-4 h-4" />
                         <span>[이미지] 추가</span>
@@ -1408,13 +1553,15 @@ const StoryboardGenerator: React.FC<StoryboardGeneratorProps> = ({ onBack }) => 
                         return displayedItems.map((item) => (
                           <div key={item.id} className="border border-gray-200 rounded-lg p-2 md:p-3 lg:p-4 relative">
                             {/* 삭제 버튼 */}
-                            <button
-                              onClick={() => handleRemoveImageBoardItem(item.id)}
-                              className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 opacity-70 hover:opacity-100 transition-opacity z-10"
-                              title="삭제"
-                            >
-                              <X className="w-3 h-3 md:w-4 md:h-4" />
-                            </button>
+                            {isEditing && (
+                              <button
+                                onClick={() => handleRemoveImageBoardItem(item.id)}
+                                className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 opacity-70 hover:opacity-100 transition-opacity z-10"
+                                title="삭제"
+                              >
+                                <X className="w-3 h-3 md:w-4 md:h-4" />
+                              </button>
+                            )}
                             
                             <div className="mb-2">
                               <span className="text-xs md:text-sm font-medium text-gray-700">컷{item.number}</span>
@@ -1437,7 +1584,9 @@ const StoryboardGenerator: React.FC<StoryboardGeneratorProps> = ({ onBack }) => 
                                   </button>
                                 </div>
                               ) : (
-                                <label className="flex flex-col items-center justify-center w-full h-32 md:h-36 lg:h-40 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-blue-400 transition-colors">
+                                <label className={`flex flex-col items-center justify-center w-full h-32 md:h-36 lg:h-40 border-2 border-dashed border-gray-300 rounded-lg transition-colors ${
+                                  isEditing ? 'cursor-pointer hover:border-blue-400' : 'cursor-not-allowed opacity-50'
+                                }`}>
                                   <Upload className="w-6 h-6 md:w-8 md:h-8 text-gray-400 mb-1 md:mb-2" />
                                   <span className="text-xs md:text-sm text-gray-600">이미지 업로드</span>
                                   <input
@@ -1445,6 +1594,7 @@ const StoryboardGenerator: React.FC<StoryboardGeneratorProps> = ({ onBack }) => 
                                     accept="image/*"
                                     className="hidden"
                                     onChange={(e) => handleFileSelect(item.id, e)}
+                                    disabled={!isEditing}
                                   />
                                 </label>
                               )}
@@ -1460,6 +1610,7 @@ const StoryboardGenerator: React.FC<StoryboardGeneratorProps> = ({ onBack }) => 
                                   className="w-full px-2 md:px-3 py-1.5 md:py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs md:text-sm resize-none"
                                   rows={2}
                                   placeholder="순서대로 설명 입력"
+                                  disabled={!isEditing}
                       />
                     </div>
                             )}
@@ -1505,37 +1656,51 @@ const StoryboardGenerator: React.FC<StoryboardGeneratorProps> = ({ onBack }) => 
           {/* 저장 버튼 - 고정 */}
           <div className="mt-4 md:mt-6 lg:mt-8 flex-shrink-0 pt-4 border-t flex flex-col sm:flex-row justify-end gap-3">
             <button
-              onClick={onBack}
+              onClick={handleExit}
               className="w-full sm:w-auto px-4 md:px-6 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors text-sm md:text-base"
             >
-              취소
+              생성기 종료
             </button>
-            {isSaved ? (
-              <>
-                <button
-                  onClick={handleEdit}
-                  className="w-full sm:w-auto px-4 md:px-6 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors text-sm md:text-base flex items-center gap-2"
-                  disabled={isGeneratingPDF}
-                >
-                  <Edit className="w-4 h-4" />
-                  <span>수정</span>
-                </button>
-                <button
-                  onClick={handleReset}
-                  className="w-full sm:w-auto px-4 md:px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm md:text-base flex items-center gap-2"
-                  disabled={isGeneratingPDF}
-                >
-                  <RotateCcw className="w-4 h-4" />
-                  <span>초기화</span>
-                </button>
-              </>
-            ) : (
+            {/* 수정 버튼 - 항상 표시 */}
+            <button
+              onClick={handleEdit}
+              className={`w-full sm:w-auto px-4 md:px-6 py-2 rounded-lg transition-colors text-sm md:text-base flex items-center gap-2 ${
+                isEditing
+                  ? 'bg-yellow-600 text-white hover:bg-yellow-700'
+                  : isLoggedIn && !isGeneratingPDF
+                  ? 'bg-blue-600 text-white hover:bg-blue-700'
+                  : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+              }`}
+              disabled={isGeneratingPDF || !isLoggedIn}
+            >
+              <Edit className="w-4 h-4" />
+              <span>{isEditing ? '편집 종료' : '수정'}</span>
+            </button>
+            {/* 저장 버튼 - 편집 종료 후에만 활성화 */}
+            {!isEditing && (storyboardCuts.length > 0 || imageBoardItems.length > 0 || headerData.title || headerData.mainContent) && (
               <button
                 onClick={handleSave}
-                className="w-full sm:w-auto px-4 md:px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm md:text-base"
-                disabled={isGeneratingPDF}
+                disabled={!isLoggedIn || isGeneratingPDF || isSaved}
+                className={`w-full sm:w-auto px-4 md:px-6 py-2 rounded-lg transition-colors text-sm md:text-base flex items-center gap-2 ${
+                  isLoggedIn && !isGeneratingPDF && !isSaved
+                    ? 'bg-green-600 text-white hover:bg-green-700'
+                    : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                }`}
               >
-                {isGeneratingPDF ? 'PDF 생성 중...' : isEditing ? '저장' : '입력/수정'}
+                <FileDown className="w-4 h-4" />
+                <span>{isSaved ? '저장 완료' : '저장'}</span>
+              </button>
+            )}
+            
+            {/* 초기화 버튼 */}
+            {(storyboardCuts.length > 0 || imageBoardItems.length > 0) && (
+              <button
+                onClick={handleReset}
+                className="w-full sm:w-auto px-4 md:px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm md:text-base flex items-center gap-2"
+                disabled={isGeneratingPDF || isEditing}
+              >
+                <RotateCcw className="w-4 h-4" />
+                <span>초기화</span>
               </button>
             )}
             </div>

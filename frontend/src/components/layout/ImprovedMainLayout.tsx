@@ -611,7 +611,7 @@ export const ImprovedMainLayout: React.FC<ImprovedMainLayoutProps> = ({
           <div className="p-6">
             <div className="text-center">
               <h2 className="text-2xl font-bold text-gray-900 mb-4">스토리보드 생성</h2>
-              <p className="text-gray-600 mb-6">스토리보드 생성 기능이 개발 중입니다.</p>
+              <p className="text-gray-600 mb-6">스토리보드 생성 기능은 로그인 상태에서 작동합니다.</p>
               <button
                 onClick={() => onShowStoryboardGenerator && onShowStoryboardGenerator()}
                 className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
@@ -681,10 +681,7 @@ export const ImprovedMainLayout: React.FC<ImprovedMainLayoutProps> = ({
           onHelpClick={() => setShowHelpModal(true)}
           onProjectReferenceClick={() => setShowProjectReference(true)}
           onManagementToolsClick={onShowManagementModal}
-          onStoryboardGeneratorClick={() => {
-            // StepProgressPanel과 동일하게 '스토리보드 생성' 단계로 이동
-            setCurrentStep('스토리보드 생성');
-          }}
+          onStoryboardGeneratorClick={() => setCurrentStep('스토리보드 생성')}
           projectHandlers={projectHandlers}
           imageHandlers={imageHandlers}
           videoHandlers={videoHandlers}

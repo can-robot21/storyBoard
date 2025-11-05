@@ -75,8 +75,8 @@ export const ActionPanel: React.FC<ActionPanelProps> = ({
               관리 도구
             </Button>
 
-            {/* 스토리보드 생성 버튼 (로그인 상태에서만 표시) - StepProgressPanel과 동일하게 동작 */}
-            {onStoryboardGeneratorClick && isLoggedIn && (
+            {/* 스토리보드 생성 버튼 - 로그인 상관없이 항상 표시 */}
+            {onStoryboardGeneratorClick && (
               <Button
                 onClick={onStoryboardGeneratorClick}
                 variant="outline"

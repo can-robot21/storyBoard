@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import SEO from './SEO';
 
 interface IntroPageProps {
   onNext: () => void;
@@ -133,6 +134,11 @@ const IntroPage: React.FC<IntroPageProps> = ({ onNext }) => {
 
   return (
     <div className="relative w-full h-full overflow-hidden bg-black">
+      <SEO 
+        title="홈 - StoryBoard AI - 스토리보드/영상 AI"
+        description="StoryBoard AI는 AI 기반 스토리보드 및 영상 제작 플랫폼입니다. 텍스트만 입력하면 전문가 수준의 스토리보드와 영상을 자동으로 생성할 수 있습니다. AI-powered storyboard and video creation platform - Generate professional storyboards and videos with just text input."
+        keywords="StoryBoard AI, 스토리보드 AI, 영상 제작 AI, AI 스토리보드, AI 영상, 스토리보드 생성, 영상 제작, ChatGPT, 챗GPT, 구글 AI, Google AI, 제미니, Gemini, 나노 바나나, Nano Banana, kling, Kling, 콘티, conti, 콘티 제작, AI video creation, AI storyboard, storyboard AI, video production AI, 스토리보드 생성기, 영상 제작 도구, AI 캐릭터 생성, AI 이미지 생성"
+      />
       {/* 슬라이드 컨테이너 */}
       <div className="relative w-full h-full">
         {/* 배경 이미지 */}

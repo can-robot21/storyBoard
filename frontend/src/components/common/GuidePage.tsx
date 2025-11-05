@@ -7,9 +7,10 @@ import SEO from './SEO';
 interface DescriptionPageProps {
   onBack: () => void;
   onNext: () => void;
+  onContact?: () => void;
 }
 
-const DescriptionPage: React.FC<DescriptionPageProps> = ({ onBack, onNext }) => {
+const DescriptionPage: React.FC<DescriptionPageProps> = ({ onBack, onNext, onContact }) => {
   // 배너 데이터 상태
   const [bannerItems, setBannerItems] = useState<BannerItem[]>([
     {
@@ -180,9 +181,9 @@ const DescriptionPage: React.FC<DescriptionPageProps> = ({ onBack, onNext }) => 
   return (
     <div className="h-full flex flex-col bg-gradient-to-br from-gray-50 to-blue-50">
       <SEO 
-        title="AI 소개 - 스토리보드 AI"
-        description="StoryBoard AI의 주요 기능과 제작 과정을 소개합니다. AI 기반 자동 생성, 다양한 캐릭터 생성, 빠른 제작, 고품질 결과를 제공합니다."
-        keywords="스토리보드AI소개, AI기능, 제작과정, 캐릭터생성, 배경생성, 영상제작, AI자동생성"
+        title="서비스 안내 - StoryBoard AI - 스토리보드/영상 AI"
+        description="StoryBoard AI의 주요 기능과 제작 과정을 소개합니다. AI 기반 자동 생성, 다양한 캐릭터 생성, 빠른 제작, 고품질 결과를 제공합니다. Learn about StoryBoard AI features: AI-powered automatic generation, diverse character creation, fast production, and high-quality results."
+        keywords="StoryBoard AI 소개, 서비스 안내, AI 기능 소개, 제작 과정, 스토리보드 AI 기능, 영상 제작 프로세스, ChatGPT, 챗GPT, 구글 AI, Google AI, 제미니, Gemini, 나노 바나나, Nano Banana, kling, Kling, 콘티, conti, 콘티 제작, AI storyboard introduction, service guide, AI features, production process, storyboard AI features, video production process, 캐릭터 생성, 배경 생성, 영상 제작, AI 자동 생성, character generation, background generation, video production, AI automatic generation"
       />
       
       {/* 메인 콘텐츠 영역 - 스크롤 가능 */}
@@ -206,6 +207,7 @@ const DescriptionPage: React.FC<DescriptionPageProps> = ({ onBack, onNext }) => 
             items={bannerItems}
             autoPlay={true}
             autoPlayInterval={4000}
+            initialIndex={3}
           />
         </div>
 
@@ -321,13 +323,23 @@ const DescriptionPage: React.FC<DescriptionPageProps> = ({ onBack, onNext }) => 
 
           {/* 하단 버튼 */}
           <div className="text-center mb-12">
-            <button
-              onClick={onNext}
-              className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-12 py-4 rounded-2xl text-xl font-semibold hover:from-blue-700 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl flex items-center mx-auto"
-            >
-              시작하기
-              <ArrowRight className="w-6 h-6 ml-3" />
-            </button>
+            <div className="flex items-center justify-center gap-4">
+              {onContact && (
+                <button
+                  onClick={onContact}
+                  className="bg-white border-2 border-gray-300 text-gray-700 px-12 py-4 rounded-2xl text-xl font-semibold hover:bg-gray-50 hover:border-gray-400 transition-all duration-300 shadow-md hover:shadow-lg flex items-center"
+                >
+                  문의/의뢰하기
+                </button>
+              )}
+              <button
+                onClick={onNext}
+                className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-12 py-4 rounded-2xl text-xl font-semibold hover:from-blue-700 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl flex items-center"
+              >
+                시작하기
+                <ArrowRight className="w-6 h-6 ml-3" />
+              </button>
+            </div>
           </div>
 
           </div>
@@ -337,7 +349,7 @@ const DescriptionPage: React.FC<DescriptionPageProps> = ({ onBack, onNext }) => 
       <div className="flex-shrink-0 bg-white border-t border-gray-200 py-4">
         <div className="max-w-6xl mx-auto px-8 text-center">
           <p className="text-sm text-gray-500">
-            영상 제작을 위한 스토리보드 AI 서비스입니다. © 2025{' '}
+            영상/스토리보드 제작을 위한 Storyboad AI 서비스입니다. © 2025{' '}
             <a 
               href="https://star612.net" 
               target="_blank" 

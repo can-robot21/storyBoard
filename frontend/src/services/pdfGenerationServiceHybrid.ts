@@ -24,15 +24,13 @@ const generateStoryBoardHeaderHTML = (data: PDFGenerationData): string => {
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
-      <link rel="preload" as="font" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/woff2/Pretendard-Regular.woff2" crossorigin="anonymous" />
       <style>
         @font-face {
           font-family: 'Pretendard';
           font-weight: 400;
           font-style: normal;
           font-display: swap;
-          src: url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/woff2/Pretendard-Regular.woff2') format('woff2'),
-               url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/woff/Pretendard-Regular.woff') format('woff');
+          src: url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/woff2/Pretendard-Regular.woff2') format('woff2');
         }
         
         @page {
@@ -50,6 +48,7 @@ const generateStoryBoardHeaderHTML = (data: PDFGenerationData): string => {
           width: 180mm; /* 4A 너비(210mm) - 좌우 여백(30mm) */
           margin: 0 auto;
           padding: 0;
+          padding-top: 0; /* 상단 여백 제거 (5mm → 0mm) */
           font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
           font-size: 10pt;
           color: #000;
@@ -59,12 +58,22 @@ const generateStoryBoardHeaderHTML = (data: PDFGenerationData): string => {
           padding-bottom: 10mm; /* footer 공간 확보 (하단 여백 5mm + footer 높이 5mm) */
         }
         
+        /* 타이틀 (테이블 밖 상단 중앙) */
+        .header-title {
+          text-align: center;
+          font-size: 22pt;
+          font-weight: 700;
+          margin-top: 0; /* 상단 여백 제거 */
+          margin-bottom: 4mm; /* 반으로 (8mm → 4mm) */
+          padding: 0; /* 패딩 제거 */
+        }
+        
         /* 헤더 요약 (2줄 구성) */
         .header-summary {
           width: 100%;
           background: #f5f5f5;
           border: 1px solid #646464;
-          padding: 3mm;
+          padding: 4mm;
           margin-bottom: 3mm;
         }
         
@@ -81,18 +90,27 @@ const generateStoryBoardHeaderHTML = (data: PDFGenerationData): string => {
         }
         
         .header-line-1 {
-          font-weight: bold;
-          font-size: 11pt;
+          font-size: 9pt;
+          justify-content: space-between; /* 좌우 균형 배치 */
+          padding: 0 2mm; /* 좌우 여백 추가 */
         }
         
         .header-line-2 {
           font-size: 9pt;
           color: #333;
+          justify-content: flex-start; /* 왼쪽 정렬 (첫 번째 필드 위치와 동일) */
+          padding-left: 2mm; /* 첫 번째 줄과 동일한 시작 위치 */
         }
         
         .header-info-item {
           margin-right: 8mm;
           display: inline-block;
+          text-align: center;
+          flex: 0 0 auto; /* 크기 고정 */
+        }
+        
+        .header-info-item:last-child {
+          margin-right: 0;
         }
         
         .header-info-label {
@@ -101,25 +119,24 @@ const generateStoryBoardHeaderHTML = (data: PDFGenerationData): string => {
         }
         
         .header-main-content {
-          display: -webkit-box;
-          -webkit-line-clamp: 2;
-          -webkit-box-orient: vertical;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          max-width: 100%;
+          display: inline-block;
+          text-decoration: underline;
+          max-width: calc(100% - 30mm);
           line-height: 1.4;
           word-wrap: break-word;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
         }
       </style>
     </head>
     <body>
+      ${data.headerData.title ? `
+      <div class="header-title">${escapeHtml(data.headerData.title)}</div>
+      ` : ''}
       <div class="header-summary">
-        <!-- 1줄: 타이틀 + 기본 정보 -->
+        <!-- 1줄: 날짜, 시간대, 장소, 씬, 컷 -->
         <div class="header-line header-line-1">
-          <span class="header-info-item">
-            <span class="header-info-label">타이틀:</span>
-            <span>${escapeHtml(data.headerData.title || '타이틀 미입력')}</span>
-          </span>
           ${data.headerData.date ? `
           <span class="header-info-item">
             <span class="header-info-label">날짜:</span>
@@ -128,8 +145,16 @@ const generateStoryBoardHeaderHTML = (data: PDFGenerationData): string => {
           ` : ''}
           ${data.headerData.time ? `
           <span class="header-info-item">
-            <span class="header-info-label">시간:</span>
-            <span>${escapeHtml(data.headerData.time)}</span>
+            <span class="header-info-label">시간대:</span>
+            <span>${(() => {
+              const timeValue = data.headerData.time || '';
+              if (timeValue === 'DAY') return '낮 (DAY)';
+              if (timeValue === 'NIGHT') return '밤 (NIGHT)';
+              if (timeValue === 'DUSK') return '황혼 (DUSK)';
+              if (timeValue === 'DAWN') return '새벽 (DAWN)';
+              if (timeValue === 'OTHER') return '기타';
+              return escapeHtml(timeValue);
+            })()}</span>
           </span>
           ` : ''}
           ${data.headerData.location ? `
@@ -144,11 +169,17 @@ const generateStoryBoardHeaderHTML = (data: PDFGenerationData): string => {
             <span>${escapeHtml(data.headerData.scene)}</span>
           </span>
           ` : ''}
+          ${data.headerData.cut ? `
+          <span class="header-info-item">
+            <span class="header-info-label">컷:</span>
+            <span>${escapeHtml(data.headerData.cut)}</span>
+          </span>
+          ` : ''}
         </div>
-        <!-- 2줄: 주요 내용 요약 -->
+        <!-- 2줄: 주요 내용과 입력 내용을 밑줄에 한 줄로 배치 -->
         ${data.headerData.mainContent ? `
         <div class="header-line header-line-2">
-          <span class="header-info-label">주요 내용:</span>
+          <span class="header-info-label">주요내용:</span>
           <span class="header-main-content">${escapeHtml(data.headerData.mainContent).replace(/\n/g, ' ')}</span>
         </div>
         ` : ''}
@@ -198,15 +229,13 @@ const generateImageBoardHTML = (
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
-      <link rel="preload" as="font" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/woff2/Pretendard-Regular.woff2" crossorigin="anonymous" />
       <style>
         @font-face {
           font-family: 'Pretendard';
           font-weight: 400;
           font-style: normal;
           font-display: swap;
-          src: url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/woff2/Pretendard-Regular.woff2') format('woff2'),
-               url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/woff/Pretendard-Regular.woff') format('woff');
+          src: url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/woff2/Pretendard-Regular.woff2') format('woff2');
         }
         
         @page {
@@ -228,6 +257,8 @@ const generateImageBoardHTML = (
           font-size: 10pt;
           color: #000;
           background: #fff;
+          position: relative;
+          min-height: 287mm; /* 페이지 높이 297mm - 하단 여백 10mm */
         }
         
         /* 타이틀 */
@@ -248,7 +279,7 @@ const generateImageBoardHTML = (
           display: grid;
           grid-template-columns: repeat(3, 1fr);
           gap: 5mm;
-          margin-bottom: 8mm;
+          margin-bottom: 6mm; /* 컷 하단과 주요내용 박스 사이 여백 2줄 (약 6mm) */
         }
         
         .grid-item {
@@ -295,23 +326,42 @@ const generateImageBoardHTML = (
           word-wrap: break-word;
         }
         
-        /* 주요 내용 */
+        /* 주요 내용 - 박스 스타일 */
         .main-content-section {
-          border-top: 0.8mm solid #969696;
-          padding-top: 5mm;
-          margin-top: 5mm;
+          margin-top: 0; /* grid-container의 margin-bottom으로 간격 조정 */
+          margin-bottom: 15mm; /* 하단 라인과의 여백 15mm */
+          padding: 2mm 2.5mm 5mm 2.5mm; /* 박스 내부 여백 (상단 2mm, 하단 5mm로 증가하여 텍스트 descender 공간 확보, 좌우 2.5mm) */
+          background-color: #f9f9f9; /* 배경색 */
+          border: 1px solid #969696; /* 테두리 */
+          border-radius: 2px; /* 둥근 모서리 */
+          width: calc(100% - 2px); /* border 너비 고려하여 오른쪽 라인 잘림 방지 */
+          max-width: calc(100% - 2px); /* border 너비 고려 */
+          display: flex;
+          align-items: flex-start; /* 상단 정렬로 변경하여 줄바꿈 허용 */
+          flex-wrap: nowrap;
+          box-sizing: border-box;
+          overflow: visible; /* 텍스트가 잘리지 않도록 변경 */
+          min-height: 18mm; /* 최소 높이 증가 (패딩 2mm + 5mm + 텍스트 11mm) */
         }
         
         .main-content-label {
           font-size: 11pt;
           font-weight: bold;
-          margin-bottom: 3mm;
+          margin-right: 3mm; /* 라벨과 텍스트 사이 간격 줄임 */
+          flex-shrink: 0;
+          white-space: nowrap;
         }
         
         .main-content-text {
           font-size: 10pt;
-          line-height: 1.5;
-          white-space: pre-wrap;
+          line-height: 1.6; /* line-height 증가 (1.5 → 1.6)하여 텍스트 간격 확대 */
+          white-space: normal; /* 줄바꿈 허용 */
+          overflow: visible; /* 텍스트 descender가 잘리지 않도록 변경 */
+          word-wrap: break-word; /* 긴 단어 줄바꿈 */
+          word-break: break-word; /* 한글/영문 모두 줄바꿈 */
+          flex: 1;
+          min-width: 0; /* flex 아이템이 줄어들 수 있도록 */
+          padding-bottom: 0.5mm; /* 하단 여유 공간 추가 */
         }
         
         /* 워터마크 */
@@ -343,7 +393,7 @@ const generateImageBoardHTML = (
       ${data.headerData.mainContent ? `
       <div class="main-content-section">
         <div class="main-content-label">주요내용:</div>
-        <div class="main-content-text">${escapeHtml(data.headerData.mainContent).replace(/\n/g, '<br>')}</div>
+        <div class="main-content-text">${escapeHtml(data.headerData.mainContent).replace(/\r/g, '').replace(/\n/g, '<br>')}</div>
       </div>
       ` : ''}
       <div class="watermark">storyboard.ai.kr</div>
@@ -408,15 +458,35 @@ const generateStoryBoardBodyHTML = (
       const cutNumberHTML = cut.cutNumber 
         ? `<div class="cut-number">${escapeHtml(cut.cutNumber)}</div>` 
         : '<div class="cut-number">&nbsp;</div>'; // 빈 공간 유지
-      const imageHTML = cut.imagePreview 
-        ? `<div class="cut-image-container">
-            <img src="${cut.imagePreview}" alt="${escapeHtml(cut.cutNumber || '이미지')}" class="cut-image" />
-          </div>`
-        : '<div class="cut-image-container cut-image-placeholder">이미지 없음</div>';
       
-      const descriptionHTML = cut.description
-        ? `<div class="cut-description">${escapeHtml(cut.description).replace(/\n/g, '<br>')}</div>`
-        : '<div class="cut-description"></div>';
+      // 이미지와 텍스트 유무에 따라 레이아웃 변경
+      const hasImage = !!cut.imagePreview;
+      const hasDescription = !!cut.description;
+      
+      let imageHTML = '';
+      let descriptionHTML = '';
+      
+      if (hasImage && hasDescription) {
+        // 이미지와 텍스트 모두 있는 경우: 30% / 70% 비율
+        imageHTML = `<div class="cut-image-container">
+            <img src="${cut.imagePreview}" alt="${escapeHtml(cut.cutNumber || '이미지')}" class="cut-image" />
+          </div>`;
+        descriptionHTML = `<div class="cut-description">${escapeHtml(cut.description).replace(/\n/g, '<br>')}</div>`;
+      } else if (hasImage && !hasDescription) {
+        // 이미지만 있는 경우: 이미지 영역만 표시, 텍스트 영역은 빈 공간
+        imageHTML = `<div class="cut-image-container">
+            <img src="${cut.imagePreview}" alt="${escapeHtml(cut.cutNumber || '이미지')}" class="cut-image" />
+          </div>`;
+        descriptionHTML = '<div class="cut-description cut-description-empty"></div>';
+      } else if (!hasImage && hasDescription) {
+        // 텍스트만 있는 경우: 이미지 영역에 플레이스홀더 표시, 텍스트는 66.67% 영역에 출력 (1:2 비율 유지)
+        imageHTML = `<div class="cut-image-container"><div class="cut-image-placeholder">이미지 없음</div></div>`;
+        descriptionHTML = `<div class="cut-description">${escapeHtml(cut.description).replace(/\n/g, '<br>')}</div>`;
+      } else {
+        // 둘 다 없는 경우: 이미지 플레이스홀더만 표시 (1:2 비율 유지)
+        imageHTML = `<div class="cut-image-container"><div class="cut-image-placeholder">이미지 없음</div></div>`;
+        descriptionHTML = '<div class="cut-description cut-description-empty"></div>';
+      }
       
       itemsHTML.push(`
         <div class="cut-item">
@@ -451,15 +521,13 @@ const generateStoryBoardBodyHTML = (
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
-      <link rel="preload" as="font" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/woff2/Pretendard-Regular.woff2" crossorigin="anonymous" />
       <style>
         @font-face {
           font-family: 'Pretendard';
           font-weight: 400;
           font-style: normal;
           font-display: swap;
-          src: url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/woff2/Pretendard-Regular.woff2') format('woff2'),
-               url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/woff/Pretendard-Regular.woff') format('woff');
+          src: url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/woff2/Pretendard-Regular.woff2') format('woff2');
         }
         
         @page {
@@ -496,10 +564,10 @@ const generateStoryBoardBodyHTML = (
           page-break-inside: avoid;
           break-inside: avoid;
           min-height: 39mm; /* 컷 높이 일관성 유지 */
-          display: flex;
-          flex-direction: row;
-          align-items: flex-start;
-          gap: 3mm;
+          display: flex !important;
+          flex-direction: row !important;
+          align-items: flex-start !important;
+          gap: 0 !important; /* gap 제거하고 margin 사용 */
         }
         
         .cut-number {
@@ -508,6 +576,7 @@ const generateStoryBoardBodyHTML = (
           width: 22mm; /* 화면의 w-16 (64px ≈ 16.93mm) + 오른쪽 5mm 여백 추가 */
           flex-shrink: 0;
           padding-top: 1mm;
+          margin-right: 1mm !important; /* 컷 번호와 이미지 사이 간격 (30%로 감소: 3mm → 1mm) - html2canvas 호환 */
         }
         
         .cut-content {
@@ -515,13 +584,18 @@ const generateStoryBoardBodyHTML = (
           display: flex;
           gap: 3mm;
           align-items: flex-start;
+          width: 100%;
+          box-sizing: border-box;
         }
         
         .cut-image-container {
-          width: 30%;
-          flex-shrink: 0;
+          width: 33.33% !important; /* 정확히 1:2 비율 (1/3 = 33.33%) - 강제 적용 */
+          flex-shrink: 0 !important;
+          flex-grow: 0 !important;
           max-height: 35.6mm;
           overflow: hidden;
+          box-sizing: border-box;
+          position: relative;
         }
         
         .cut-image {
@@ -531,11 +605,14 @@ const generateStoryBoardBodyHTML = (
           object-fit: cover;
           border: 1px solid #ddd;
           border-radius: 0.5rem;
+          display: block;
         }
         
         .cut-image-placeholder {
           width: 100%;
           height: 35.6mm;
+          min-height: 35.6mm;
+          max-height: 35.6mm;
           border: 1px dashed #ccc;
           border-radius: 0.5rem;
           display: flex;
@@ -543,10 +620,13 @@ const generateStoryBoardBodyHTML = (
           justify-content: center;
           color: #999;
           background: #f9f9f9;
+          box-sizing: border-box;
+          flex-shrink: 0;
+          overflow: hidden;
         }
         
         .cut-description {
-          width: 70%;
+          width: 66.67%; /* 정확히 1:2 비율 (2/3 = 66.67%) */
           font-size: 9pt;
           line-height: 1.4;
           white-space: pre-wrap;
@@ -554,6 +634,9 @@ const generateStoryBoardBodyHTML = (
           max-height: 35.6mm;
           overflow: hidden;
           word-wrap: break-word;
+          box-sizing: border-box;
+          flex-shrink: 0;
+          flex-grow: 0;
         }
         
         /* 페이지 하단 여백과 라인 - 페이지 하단 기준으로 고정 */
@@ -584,14 +667,14 @@ const generateStoryBoardBodyHTML = (
             .image-only-group {
               display: flex !important;
               flex-direction: row !important;
-              gap: 3mm !important; /* 일반 컷과 동일한 gap 사용 */
+              gap: 3mm !important; /* 이미지 간 간격은 유지 */
               margin-bottom: 4mm;
               page-break-inside: avoid;
               break-inside: avoid;
               /* 일반 컷의 cut-content와 동일한 너비로 제한 */
-              margin-left: 25mm !important; /* 컷 번호(22mm) + gap(3mm) = 시작 위치 */
-              width: calc(100% - 25mm) !important; /* cut-content와 동일한 너비 */
-              max-width: 155mm !important; /* 일반 컷의 cut-content 너비와 동일 */
+              margin-left: 23mm !important; /* 컷 번호(22mm) + gap(1mm) = 시작 위치 */
+              width: calc(100% - 23mm) !important; /* cut-content와 동일한 너비 */
+              max-width: 157mm !important; /* 일반 컷의 cut-content 너비와 동일 */
               align-items: flex-start;
               min-height: 35.6mm; /* 컷 높이 일관성 유지 (일반 컷과 동일) */
               box-sizing: border-box;
@@ -835,7 +918,7 @@ export const generatePDFBlobHybrid = async (
   // PDF 생성 (4A 기준 4:3 비율)
   const pageWidth = 210; // mm (4A 너비)
   const pageHeight = 280; // mm (4A 높이, 4:3 비율)
-  const topMargin = 15; // mm (상단 여백)
+  const topMargin = 10; // mm (상단 여백 5mm 감소: 15mm → 10mm)
   const bottomMargin = 5; // mm (하단 여백, 15mm에서 10mm 줄임)
   const margin = 15; // mm (좌우 여백, PDF 이미지 추가 시 x 좌표용)
   const contentWidth = pageWidth - (margin * 2); // 180mm
@@ -993,7 +1076,6 @@ export const generatePDFBlobHybrid = async (
           <meta charset="UTF-8">
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
           <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
-          <link rel="preload" as="font" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/woff2/Pretendard-Regular.woff2" crossorigin="anonymous" />
           <style>
             @font-face {
               font-family: 'Pretendard';
@@ -1019,10 +1101,21 @@ export const generatePDFBlobHybrid = async (
               width: 180mm;
               margin: 0 auto;
               padding: 0;
+              padding-top: 0; /* 상단 여백 제거 (5mm → 0mm) */
               font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
               font-size: 10pt;
               color: #000;
               background: #fff;
+            }
+            
+            /* 타이틀 (테이블 밖 상단 중앙) */
+            .header-title {
+              text-align: center;
+              font-size: 22pt;
+              font-weight: 700;
+              margin-top: 0; /* 상단 여백 제거 */
+              margin-bottom: 4mm; /* 반으로 (8mm → 4mm) */
+              padding: 0; /* 패딩 제거 */
             }
             
             /* 헤더 요약 스타일 포함 */
@@ -1030,7 +1123,7 @@ export const generatePDFBlobHybrid = async (
               width: 100%;
               background: #f5f5f5;
               border: 1px solid #646464;
-              padding: 3mm;
+              padding: 4mm;
               margin-bottom: 3mm;
             }
             
@@ -1047,18 +1140,27 @@ export const generatePDFBlobHybrid = async (
             }
             
             .header-line-1 {
-              font-weight: bold;
-              font-size: 11pt;
+              font-size: 9pt;
+              justify-content: space-between; /* 좌우 균형 배치 */
+              padding: 0 2mm; /* 좌우 여백 추가 */
             }
             
             .header-line-2 {
               font-size: 9pt;
               color: #333;
+              justify-content: flex-start; /* 왼쪽 정렬 (첫 번째 필드 위치와 동일) */
+              padding-left: 2mm; /* 첫 번째 줄과 동일한 시작 위치 */
             }
             
             .header-info-item {
               margin-right: 8mm;
               display: inline-block;
+              text-align: center;
+              flex: 0 0 auto; /* 크기 고정 */
+            }
+            
+            .header-info-item:last-child {
+              margin-right: 0;
             }
             
             .header-info-label {
@@ -1067,14 +1169,14 @@ export const generatePDFBlobHybrid = async (
             }
             
             .header-main-content {
-              display: -webkit-box;
-              -webkit-line-clamp: 2;
-              -webkit-box-orient: vertical;
-              overflow: hidden;
-              text-overflow: ellipsis;
-              max-width: 100%;
+              display: inline-block;
+              text-decoration: underline;
+              max-width: calc(100% - 30mm);
               line-height: 1.4;
               word-wrap: break-word;
+              white-space: nowrap;
+              overflow: hidden;
+              text-overflow: ellipsis;
             }
             
             /* 컷 항목 스타일 */
@@ -1087,10 +1189,10 @@ export const generatePDFBlobHybrid = async (
               page-break-inside: avoid;
               break-inside: avoid;
               min-height: 39mm; /* 컷 높이 일관성 유지 (이미지 35.6mm + 여백) */
-              display: flex;
-              flex-direction: row;
-              align-items: flex-start;
-              gap: 3mm;
+              display: flex !important;
+              flex-direction: row !important;
+              align-items: flex-start !important;
+              gap: 0 !important; /* gap 제거하고 margin 사용 */
             }
             
             .cut-number {
@@ -1099,6 +1201,7 @@ export const generatePDFBlobHybrid = async (
               width: 22mm; /* 화면의 w-16 (64px ≈ 16.93mm) + 오른쪽 5mm 여백 추가 */
               flex-shrink: 0;
               padding-top: 1mm;
+              margin-right: 1mm !important; /* 컷 번호와 이미지 사이 간격 (30%로 감소: 3mm → 1mm) - html2canvas 호환 */
             }
             
             .cut-content {
@@ -1106,6 +1209,8 @@ export const generatePDFBlobHybrid = async (
               display: flex;
               gap: 3mm;
               align-items: flex-start;
+              width: 100%;
+              box-sizing: border-box;
             }
             
             /* 페이지 하단 여백과 라인 - 페이지 하단 기준으로 고정 */
@@ -1140,10 +1245,13 @@ export const generatePDFBlobHybrid = async (
             }
             
             .cut-image-container {
-              width: 30%;
-              flex-shrink: 0;
+              width: 33.33% !important; /* 정확히 1:2 비율 (1/3 = 33.33%) - 강제 적용 */
+              flex-shrink: 0 !important;
+              flex-grow: 0 !important;
               max-height: 35.6mm;
               overflow: hidden;
+              box-sizing: border-box;
+              position: relative;
             }
             
             .cut-image {
@@ -1153,11 +1261,14 @@ export const generatePDFBlobHybrid = async (
               object-fit: cover;
               border: 1px solid #ddd;
               border-radius: 0.5rem;
+              display: block;
             }
             
             .cut-image-placeholder {
               width: 100%;
               height: 35.6mm;
+              min-height: 35.6mm;
+              max-height: 35.6mm;
               border: 1px dashed #ccc;
               border-radius: 0.5rem;
               display: flex;
@@ -1165,10 +1276,12 @@ export const generatePDFBlobHybrid = async (
               justify-content: center;
               color: #999;
               background: #f9f9f9;
+              box-sizing: border-box;
+              flex-shrink: 0;
+              overflow: hidden;
             }
             
             .cut-description {
-              width: 70%;
               font-size: 9pt;
               line-height: 1.4;
               white-space: pre-wrap;
@@ -1176,21 +1289,38 @@ export const generatePDFBlobHybrid = async (
               max-height: 35.6mm;
               overflow: hidden;
               word-wrap: break-word;
+              box-sizing: border-box;
+            }
+            
+            .cut-description:not(.cut-description-empty) {
+              width: 66.67% !important; /* 정확히 1:2 비율 (2/3 = 66.67%) - 강제 적용 */
+              flex-shrink: 0 !important;
+              flex-grow: 0 !important;
+              display: block !important;
+              min-height: 35.6mm; /* 최소 높이 설정으로 텍스트 영역 보장 */
+            }
+            
+            .cut-description-empty {
+              width: 66.67% !important; /* 정확히 1:2 비율 유지 - 강제 적용 */
+              min-height: 0;
+              padding: 0;
+              display: block;
+              flex-shrink: 0;
             }
             
             /* 이미지만 추가 그룹 - 가로 배치 (일반 컷 이미지와 동일한 시작/끝 위치) */
             .image-only-group {
               display: flex;
               flex-direction: row;
-              gap: 3mm; /* 일반 컷과 동일한 gap 사용 */
+              gap: 3mm; /* 이미지 간 간격은 유지 */
               margin-bottom: 4mm;
               page-break-inside: avoid;
               break-inside: avoid;
               /* 일반 컷의 cut-content와 동일한 너비로 제한 */
-              /* 컷 번호(22mm) + gap(3mm) 이후부터 시작하여 cut-content 너비(155mm)만큼만 사용 */
-              margin-left: 25mm; /* 컷 번호(22mm) + gap(3mm) = 시작 위치 */
-              width: calc(100% - 25mm); /* cut-content와 동일한 너비 (180mm - 25mm = 155mm) */
-              max-width: 155mm; /* 일반 컷의 cut-content 너비와 동일 */
+              /* 컷 번호(22mm) + gap(1mm) 이후부터 시작하여 cut-content 너비(157mm)만큼만 사용 */
+              margin-left: 23mm; /* 컷 번호(22mm) + gap(1mm) = 시작 위치 */
+              width: calc(100% - 23mm); /* cut-content와 동일한 너비 (180mm - 23mm = 157mm) */
+              max-width: 157mm; /* 일반 컷의 cut-content 너비와 동일 */
               min-height: 35.6mm; /* 일반 컷과 동일한 높이 유지 */
               box-sizing: border-box;
             }
@@ -1229,6 +1359,7 @@ export const generatePDFBlobHybrid = async (
       container.style.pointerEvents = 'none';
       container.style.backgroundColor = '#ffffff';
       container.style.overflow = 'hidden'; // 넘치는 부분 숨김
+      container.style.boxSizing = 'border-box'; // 박스 모델 일관성
       container.innerHTML = pageHTML;
       document.body.appendChild(container);
       
@@ -1303,15 +1434,20 @@ export const generatePDFBlobHybrid = async (
       
       await new Promise(resolve => setTimeout(resolve, 500));
       
-      // HTML을 캔버스로 캡처
+      // HTML을 캔버스로 캡처 (일관성을 위해 명시적 크기 지정)
+      const containerWidth = contentWidth * 3.779527559; // mm를 px로 변환 (1mm = 3.779527559px)
+      const containerHeight = availablePageHeight * 3.779527559; // mm를 px로 변환
+      
       const canvas = await html2canvas(container, {
         scale: 2,
         useCORS: true,
         logging: false,
         allowTaint: true,
         backgroundColor: '#ffffff',
-        width: container.scrollWidth,
-        height: container.scrollHeight
+        width: containerWidth,
+        height: containerHeight,
+        windowWidth: containerWidth,
+        windowHeight: containerHeight
       } as any);
       
       document.body.removeChild(container);

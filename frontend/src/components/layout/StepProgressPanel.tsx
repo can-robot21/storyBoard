@@ -297,7 +297,7 @@ export const StepProgressPanel: React.FC<StepProgressPanelProps> = ({
 
         {/* 중앙: 단계별 네비게이션 */}
         <div className="flex items-center gap-2">
-          {['프로젝트 개요', 'TXT2IMG', 'IMG2IMG', '영상 생성', ...(isLoggedIn ? ['스토리보드 생성'] : [])].map((step) => (
+          {['프로젝트 개요', 'TXT2IMG', 'IMG2IMG', '영상 생성', '스토리보드 생성'].map((step) => (
             <button
               key={step}
               onClick={() => onStepChange(step)}
