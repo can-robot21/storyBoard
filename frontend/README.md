@@ -764,7 +764,7 @@ MIT License
 
 ---
 
-**최종 업데이트**: 2025-09-17  
+**최종 업데이트**: 2025-01-28  
 **버전**: v2.3.0  
-**개발자**: star612.net  
+**개발자**: star612.net@gmail.com / can.robot21@gmail.com  
 **라이선스**: MIT
